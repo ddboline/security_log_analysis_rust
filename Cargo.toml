@@ -1,0 +1,7 @@
+[package]
+name = "security_log_analysis_rust"
+version = "0.1.0"
+authors = ["Daniel Boline <ddboline@gmail.com>"]
+edition = "2018"
+
+[dependencies]
