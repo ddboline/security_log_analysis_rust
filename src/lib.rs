@@ -1,3 +1,10 @@
+#[macro_use]
+extern crate diesel;
+
+pub mod models;
+pub mod pgpool;
+pub mod schema;
+
 #[cfg(test)]
 mod tests {
     #[test]

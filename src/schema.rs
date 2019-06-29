@@ -9,6 +9,7 @@ table! {
     host_country (host) {
         host -> Varchar,
         code -> Varchar,
+        ipaddr -> Varchar,
     }
 }
 
@@ -23,8 +24,4 @@ table! {
     }
 }
 
-allow_tables_to_appear_in_same_query!(
-    country_code,
-    host_country,
-    intrusion_log,
-);
+allow_tables_to_appear_in_same_query!(country_code, host_country, intrusion_log,);
