@@ -9,7 +9,7 @@ table! {
     host_country (host) {
         host -> Varchar,
         code -> Varchar,
-        ipaddr -> Varchar,
+        ipaddr -> Nullable<Varchar>,
     }
 }
 
