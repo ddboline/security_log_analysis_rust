@@ -1,5 +1,8 @@
 use chrono::{DateTime, Utc};
+use diesel::{QueryDsl, RunQueryDsl};
+use failure::{err_msg, Error};
 
+use crate::pgpool::PgPool;
 use crate::schema::{country_code, host_country, intrusion_log};
 
 #[derive(Queryable, Clone, Debug, Insertable)]
@@ -26,6 +29,26 @@ pub struct IntrusionLog {
     pub datetime: Option<DateTime<Utc>>,
     pub host: String,
     pub username: Option<String>,
+}
+
+pub fn get_country_code_list(pool: &PgPool) -> Result<Vec<CountryCode>, Error> {
+    use crate::schema::country_code::dsl::country_code;
+
+    let conn = pool.get()?;
+
+    let country_code_list: Vec<_> = country_code.load(&conn)?;
+
+    Ok(country_code_list)
+}
+
+pub fn get_host_country(pool: &PgPool) -> Result<Vec<HostCountry>, Error> {
+    use crate::schema::host_country::dsl::host_country;
+
+    let conn = pool.get()?;
+
+    let host_country_list: Vec<_> = host_country.load(&conn)?;
+
+    Ok(host_country_list)
 }
 
 #[cfg(test)]
@@ -61,8 +84,7 @@ mod tests {
         let pool = PgPool::new(database_url);
         let conn = pool.get().unwrap();
 
-        let host_country_list: Vec<HostCountry> =
-            host_country.limit(10).load(&conn).unwrap();
+        let host_country_list: Vec<HostCountry> = host_country.limit(10).load(&conn).unwrap();
 
         for entry in &host_country_list {
             println!("{:?}", entry);

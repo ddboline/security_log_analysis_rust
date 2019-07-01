@@ -1,7 +1,9 @@
 #[macro_use]
 extern crate diesel;
 
+pub mod config;
 pub mod models;
+pub mod parse_logs;
 pub mod pgpool;
 pub mod schema;
 
