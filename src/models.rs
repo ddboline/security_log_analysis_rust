@@ -51,6 +51,17 @@ pub fn get_host_country(pool: &PgPool) -> Result<Vec<HostCountry>, Error> {
     Ok(host_country_list)
 }
 
+pub fn insert_host_country(pool: &PgPool, hc: &HostCountry) -> Result<(), Error> {
+    use crate::schema::host_country::dsl::host_country;
+    let conn = pool.get()?;
+
+    diesel::insert_into(host_country)
+        .values(hc)
+        .execute(&conn)
+        .map_err(err_msg)?;
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use diesel::{QueryDsl, RunQueryDsl};
