@@ -12,9 +12,17 @@ use subprocess::Exec;
 
 use crate::map_result;
 use crate::models::{
-    get_country_code_list, get_host_country, insert_host_country, CountryCode, HostCountry,
+    get_country_code_list, get_host_country, get_intrusion_log, insert_host_country,
+    insert_intrusion_log, CountryCode, HostCountry, IntrusionLogInsert,
 };
 use crate::pgpool::PgPool;
+
+#[derive(Debug, PartialEq, Eq, Hash)]
+pub struct LogLineSSH {
+    pub host: String,
+    pub user: Option<String>,
+    pub timestamp: DateTime<Utc>,
+}
 
 #[derive(Clone, Debug)]
 pub struct HostCountryMetadata {
@@ -98,13 +106,6 @@ impl HostCountryMetadata {
     }
 }
 
-#[derive(Debug)]
-pub struct LogLineSSH {
-    pub host: String,
-    pub user: Option<String>,
-    pub timestamp: DateTime<Utc>,
-}
-
 pub fn parse_log_line_ssh(year: i32, line: &str) -> Result<Option<LogLineSSH>, Error> {
     if !line.contains("sshd") || !line.contains("Invalid user") {
         return Ok(None);
@@ -165,7 +166,8 @@ where
 pub fn parse_all_log_files_ssh(
     hc: &HostCountryMetadata,
     year: i32,
-) -> Result<Vec<LogLineSSH>, Error> {
+    server: &str,
+) -> Result<Vec<IntrusionLogInsert>, Error> {
     let mut results = Vec::new();
     for entry in glob("/var/log/auth.log*")? {
         let fname = entry?;
@@ -182,7 +184,18 @@ pub fn parse_all_log_files_ssh(
             results.extend(parse_log_file_ssh(&hc, year, f)?);
         }
     }
-    Ok(results)
+    let inserts: Vec<_> = results
+        .into_iter()
+        .map(|log_line| IntrusionLogInsert {
+            service: "ssh".to_string(),
+            server: server.to_string(),
+            datetime: Some(log_line.timestamp),
+            host: log_line.host,
+            username: log_line.user,
+        })
+        .collect();
+    insert_intrusion_log(&hc.pool, &inserts)?;
+    Ok(inserts)
 }
 
 pub fn parse_log_line_apache(line: &str) -> Result<Option<LogLineSSH>, Error> {
@@ -269,9 +282,7 @@ afari/537.36""#;
         let fname = "/var/log/auth.log";
         let infile = File::open(fname).unwrap();
         let results = parse_log_file_ssh(&hc, 2019, infile).unwrap();
-        println!("{}", results.len());
-        println!("{:?}", results[0]);
-        assert!(false);
+        assert!(results.len() > 0);
     }
 
     #[test]
@@ -279,9 +290,7 @@ afari/537.36""#;
         let config = Config::init_config().unwrap();
         let pool = PgPool::new(&config.database_url);
         let hc = HostCountryMetadata::from_pool(&pool).unwrap();
-        let results = parse_all_log_files_ssh(&hc, 2019).unwrap();
-        println!("{}", results.len());
-        println!("{:?}", results[0]);
-        assert!(false);
+        let results = parse_all_log_files_ssh(&hc, 2019, "home.ddboline.net").unwrap();
+        assert!(results.len() > 0);
     }
 }
