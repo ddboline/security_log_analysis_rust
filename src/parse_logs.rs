@@ -3,6 +3,7 @@ use failure::{err_msg, Error};
 use flate2::read::GzDecoder;
 use glob::glob;
 use rayon::iter::{IntoParallelIterator, ParallelIterator};
+use std::collections::HashSet;
 use std::fs::File;
 use std::io::{BufRead, BufReader, Read};
 
@@ -112,7 +113,7 @@ where
         None => None,
     };
 
-    let inserts: Vec<_> = results
+    let inserts: HashSet<_> = results
         .into_iter()
         .filter(|log_line| match max_datetime.as_ref() {
             Some(maxdt) => log_line.timestamp > *maxdt,
@@ -126,6 +127,7 @@ where
             username: log_line.user,
         })
         .collect();
+    let inserts: Vec<_> = inserts.into_iter().collect();
 
     if let Some(pool) = hc.pool.as_ref() {
         insert_intrusion_log(pool, &inserts)?;

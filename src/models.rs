@@ -30,7 +30,7 @@ pub struct IntrusionLog {
     pub username: Option<String>,
 }
 
-#[derive(Insertable, Clone, Debug)]
+#[derive(Insertable, Clone, Debug, PartialEq, Eq, Hash)]
 #[table_name = "intrusion_log"]
 pub struct IntrusionLogInsert {
     pub service: String,
