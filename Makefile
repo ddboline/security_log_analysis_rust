@@ -36,7 +36,7 @@ build_test:
 	rm -rf build/
 
 install:
-	cp target/$(build_type)/security-log-analysis-rust /usr/bin/security-log-analysis-rust
+	cp target/$(build_type)/security-log-parse-rust /usr/bin/security-log-parse-rust
 
 pull:
 	`aws ecr --region us-east-1 get-login --no-include-email`
