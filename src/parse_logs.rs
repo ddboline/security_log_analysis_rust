@@ -129,6 +129,8 @@ where
         .collect();
     let inserts: Vec<_> = inserts.into_iter().collect();
 
+    println!("{:?}", inserts);
+
     if let Some(pool) = hc.pool.as_ref() {
         insert_intrusion_log(pool, &inserts)?;
     }
