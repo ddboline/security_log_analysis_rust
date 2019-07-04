@@ -1,0 +1,14 @@
+FROM ubuntu:bionic
+MAINTAINER Daniel Boline
+
+RUN echo deb [trusted=yes] https://py2deb-repo.s3.amazonaws.com/deb/bionic/python3 bionic main > /etc/apt/sources.list.d/py2deb.list && \
+    apt-key adv --keyserver keyserver.ubuntu.com --recv 25508FAF711C1DEB && \
+    apt-get update && \
+    apt-get install sync-app-rust
+
+WORKDIR /security_log_analysis_rust
+
+ADD Cargo.toml /security_log_analysis_rust
+ADD src /security_log_analysis_rust/src
+ADD scripts /security_log_analysis_rust/scripts
+ADD Makefile /security_log_analysis_rust

@@ -25,7 +25,7 @@ pub struct IntrusionLog {
     pub id: i32,
     pub service: String,
     pub server: String,
-    pub datetime: Option<DateTime<Utc>>,
+    pub datetime: DateTime<Utc>,
     pub host: String,
     pub username: Option<String>,
 }
@@ -35,7 +35,7 @@ pub struct IntrusionLog {
 pub struct IntrusionLogInsert {
     pub service: String,
     pub server: String,
-    pub datetime: Option<DateTime<Utc>>,
+    pub datetime: DateTime<Utc>,
     pub host: String,
     pub username: Option<String>,
 }
@@ -60,21 +60,22 @@ pub fn get_host_country(pool: &PgPool) -> Result<Vec<HostCountry>, Error> {
     Ok(host_country_list)
 }
 
-pub fn get_intrusion_log(
+pub fn get_intrusion_log_max_datetime(
     pool: &PgPool,
     service_val: &str,
     server_val: &str,
-) -> Result<Vec<IntrusionLog>, Error> {
-    use crate::schema::intrusion_log::dsl::{intrusion_log, server, service};
+) -> Result<Option<DateTime<Utc>>, Error> {
+    use crate::schema::intrusion_log::dsl::{datetime, intrusion_log, server, service};
+    use diesel::dsl::max;
 
     let conn = pool.get()?;
 
-    let intrusion_log_list: Vec<_> = intrusion_log
+    intrusion_log
+        .select(max(datetime))
         .filter(service.eq(service_val))
         .filter(server.eq(server_val))
-        .load(&conn)?;
-
-    Ok(intrusion_log_list)
+        .first(&conn)
+        .map_err(err_msg)
 }
 
 pub fn insert_host_country(pool: &PgPool, hc: &HostCountry) -> Result<(), Error> {
@@ -120,7 +121,7 @@ mod tests {
         for entry in &country_code_list {
             println!("{:?}", entry);
         }
-        assert_eq!(country_code_list.len(), 250);
+        assert_eq!(country_code_list.len(), 251);
     }
 
     #[test]

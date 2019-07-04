@@ -18,7 +18,7 @@ table! {
         id -> Int4,
         service -> Text,
         server -> Text,
-        datetime -> Nullable<Timestamptz>,
+        datetime -> Timestamptz,
         host -> Varchar,
         username -> Nullable<Varchar>,
     }
