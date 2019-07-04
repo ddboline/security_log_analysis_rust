@@ -5,6 +5,7 @@ pub mod config;
 pub mod host_country_metadata;
 pub mod models;
 pub mod parse_logs;
+pub mod parse_opts;
 pub mod pgpool;
 pub mod schema;
 
