@@ -8,6 +8,7 @@ use crate::host_country_metadata::HostCountryMetadata;
 use crate::parse_logs::{parse_all_log_files, parse_log_line_apache, parse_log_line_ssh};
 use crate::pgpool::PgPool;
 
+#[derive(Debug)]
 pub struct HostName(pub String);
 
 impl FromStr for HostName {
@@ -22,8 +23,8 @@ impl FromStr for HostName {
 
 #[derive(StructOpt, Debug)]
 pub struct ParseOpts {
-    #[structopt(short = "s", long = "server", parse(from_str))]
-    pub server: String,
+    #[structopt(short = "s", long = "server", parse(try_from_str))]
+    pub server: HostName,
 }
 
 impl ParseOpts {
@@ -36,14 +37,14 @@ impl ParseOpts {
         let mut results = parse_all_log_files(
             &hc,
             "ssh",
-            &opts.server,
+            &opts.server.0,
             &parse_log_line_ssh,
             "/var/log/auth.log",
         )?;
         results.extend(parse_all_log_files(
             &hc,
             "apache",
-            &opts.server,
+            &opts.server.0,
             &parse_log_line_apache,
             "/var/log/apache2/access.log",
         )?);
