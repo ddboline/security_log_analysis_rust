@@ -16,7 +16,6 @@ impl FromStr for HostName {
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         let host_port_str = format!("{}:{}", s, 22);
-        host_port_str.to_socket_addrs()?;
         Ok(HostName(s.to_string()))
     }
 }
