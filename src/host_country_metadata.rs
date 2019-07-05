@@ -73,13 +73,13 @@ impl HostCountryMetadata {
             };
             let host_exists = { (*self.host_country_map.read()).contains_key(host) };
             if !host_exists {
-                if let Some(pool) = self.pool.as_ref() {
-                    insert_host_country(pool, &host_country).map_err(|e| {
-                        println!("{:?}", e);
-                        e
-                    })?;
+                let mut lock = self.host_country_map.write();
+                if !(*lock).contains_key(host) {
+                    if let Some(pool) = self.pool.as_ref() {
+                        insert_host_country(pool, &host_country)?;
+                    }
+                    (*lock).insert(host.to_string(), host_country);
                 }
-                (*self.host_country_map.write()).insert(host.to_string(), host_country);
             }
             return Ok(code.to_string());
         }
