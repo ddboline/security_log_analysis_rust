@@ -5,6 +5,7 @@ use std::path::Path;
 #[derive(Default, Debug, Clone)]
 pub struct Config {
     pub database_url: String,
+    pub username: String,
 }
 
 impl Config {
@@ -36,6 +37,7 @@ impl Config {
         let conf = Config {
             database_url: var("DATABASE_URL")
                 .map_err(|e| err_msg(format!("DATABASE_URL must be set {}", e)))?,
+            username: var("USER").map_err(|e| err_msg(format!("USER must be set {}", e)))?,
         };
 
         Ok(conf)

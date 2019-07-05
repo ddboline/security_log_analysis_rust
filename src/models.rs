@@ -1,6 +1,7 @@
 use chrono::{DateTime, Utc};
 use diesel::{ExpressionMethods, QueryDsl, RunQueryDsl};
 use failure::{err_msg, Error};
+use std::convert::TryFrom;
 
 use crate::pgpool::PgPool;
 use crate::schema::{country_code, host_country, intrusion_log};
@@ -78,6 +79,23 @@ pub fn get_intrusion_log_max_datetime(
         .map_err(err_msg)
 }
 
+pub fn get_intrusion_log_filtered(
+    pool: &PgPool,
+    service_val: &str,
+    server_val: &str,
+    max_datetime: DateTime<Utc>,
+) -> Result<Vec<IntrusionLog>, Error> {
+    use crate::schema::intrusion_log::dsl::{datetime, intrusion_log, server, service};
+    let conn = pool.get()?;
+
+    intrusion_log
+        .filter(service.eq(service_val))
+        .filter(server.eq(server_val))
+        .filter(datetime.gt(max_datetime))
+        .load(&conn)
+        .map_err(err_msg)
+}
+
 pub fn insert_host_country(pool: &PgPool, hc: &HostCountry) -> Result<(), Error> {
     use crate::schema::host_country::dsl::host_country;
     let conn = pool.get()?;
@@ -98,6 +116,44 @@ pub fn insert_intrusion_log(pool: &PgPool, il: &[IntrusionLogInsert]) -> Result<
         .execute(&conn)
         .map_err(err_msg)?;
     Ok(())
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct IntrusionLogSerde {
+    pub id: i32,
+    pub service: String,
+    pub server: String,
+    pub datetime: String,
+    pub host: String,
+    pub username: Option<String>,
+}
+
+impl From<IntrusionLog> for IntrusionLogSerde {
+    fn from(item: IntrusionLog) -> Self {
+        IntrusionLogSerde {
+            id: item.id,
+            service: item.service,
+            server: item.server,
+            datetime: item.datetime.to_rfc3339(),
+            host: item.host,
+            username: item.username,
+        }
+    }
+}
+
+impl TryFrom<IntrusionLogSerde> for IntrusionLogInsert {
+    type Error = Error;
+
+    fn try_from(item: IntrusionLogSerde) -> Result<Self, Self::Error> {
+        let result = IntrusionLogInsert {
+            service: item.service,
+            server: item.server,
+            datetime: DateTime::parse_from_rfc3339(&item.datetime)?.with_timezone(&Utc),
+            host: item.host,
+            username: item.username,
+        };
+        Ok(result)
+    }
 }
 
 #[cfg(test)]
