@@ -72,7 +72,7 @@ pub struct ParseOpts {
     #[structopt(short = "s", long = "server", parse(try_from_str))]
     pub server: HostName,
     #[structopt(short = "d", long = "datetime", parse(try_from_str))]
-    pub datetime: DateTimeInput,
+    pub datetime: Option<DateTimeInput>,
     #[structopt(short = "u", long = "username")]
     pub username: Option<String>,
 }
@@ -107,13 +107,13 @@ impl ParseOpts {
             ParseActions::Serialize => {
                 let config = Config::init_config()?;
                 let pool = PgPool::new(&config.database_url);
+                let datetime = match opts.datetime {
+                    Some(d) => d.0,
+                    None => Utc::now(),
+                };
                 for service in &["ssh", "apache"] {
-                    let results = get_intrusion_log_filtered(
-                        &pool,
-                        service,
-                        &opts.server.0,
-                        opts.datetime.0,
-                    )?;
+                    let results =
+                        get_intrusion_log_filtered(&pool, service, &opts.server.0, datetime)?;
                     for result in results {
                         let val: IntrusionLogSerde = result.into();
                         println!("{}", serde_json::to_string(&val)?);
