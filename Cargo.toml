@@ -1,11 +1,12 @@
 [package]
 name = "security_log_analysis_rust"
-version = "0.1.5"
+version = "0.1.6"
 authors = ["Daniel Boline <ddboline@gmail.com>"]
 edition = "2018"
 
 [dependencies]
 r2d2 = "0.8"
+r2d2_postgres = "0.14"
 diesel = {version="1.4", features=["postgres", "r2d2", "chrono"]}
 failure = "0.1"
 chrono = "0.4"
@@ -19,6 +20,7 @@ glob = "0.3"
 flate2 = "1.0"
 structopt = "0.2"
 parking_lot = "0.8"
+postgres = "0.15"
 
 [[bin]]
 name = "security-log-parse-rust"

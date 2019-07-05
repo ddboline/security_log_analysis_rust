@@ -2,7 +2,9 @@ use chrono::{DateTime, Utc};
 use failure::{err_msg, Error};
 use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
 use std::convert::TryInto;
-use std::io::{BufRead, BufReader};
+use std::env::var;
+use std::fs::File;
+use std::io::{BufRead, BufReader, Write};
 use std::net::ToSocketAddrs;
 use std::str::FromStr;
 use structopt::StructOpt;
@@ -17,12 +19,15 @@ use crate::models::{
 };
 use crate::parse_logs::{parse_all_log_files, parse_log_line_apache, parse_log_line_ssh};
 use crate::pgpool::PgPool;
+use crate::pgpool_pg::PgPoolPg;
+use crate::reports::get_country_count_recent;
 
 #[derive(Debug)]
 pub enum ParseActions {
     Parse,
     Serialize,
     Sync,
+    CountryPlot,
 }
 
 impl FromStr for ParseActions {
@@ -33,6 +38,7 @@ impl FromStr for ParseActions {
             "parse" => Ok(ParseActions::Parse),
             "serialize" | "ser" => Ok(ParseActions::Serialize),
             "sync" => Ok(ParseActions::Sync),
+            "plot" | "country_plot" => Ok(ParseActions::CountryPlot),
             _ => Err(err_msg("Invalid Action")),
         }
     }
@@ -60,17 +66,18 @@ impl FromStr for DateTimeInput {
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         DateTime::parse_from_rfc3339(s)
             .map(|d| d.with_timezone(&Utc))
-            .map(|d| DateTimeInput(d))
+            .map(DateTimeInput)
             .map_err(err_msg)
     }
 }
 
 #[derive(StructOpt, Debug)]
 pub struct ParseOpts {
+    /// parse, serialize|ser, sync, plot|country_plot
     #[structopt(parse(try_from_str), default_value = "parse")]
     pub action: ParseActions,
     #[structopt(short = "s", long = "server", parse(try_from_str))]
-    pub server: HostName,
+    pub server: Option<HostName>,
     #[structopt(short = "d", long = "datetime", parse(try_from_str))]
     pub datetime: Option<DateTimeInput>,
     #[structopt(short = "u", long = "username")]
@@ -86,17 +93,20 @@ impl ParseOpts {
                 let config = Config::init_config()?;
                 let pool = PgPool::new(&config.database_url);
                 let hc = HostCountryMetadata::from_pool(&pool)?;
+                let server = opts
+                    .server
+                    .ok_or_else(|| err_msg("Must specify server for parse action"))?;
                 let mut results = parse_all_log_files(
                     &hc,
                     "ssh",
-                    &opts.server.0,
+                    &server.0,
                     &parse_log_line_ssh,
                     "/var/log/auth.log",
                 )?;
                 results.extend(parse_all_log_files(
                     &hc,
                     "apache",
-                    &opts.server.0,
+                    &server.0,
                     &parse_log_line_apache,
                     "/var/log/apache2/access.log",
                 )?);
@@ -111,9 +121,11 @@ impl ParseOpts {
                     Some(d) => d.0,
                     None => Utc::now(),
                 };
+                let server = opts
+                    .server
+                    .ok_or_else(|| err_msg("Must specify server for ser action"))?;
                 for service in &["ssh", "apache"] {
-                    let results =
-                        get_intrusion_log_filtered(&pool, service, &opts.server.0, datetime)?;
+                    let results = get_intrusion_log_filtered(&pool, service, &server.0, datetime)?;
                     for result in results {
                         let val: IntrusionLogSerde = result.into();
                         println!("{}", serde_json::to_string(&val)?);
@@ -126,10 +138,13 @@ impl ParseOpts {
                 let pool = PgPool::new(&config.database_url);
                 let metadata = HostCountryMetadata::from_pool(&pool)?;
                 println!("{:?}", opts);
+                let server = opts
+                    .server
+                    .ok_or_else(|| err_msg("Must specify server for sync action"))?;
                 let username = opts.username.as_ref().unwrap_or_else(|| &config.username);
                 let command = format!(
                     r#"ssh {}@{} "security-log-parse-rust parse -s {}""#,
-                    username, opts.server.0, opts.server.0,
+                    username, server.0, server.0,
                 );
                 println!("{}", command);
                 let status = Exec::shell(&command).join()?.success();
@@ -137,11 +152,11 @@ impl ParseOpts {
                     return Err(err_msg(format!("{} failed", command)));
                 }
 
-                let max_datetime = get_intrusion_log_max_datetime(&pool, "ssh", &opts.server.0)?
+                let max_datetime = get_intrusion_log_max_datetime(&pool, "ssh", &server.0)?
                     .as_ref()
                     .and_then(|dt| {
                         if let Ok(Some(dt2)) =
-                            get_intrusion_log_max_datetime(&pool, "apache", &opts.server.0)
+                            get_intrusion_log_max_datetime(&pool, "apache", &server.0)
                         {
                             if *dt > dt2 {
                                 Some(*dt)
@@ -152,13 +167,13 @@ impl ParseOpts {
                             Some(*dt)
                         }
                     })
-                    .unwrap_or_else(|| Utc::now());
+                    .unwrap_or_else(Utc::now);
                 println!("{:?}", max_datetime);
                 let command = format!(
                     r#"ssh {}@{} "security-log-parse-rust ser -s {} -d {}""#,
                     username,
-                    opts.server.0,
-                    opts.server.0,
+                    server.0,
+                    server.0,
                     max_datetime.to_rfc3339(),
                 );
                 println!("{}", command);
@@ -182,6 +197,32 @@ impl ParseOpts {
                 insert_intrusion_log(&pool, &results)?;
 
                 println!("{}", results.len());
+                Ok(())
+            }
+            ParseActions::CountryPlot => {
+                let config = Config::init_config()?;
+                let pool = PgPoolPg::new(&config.database_url);
+                let template = include_str!("../templates/COUNTRY_TEMPLATE.html");
+                for service in &["ssh", "apache"] {
+                    for server_prefix in &["home", "cloud"] {
+                        let server = format!("{}.ddboline.net", server_prefix);
+                        let results = get_country_count_recent(&pool, service, &server, 20)?;
+                        let results: Vec<_> = results
+                            .iter()
+                            .map(|(x, y)| format!(r#"["{}", {}]"#, x, y))
+                            .collect();
+                        let results = template
+                            .replace("PUTLISTOFCOUNTRIESANDATTEMPTSHERE", &results.join(","));
+                        let home_dir =
+                            var("HOME").map_err(|e| err_msg(format!("No HOME directory {}", e)))?;
+                        let outfname = format!(
+                            "{}/public_html/{}_intrusion_attempts_{}.html",
+                            home_dir, service, server_prefix
+                        );
+                        let mut output = File::create(&outfname)?;
+                        write!(output, "{}", results)?;
+                    }
+                }
                 Ok(())
             }
         }
