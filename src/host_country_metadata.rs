@@ -74,7 +74,10 @@ impl HostCountryMetadata {
             let host_exists = { (*self.host_country_map.read()).contains_key(host) };
             if !host_exists {
                 if let Some(pool) = self.pool.as_ref() {
-                    insert_host_country(pool, &host_country)?;
+                    insert_host_country(pool, &host_country).map_err(|e| {
+                        println!("{:?}", e);
+                        e
+                    })?;
                 }
                 (*self.host_country_map.write()).insert(host.to_string(), host_country);
             }
