@@ -154,12 +154,11 @@ pub fn parse_log_line_apache(_: i32, line: &str) -> Result<Option<LogLineSSH>, E
 mod tests {
     use chrono::Timelike;
     use std::fs::File;
-    use std::net::ToSocketAddrs;
 
     use crate::config::Config;
+    use crate::host_country_metadata::HostCountryMetadata;
     use crate::parse_logs::{
         parse_all_log_files, parse_log_file, parse_log_line_apache, parse_log_line_ssh,
-        HostCountryMetadata,
     };
     use crate::pgpool::PgPool;
 
@@ -181,37 +180,6 @@ afari/537.36""#;
         assert_eq!(result.user, None);
         assert_eq!(result.host, "82.73.86.33".to_string());
         assert_eq!(result.timestamp.hour(), 22);
-    }
-
-    #[test]
-    fn test_get_country_info() {
-        let config = Config::init_config().unwrap();
-        let pool = PgPool::new(&config.database_url);
-        let metadata = HostCountryMetadata::from_pool(&pool).unwrap();
-        assert_eq!(
-            metadata.get_country_info("36.110.50.217").unwrap(),
-            "CN".to_string()
-        );
-        assert_eq!(
-            metadata.get_country_info("82.73.86.33").unwrap(),
-            "NL".to_string()
-        );
-        assert_eq!(
-            metadata.get_country_info("217.29.210.13").unwrap(),
-            "EU".to_string()
-        );
-    }
-
-    #[test]
-    fn test_get_socket_addr() {
-        let sockaddr = ("home.ddboline.net", 22)
-            .to_socket_addrs()
-            .unwrap()
-            .nth(0)
-            .unwrap();
-        let ipaddr = sockaddr.ip();
-        assert!(ipaddr.is_ipv4());
-        println!("{}", ipaddr);
     }
 
     #[test]

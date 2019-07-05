@@ -90,6 +90,11 @@ impl HostCountryMetadata {
         if let Some(entry) = (*self.host_country_map.read()).get(host) {
             return Ok(entry.code.clone());
         }
+        let whois_code = self.get_whois_country_info(host)?;
+        self.insert_host_code(host, &whois_code)
+    }
+
+    pub fn get_whois_country_info(&self, host: &str) -> Result<String, Error> {
         let command = format!("whois {}", host);
         println!("command {}", command);
 
@@ -99,20 +104,26 @@ impl HostCountryMetadata {
             if let Some(f) = process.stdout.as_ref() {
                 let reader = BufReader::new(f);
                 for line in reader.lines() {
-                    let l = line?.trim().to_uppercase();
+                    let l = match line {
+                        Ok(l) => l.trim().to_uppercase(),
+                        Err(e) => {
+                            println!("{:?}", e);
+                            continue;
+                        }
+                    };
                     if l.contains("QUERY RATE") {
                         println!("Retry");
                         sleep(Duration::from_secs(5));
-                        return self.get_country_info(host);
+                        return self.get_whois_country_info(host);
                     } else if l.contains("KOREA") {
-                        return self.insert_host_code(host, "KR");
+                        return Ok("KR".to_string());
                     } else if l.ends_with(".BR") {
-                        return self.insert_host_code(host, "BR");
+                        return Ok("BR".to_string());
                     }
                     let tokens: Vec<_> = l.split_whitespace().collect();
                     if tokens.len() >= 2 && tokens[0] == "COUNTRY:" {
                         let code = tokens[1].to_string();
-                        return self.insert_host_code(host, &code);
+                        return Ok(code);
                     }
                 }
             }
@@ -152,5 +163,41 @@ impl HostCountryMetadata {
             conn.batch_execute(dedupe_query1)?;
         }
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use crate::host_country_metadata::HostCountryMetadata;
+    use std::net::ToSocketAddrs;
+
+    #[test]
+    fn test_get_whois_country_info() {
+        let metadata = HostCountryMetadata::new();
+        assert_eq!(
+            metadata.get_whois_country_info("36.110.50.217").unwrap(),
+            "CN".to_string()
+        );
+        assert_eq!(
+            metadata.get_whois_country_info("82.73.86.33").unwrap(),
+            "NL".to_string()
+        );
+        assert_eq!(
+            metadata.get_whois_country_info("217.29.210.13").unwrap(),
+            "EU".to_string()
+        );
+        assert_eq!(metadata.get_whois_country_info("31.162.240.19").unwrap(), "RU");
+    }
+
+    #[test]
+    fn test_get_socket_addr() {
+        let sockaddr = ("home.ddboline.net", 22)
+            .to_socket_addrs()
+            .unwrap()
+            .nth(0)
+            .unwrap();
+        let ipaddr = sockaddr.ip();
+        assert!(ipaddr.is_ipv4());
+        println!("{}", ipaddr);
     }
 }
