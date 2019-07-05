@@ -119,6 +119,8 @@ impl HostCountryMetadata {
                         return Ok("KR".to_string());
                     } else if l.ends_with(".BR") {
                         return Ok("BR".to_string());
+                    } else if l.contains("COMCAST CABLE") {
+                        return Ok("US".to_string());
                     }
                     let tokens: Vec<_> = l.split_whitespace().collect();
                     if tokens.len() >= 2 && tokens[0] == "COUNTRY:" {
@@ -186,7 +188,14 @@ mod test {
             metadata.get_whois_country_info("217.29.210.13").unwrap(),
             "EU".to_string()
         );
-        assert_eq!(metadata.get_whois_country_info("31.162.240.19").unwrap(), "RU");
+        assert_eq!(
+            metadata.get_whois_country_info("31.162.240.19").unwrap(),
+            "RU"
+        );
+        assert_eq!(
+            metadata.get_whois_country_info("174.61.53.116").unwrap(),
+            "US"
+        );
     }
 
     #[test]
