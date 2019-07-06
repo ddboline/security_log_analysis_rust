@@ -34,6 +34,7 @@ pub fn parse_log_line_ssh(year: i32, line: &str) -> Result<Option<LogLineSSH>, E
     };
     let remaining: Vec<_> = user.split(" from ").collect();
     let user = remaining.get(0).ok_or_else(|| err_msg("No user"))?;
+    let user = if user.len() > 15 { &user[0..15] } else { user };
     let host = remaining
         .get(1)
         .ok_or_else(|| err_msg("No host"))?
@@ -41,6 +42,7 @@ pub fn parse_log_line_ssh(year: i32, line: &str) -> Result<Option<LogLineSSH>, E
         .nth(0)
         .ok_or_else(|| err_msg("No host"))?
         .trim();
+    let host = if host.len() > 60 { &host[0..60] } else { host };
     let result = LogLineSSH {
         host: host.to_string(),
         user: Some(user.to_string()),
@@ -140,6 +142,7 @@ pub fn parse_log_line_apache(_: i32, line: &str) -> Result<Option<LogLineSSH>, E
         return Ok(None);
     }
     let host = tokens[0];
+    let host = if host.len() > 60 { &host[0..60] } else { host };
     let timestr = tokens[3..5].join("").replace("[", "").replace("]", "");
     let timestamp = Local.datetime_from_str(&timestr, "%e/%B/%Y:%H:%M:%S%z")?;
     let result = LogLineSSH {
