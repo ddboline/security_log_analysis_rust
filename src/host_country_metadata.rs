@@ -1,6 +1,8 @@
 use diesel::connection::SimpleConnection;
 use failure::{err_msg, Error};
 use parking_lot::RwLock;
+use rand::distributions::{Distribution, Uniform};
+use rand::thread_rng;
 use std::collections::HashMap;
 use std::io::{BufRead, BufReader};
 use std::net::ToSocketAddrs;
@@ -90,11 +92,12 @@ impl HostCountryMetadata {
         if let Some(entry) = (*self.host_country_map.read()).get(host) {
             return Ok(entry.code.clone());
         }
-        let whois_code = self.get_whois_country_info(host)?;
+        let timeout = 1.0;
+        let whois_code = self.get_whois_country_info(host, timeout)?;
         self.insert_host_code(host, &whois_code)
     }
 
-    pub fn get_whois_country_info(&self, host: &str) -> Result<String, Error> {
+    pub fn get_whois_country_info(&self, host: &str, timeout: f64) -> Result<String, Error> {
         let command = format!("whois {}", host);
         println!("command {}", command);
 
@@ -112,9 +115,13 @@ impl HostCountryMetadata {
                         }
                     };
                     if l.contains("QUERY RATE") {
-                        println!("Retry");
-                        sleep(Duration::from_secs(5));
-                        return self.get_whois_country_info(host);
+                        println!("Retry {}", l.trim());
+                        let mut rng = thread_rng();
+                        let range = Uniform::from(0..1000);
+                        sleep(Duration::from_millis((timeout * 1000.0) as u64));
+                        let new_timeout =
+                            timeout * 4.0 * f64::from(range.sample(&mut rng)) / 1000.0;
+                        return self.get_whois_country_info(host, new_timeout);
                     } else if l.contains("KOREA") {
                         return Ok("KR".to_string());
                     } else if l.ends_with(".BR") {
@@ -177,23 +184,31 @@ mod test {
     fn test_get_whois_country_info() {
         let metadata = HostCountryMetadata::new();
         assert_eq!(
-            metadata.get_whois_country_info("36.110.50.217").unwrap(),
+            metadata
+                .get_whois_country_info("36.110.50.217", 1.0)
+                .unwrap(),
             "CN".to_string()
         );
         assert_eq!(
-            metadata.get_whois_country_info("82.73.86.33").unwrap(),
+            metadata.get_whois_country_info("82.73.86.33", 1.0).unwrap(),
             "NL".to_string()
         );
         assert_eq!(
-            metadata.get_whois_country_info("217.29.210.13").unwrap(),
+            metadata
+                .get_whois_country_info("217.29.210.13", 1.0)
+                .unwrap(),
             "EU".to_string()
         );
         assert_eq!(
-            metadata.get_whois_country_info("31.162.240.19").unwrap(),
+            metadata
+                .get_whois_country_info("31.162.240.19", 1.0)
+                .unwrap(),
             "RU"
         );
         assert_eq!(
-            metadata.get_whois_country_info("174.61.53.116").unwrap(),
+            metadata
+                .get_whois_country_info("174.61.53.116", 1.0)
+                .unwrap(),
             "US"
         );
     }

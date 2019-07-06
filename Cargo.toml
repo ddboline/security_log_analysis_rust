@@ -21,6 +21,7 @@ flate2 = "1.0"
 structopt = "0.2"
 parking_lot = "0.8"
 postgres = "0.15"
+rand = "0.7"
 
 [[bin]]
 name = "security-log-parse-rust"
