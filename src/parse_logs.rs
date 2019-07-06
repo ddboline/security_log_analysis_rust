@@ -9,7 +9,7 @@ use std::io::{BufRead, BufReader, Read};
 
 use crate::host_country_metadata::HostCountryMetadata;
 use crate::map_result;
-use crate::models::{get_intrusion_log_max_datetime, insert_intrusion_log, IntrusionLogInsert};
+use crate::models::{get_intrusion_log_max_datetime, IntrusionLogInsert};
 
 #[derive(Debug, PartialEq, Eq, Hash)]
 pub struct LogLineSSH {
@@ -51,12 +51,7 @@ pub fn parse_log_line_ssh(year: i32, line: &str) -> Result<Option<LogLineSSH>, E
     Ok(Some(result))
 }
 
-pub fn parse_log_file<T, U>(
-    hc: &HostCountryMetadata,
-    year: i32,
-    infile: T,
-    parse_func: &U,
-) -> Result<Vec<LogLineSSH>, Error>
+pub fn parse_log_file<T, U>(year: i32, infile: T, parse_func: &U) -> Result<Vec<LogLineSSH>, Error>
 where
     T: Read,
     U: Fn(i32, &str) -> Result<Option<LogLineSSH>, Error> + Send + Sync,
@@ -67,10 +62,7 @@ where
     let results: Vec<_> = lines
         .into_par_iter()
         .filter_map(|line| match parse_func(year, &line) {
-            Ok(Some(x)) => match hc.get_country_info(&x.host) {
-                Ok(_) => Some(Ok(x)),
-                Err(e) => Some(Err(e)),
-            },
+            Ok(Some(x)) => Some(Ok(x)),
             Ok(None) => None,
             Err(e) => Some(Err(e)),
         })
@@ -103,10 +95,10 @@ where
         println!("{:?} {}", fname, ext);
         if ext == "gz" {
             let gz = GzDecoder::new(File::open(fname)?);
-            results.extend(parse_log_file(&hc, year, gz, parse_func)?);
+            results.extend(parse_log_file(year, gz, parse_func)?);
         } else {
             let f = File::open(fname)?;
-            results.extend(parse_log_file(&hc, year, f, parse_func)?);
+            results.extend(parse_log_file(year, f, parse_func)?);
         }
     }
 
@@ -130,9 +122,6 @@ where
         })
         .collect();
     let inserts: Vec<_> = inserts.into_iter().collect();
-    if let Some(pool) = hc.pool.as_ref() {
-        insert_intrusion_log(pool, &inserts)?;
-    }
     Ok(inserts)
 }
 
@@ -193,7 +182,7 @@ afari/537.36""#;
         hc.pool = None;
         let fname = "/var/log/auth.log";
         let infile = File::open(fname).unwrap();
-        let results = parse_log_file(&hc, 2019, infile, &parse_log_line_ssh).unwrap();
+        let results = parse_log_file(2019, infile, &parse_log_line_ssh).unwrap();
         assert!(results.len() > 0);
     }
 

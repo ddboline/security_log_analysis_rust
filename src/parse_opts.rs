@@ -1,6 +1,7 @@
 use chrono::{DateTime, Utc};
 use failure::{err_msg, Error};
-use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
+use rayon::iter::{IntoParallelIterator, ParallelIterator};
+use std::collections::HashSet;
 use std::convert::TryInto;
 use std::env::var;
 use std::fs::File;
@@ -92,26 +93,33 @@ impl ParseOpts {
             ParseActions::Parse => {
                 let config = Config::init_config()?;
                 let pool = PgPool::new(&config.database_url);
-                let hc = HostCountryMetadata::from_pool(&pool)?;
+                let metadata = HostCountryMetadata::from_pool(&pool)?;
                 let server = opts
                     .server
                     .ok_or_else(|| err_msg("Must specify server for parse action"))?;
-                let mut results = parse_all_log_files(
-                    &hc,
+                let mut inserts = parse_all_log_files(
+                    &metadata,
                     "ssh",
                     &server.0,
                     &parse_log_line_ssh,
                     "/var/log/auth.log",
                 )?;
-                results.extend(parse_all_log_files(
-                    &hc,
+                inserts.extend(parse_all_log_files(
+                    &metadata,
                     "apache",
                     &server.0,
                     &parse_log_line_apache,
                     "/var/log/apache2/access.log",
                 )?);
-                println!("new lines {}", results.len());
-                // hc.cleanup_intrusion_log()?;
+                println!("new lines {}", inserts.len());
+                let new_hosts: HashSet<_> = inserts.iter().map(|item| item.host.clone()).collect();
+                let codes: Vec<_> = new_hosts
+                    .into_par_iter()
+                    .map(|host| metadata.get_country_info(&host))
+                    .collect();
+                let _: Vec<_> = map_result(codes)?;
+                insert_intrusion_log(&pool, &inserts)?;
+
                 Ok(())
             }
             ParseActions::Serialize => {
@@ -179,7 +187,7 @@ impl ParseOpts {
                 println!("{}", command);
                 let stream = Exec::shell(command).stream_stdout()?;
                 let reader = BufReader::new(stream);
-                let results: Vec<_> = reader
+                let inserts: Vec<_> = reader
                     .lines()
                     .map(|line| {
                         let l = line?;
@@ -188,15 +196,16 @@ impl ParseOpts {
                         Ok(val)
                     })
                     .collect();
-                let results: Vec<_> = map_result(results)?;
-                let codes: Vec<_> = results
-                    .par_iter()
-                    .map(|item| metadata.get_country_info(&item.host))
+                let inserts: Vec<_> = map_result(inserts)?;
+                let new_hosts: HashSet<_> = inserts.iter().map(|item| item.host.clone()).collect();
+                let codes: Vec<_> = new_hosts
+                    .into_par_iter()
+                    .map(|host| metadata.get_country_info(&host))
                     .collect();
                 let _: Vec<_> = map_result(codes)?;
-                insert_intrusion_log(&pool, &results)?;
+                insert_intrusion_log(&pool, &inserts)?;
 
-                println!("{}", results.len());
+                println!("{}", inserts.len());
                 Ok(())
             }
             ParseActions::CountryPlot => {
