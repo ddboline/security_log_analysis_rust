@@ -115,7 +115,7 @@ impl HostCountryMetadata {
                         }
                     };
                     if l.contains("QUERY RATE") {
-                        println!("Retry {}", l.trim());
+                        println!("Retry {} : {}", host, l.trim());
                         let mut rng = thread_rng();
                         let range = Uniform::from(0..1000);
                         sleep(Duration::from_millis((timeout * 1000.0) as u64));

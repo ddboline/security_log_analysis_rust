@@ -1,12 +1,17 @@
 use failure::{err_msg, Error};
 use std::env::var;
+use std::ops::Deref;
 use std::path::Path;
+use std::sync::Arc;
 
 #[derive(Default, Debug, Clone)]
-pub struct Config {
+pub struct ConfigInner {
     pub database_url: String,
     pub username: String,
 }
+
+#[derive(Default, Debug, Clone)]
+pub struct Config(Arc<ConfigInner>);
 
 impl Config {
     pub fn new() -> Config {
@@ -34,12 +39,20 @@ impl Config {
             dotenv::from_filename("config.env").ok();
         }
 
-        let conf = Config {
+        let conf = ConfigInner {
             database_url: var("DATABASE_URL")
                 .map_err(|e| err_msg(format!("DATABASE_URL must be set {}", e)))?,
             username: var("USER").map_err(|e| err_msg(format!("USER must be set {}", e)))?,
         };
 
-        Ok(conf)
+        Ok(Config(Arc::new(conf)))
+    }
+}
+
+impl Deref for Config {
+    type Target = ConfigInner;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
     }
 }
