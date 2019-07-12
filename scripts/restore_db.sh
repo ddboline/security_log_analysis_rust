@@ -16,3 +16,5 @@ do
     aws s3 cp s3://${BUCKET}/${T}.sql.gz backup/${T}.sql.gz
     gzip -dc backup/${T}.sql.gz | psql $DB -c "COPY $T FROM STDIN"
 done
+
+psql security_logs -c "select setval('intrusion_log_id_seq', max(id)) from intrusion_log"
