@@ -4,7 +4,7 @@ use std::ops::Deref;
 use std::path::Path;
 use std::sync::Arc;
 
-#[derive(Default, Debug, Clone)]
+#[derive(Default, Debug)]
 pub struct ConfigInner {
     pub database_url: String,
     pub username: String,
