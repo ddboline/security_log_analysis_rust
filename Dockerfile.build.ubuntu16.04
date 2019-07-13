@@ -1,0 +1,10 @@
+FROM rust_stable:xenial_latest
+MAINTAINER Daniel Boline
+
+WORKDIR /security_log_analysis_rust
+
+ADD Cargo.toml /security_log_analysis_rust
+ADD src /security_log_analysis_rust/src
+ADD scripts /security_log_analysis_rust/scripts
+ADD Makefile /security_log_analysis_rust
+ADD templates /security_log_analysis_rust/templates
