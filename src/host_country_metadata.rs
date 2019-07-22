@@ -139,17 +139,15 @@ impl HostCountryMetadata {
                     }
                 }
                 Err(err_msg(format!("No country found {}", host)))
+            } else if !command.contains(" -r ") {
+                let new_command = format!("whois -r {}", host);
+                println!("command {}", new_command);
+                _get_whois_country_info(&new_command, host, timeout)
             } else {
-                if !command.contains(" -r ") {
-                    let new_command = format!("whois -r {}", host);
-                    println!("command {}", new_command);
-                    _get_whois_country_info(&new_command, host, timeout)
-                } else {
-                    Err(err_msg(format!(
-                        "Failed with exit status {:?}",
-                        exit_status
-                    )))
-                }
+                Err(err_msg(format!(
+                    "Failed with exit status {:?}",
+                    exit_status
+                )))
             }
         }
 
