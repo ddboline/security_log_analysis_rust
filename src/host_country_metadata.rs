@@ -98,51 +98,64 @@ impl HostCountryMetadata {
     }
 
     pub fn get_whois_country_info(&self, host: &str, timeout: f64) -> Result<String, Error> {
-        let command = format!("whois {}", host);
-        println!("command {}", command);
-
-        let mut process = Exec::shell(command).stdout(Redirection::Pipe).popen()?;
-        let exit_status = process.wait()?;
-        if exit_status.success() {
-            if let Some(f) = process.stdout.as_ref() {
-                let reader = BufReader::new(f);
-                for line in reader.lines() {
-                    let l = match line {
-                        Ok(l) => l.trim().to_uppercase(),
-                        Err(e) => {
-                            println!("{:?}", e);
-                            continue;
+        fn _get_whois_country_info(
+            command: &str,
+            host: &str,
+            timeout: f64,
+        ) -> Result<String, Error> {
+            let mut process = Exec::shell(command).stdout(Redirection::Pipe).popen()?;
+            let exit_status = process.wait()?;
+            if exit_status.success() {
+                if let Some(f) = process.stdout.as_ref() {
+                    let reader = BufReader::new(f);
+                    for line in reader.lines() {
+                        let l = match line {
+                            Ok(l) => l.trim().to_uppercase(),
+                            Err(e) => {
+                                println!("{:?}", e);
+                                continue;
+                            }
+                        };
+                        if l.contains("QUERY RATE") {
+                            println!("Retry {} : {}", host, l.trim());
+                            let mut rng = thread_rng();
+                            let range = Uniform::from(0..1000);
+                            sleep(Duration::from_millis((timeout * 1000.0) as u64));
+                            let new_timeout =
+                                timeout * 4.0 * f64::from(range.sample(&mut rng)) / 1000.0;
+                            return _get_whois_country_info(command, host, new_timeout);
+                        } else if l.contains("KOREA") {
+                            return Ok("KR".to_string());
+                        } else if l.ends_with(".BR") {
+                            return Ok("BR".to_string());
+                        } else if l.contains("COMCAST CABLE") {
+                            return Ok("US".to_string());
                         }
-                    };
-                    if l.contains("QUERY RATE") {
-                        println!("Retry {} : {}", host, l.trim());
-                        let mut rng = thread_rng();
-                        let range = Uniform::from(0..1000);
-                        sleep(Duration::from_millis((timeout * 1000.0) as u64));
-                        let new_timeout =
-                            timeout * 4.0 * f64::from(range.sample(&mut rng)) / 1000.0;
-                        return self.get_whois_country_info(host, new_timeout);
-                    } else if l.contains("KOREA") {
-                        return Ok("KR".to_string());
-                    } else if l.ends_with(".BR") {
-                        return Ok("BR".to_string());
-                    } else if l.contains("COMCAST CABLE") {
-                        return Ok("US".to_string());
-                    }
-                    let tokens: Vec<_> = l.split_whitespace().collect();
-                    if tokens.len() >= 2 && tokens[0] == "COUNTRY:" {
-                        let code = tokens[1].to_string();
-                        return Ok(code);
+                        let tokens: Vec<_> = l.split_whitespace().collect();
+                        if tokens.len() >= 2 && tokens[0] == "COUNTRY:" {
+                            let code = tokens[1].to_string();
+                            return Ok(code);
+                        }
                     }
                 }
+                Err(err_msg(format!("No country found {}", host)))
+            } else {
+                if !command.contains(" -r ") {
+                    let new_command = format!("whois -r {}", host);
+                    println!("command {}", new_command);
+                    _get_whois_country_info(&new_command, host, timeout)
+                } else {
+                    Err(err_msg(format!(
+                        "Failed with exit status {:?}",
+                        exit_status
+                    )))
+                }
             }
-            Err(err_msg(format!("No country found {}", host)))
-        } else {
-            Err(err_msg(format!(
-                "Failed with exit status {:?}",
-                exit_status
-            )))
         }
+
+        let command = format!("whois {}", host);
+        println!("command {}", command);
+        _get_whois_country_info(&command, host, timeout)
     }
 
     pub fn cleanup_intrusion_log(&self) -> Result<(), Error> {
