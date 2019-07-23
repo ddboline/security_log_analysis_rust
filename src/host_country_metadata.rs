@@ -130,6 +130,8 @@ impl HostCountryMetadata {
                             return Ok("BR".to_string());
                         } else if l.contains("COMCAST CABLE") {
                             return Ok("US".to_string());
+                        } else if l.contains("HINET-NET") {
+                            return Ok("TW".to_string());
                         }
                         let tokens: Vec<_> = l.split_whitespace().collect();
                         if tokens.len() >= 2 && tokens[0] == "COUNTRY:" {
