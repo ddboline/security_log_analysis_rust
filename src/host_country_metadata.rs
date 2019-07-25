@@ -118,12 +118,7 @@ impl HostCountryMetadata {
                         };
                         if l.contains("QUERY RATE") {
                             println!("Retry {} : {}", host, l.trim());
-                            let mut rng = thread_rng();
-                            let range = Uniform::from(0..1000);
-                            sleep(Duration::from_millis((timeout * 1000.0) as u64));
-                            let new_timeout =
-                                timeout * 4.0 * f64::from(range.sample(&mut rng)) / 1000.0;
-                            return _get_whois_country_info(command, host, new_timeout);
+                            break;
                         } else if l.contains("KOREA") {
                             return Ok("KR".to_string());
                         } else if l.ends_with(".BR") {
@@ -140,7 +135,16 @@ impl HostCountryMetadata {
                         }
                     }
                 }
-                Err(err_msg(format!("No country found {}", host)))
+                let mut rng = thread_rng();
+                let range = Uniform::from(0..1000);
+                sleep(Duration::from_millis((timeout * 1e3) as u64));
+
+                let new_timeout = timeout * 4.0 * f64::from(range.sample(&mut rng)) / 1e3;
+                if new_timeout <= 60e3 {
+                    _get_whois_country_info(command, host, new_timeout)
+                } else {
+                    Err(err_msg(format!("No country found {}", host)))
+                }
             } else if !command.contains(" -r ") {
                 let new_command = format!("whois -r {}", host);
                 println!("command {}", new_command);
