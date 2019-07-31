@@ -128,7 +128,7 @@ impl HostCountryMetadata {
                         } else if l.contains("HINET-NET") {
                             return Ok("TW".to_string());
                         } else if l.contains(".JP") {
-                            return Ok("JP".to_string())
+                            return Ok("JP".to_string());
                         }
                         let tokens: Vec<_> = l.split_whitespace().collect();
                         if tokens.len() >= 2 && tokens[0] == "COUNTRY:" {
@@ -139,10 +139,9 @@ impl HostCountryMetadata {
                 }
                 let mut rng = thread_rng();
                 let range = Uniform::from(0..1000);
-                sleep(Duration::from_millis(
-                    (timeout * 1e3 * f64::from(range.sample(&mut rng))) as u64 * 2,
-                ));
-                println!("{} timeout {}", host, timeout);
+                let modifier = f64::from(range.sample(&mut rng));
+                println!("{} timeout {} {}", host, timeout, modifier);
+                sleep(Duration::from_millis((timeout * 1e3 * modifier) as u64 * 2));
 
                 let new_timeout = timeout * 2.0;
                 if new_timeout <= 60.0 {
