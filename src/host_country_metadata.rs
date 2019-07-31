@@ -137,10 +137,12 @@ impl HostCountryMetadata {
                 }
                 let mut rng = thread_rng();
                 let range = Uniform::from(0..1000);
-                sleep(Duration::from_millis((timeout * 1e3) as u64));
+                sleep(Duration::from_millis(
+                    (timeout * 1e3 * f64::from(range.sample(&mut rng))) as u64 * 2,
+                ));
                 println!("{} timeout {}", host, timeout);
 
-                let new_timeout = timeout * 4.0 * f64::from(range.sample(&mut rng)) / 1e3;
+                let new_timeout = timeout * 2.0;
                 if new_timeout <= 60.0 {
                     _get_whois_country_info(command, host, new_timeout)
                 } else {
