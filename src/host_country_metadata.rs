@@ -140,7 +140,7 @@ impl HostCountryMetadata {
                 sleep(Duration::from_millis((timeout * 1e3) as u64));
 
                 let new_timeout = timeout * 4.0 * f64::from(range.sample(&mut rng)) / 1e3;
-                if new_timeout <= 60e3 {
+                if new_timeout <= 60.0 {
                     _get_whois_country_info(command, host, new_timeout)
                 } else {
                     Err(err_msg(format!("No country found {}", host)))
