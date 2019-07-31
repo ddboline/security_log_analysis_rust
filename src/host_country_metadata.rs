@@ -141,7 +141,7 @@ impl HostCountryMetadata {
                 let range = Uniform::from(0..1000);
                 let modifier = f64::from(range.sample(&mut rng));
                 println!("{} timeout {} {}", host, timeout, modifier);
-                sleep(Duration::from_millis((timeout * 1e3 * modifier) as u64 * 2));
+                sleep(Duration::from_millis((timeout * modifier) as u64 * 2));
 
                 let new_timeout = timeout * 2.0;
                 if new_timeout <= 60.0 {
