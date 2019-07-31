@@ -127,6 +127,8 @@ impl HostCountryMetadata {
                             return Ok("US".to_string());
                         } else if l.contains("HINET-NET") {
                             return Ok("TW".to_string());
+                        } else if l.contains(".JP") {
+                            return Ok("JP".to_string())
                         }
                         let tokens: Vec<_> = l.split_whitespace().collect();
                         if tokens.len() >= 2 && tokens[0] == "COUNTRY:" {
