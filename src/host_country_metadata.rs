@@ -1,5 +1,6 @@
 use diesel::connection::SimpleConnection;
 use failure::{err_msg, Error};
+use log::{debug, error};
 use parking_lot::RwLock;
 use rand::distributions::{Distribution, Uniform};
 use rand::thread_rng;
@@ -112,12 +113,12 @@ impl HostCountryMetadata {
                         let l = match line {
                             Ok(l) => l.trim().to_uppercase(),
                             Err(e) => {
-                                println!("{:?}", e);
+                                error!("{:?}", e);
                                 continue;
                             }
                         };
                         if l.contains("QUERY RATE") {
-                            println!("Retry {} : {}", host, l.trim());
+                            error!("Retry {} : {}", host, l.trim());
                             break;
                         } else if l.contains("KOREA") {
                             return Ok("KR".to_string());
@@ -140,7 +141,7 @@ impl HostCountryMetadata {
                 let mut rng = thread_rng();
                 let range = Uniform::from(0..1000);
                 let modifier = f64::from(range.sample(&mut rng));
-                println!("{} timeout {} {}", host, timeout, modifier);
+                error!("{} timeout {} {}", host, timeout, modifier);
                 sleep(Duration::from_millis((timeout * modifier) as u64 * 2));
 
                 let new_timeout = timeout * 2.0;
@@ -151,7 +152,7 @@ impl HostCountryMetadata {
                 }
             } else if !command.contains(" -r ") {
                 let new_command = format!("whois -r {}", host);
-                println!("command {}", new_command);
+                debug!("command {}", new_command);
                 _get_whois_country_info(&new_command, host, timeout)
             } else {
                 Err(err_msg(format!(
@@ -162,7 +163,7 @@ impl HostCountryMetadata {
         }
 
         let command = format!("whois {}", host);
-        println!("command {}", command);
+        debug!("command {}", command);
         _get_whois_country_info(&command, host, timeout)
     }
 

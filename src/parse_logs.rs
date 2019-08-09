@@ -2,6 +2,7 @@ use chrono::{DateTime, Datelike, Local, TimeZone, Utc};
 use failure::{err_msg, Error};
 use flate2::read::GzDecoder;
 use glob::glob;
+use log::debug;
 use rayon::iter::{IntoParallelIterator, ParallelIterator};
 use std::collections::HashSet;
 use std::fs::File;
@@ -68,7 +69,7 @@ where
         })
         .collect();
     let results: Vec<_> = map_result(results)?;
-    println!("results {}", results.len());
+    debug!("results {}", results.len());
     Ok(results)
 }
 
@@ -92,7 +93,7 @@ where
             Some(x) => x.to_str().unwrap_or_else(|| ""),
             None => "",
         };
-        println!("{:?} {}", fname, ext);
+        debug!("{:?} {}", fname, ext);
         if ext == "gz" {
             let gz = GzDecoder::new(File::open(fname)?);
             results.extend(parse_log_file(year, gz, parse_func)?);

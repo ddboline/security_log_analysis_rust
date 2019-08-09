@@ -1,11 +1,12 @@
 use chrono::{DateTime, Utc};
 use failure::{err_msg, Error};
+use log::debug;
 use rayon::iter::{IntoParallelIterator, ParallelIterator};
 use std::collections::HashSet;
 use std::convert::TryInto;
 use std::env::var;
 use std::fs::File;
-use std::io::{BufRead, BufReader, Write};
+use std::io::{stdout, BufRead, BufReader, Write};
 use std::net::ToSocketAddrs;
 use std::str::FromStr;
 use structopt::StructOpt;
@@ -111,7 +112,7 @@ impl ParseOpts {
                     &parse_log_line_apache,
                     "/var/log/apache2/access.log",
                 )?);
-                println!("new lines {}", inserts.len());
+                writeln!(stdout().lock(), "new lines {}", inserts.len())?;
                 let new_hosts: HashSet<_> = inserts.iter().map(|item| item.host.clone()).collect();
                 let codes: Vec<_> = new_hosts
                     .into_par_iter()
@@ -136,7 +137,7 @@ impl ParseOpts {
                     let results = get_intrusion_log_filtered(&pool, service, &server.0, datetime)?;
                     for result in results {
                         let val: IntrusionLogSerde = result.into();
-                        println!("{}", serde_json::to_string(&val)?);
+                        debug!("{}", serde_json::to_string(&val)?);
                     }
                 }
                 Ok(())
@@ -145,7 +146,7 @@ impl ParseOpts {
                 let config = Config::init_config()?;
                 let pool = PgPool::new(&config.database_url);
                 let metadata = HostCountryMetadata::from_pool(&pool)?;
-                println!("{:?}", opts);
+                debug!("{:?}", opts);
                 let server = opts
                     .server
                     .ok_or_else(|| err_msg("Must specify server for sync action"))?;
@@ -154,7 +155,7 @@ impl ParseOpts {
                     r#"ssh {}@{} "security-log-parse-rust parse -s {}""#,
                     username, server.0, server.0,
                 );
-                println!("{}", command);
+                debug!("{}", command);
                 let status = Exec::shell(&command).join()?.success();
                 if !status {
                     return Err(err_msg(format!("{} failed", command)));
@@ -176,7 +177,7 @@ impl ParseOpts {
                         }
                     })
                     .unwrap_or_else(Utc::now);
-                println!("{:?}", max_datetime);
+                debug!("{:?}", max_datetime);
                 let command = format!(
                     r#"ssh {}@{} "security-log-parse-rust ser -s {} -d {}""#,
                     username,
@@ -184,7 +185,7 @@ impl ParseOpts {
                     server.0,
                     max_datetime.to_rfc3339(),
                 );
-                println!("{}", command);
+                debug!("{}", command);
                 let stream = Exec::shell(command).stream_stdout()?;
                 let reader = BufReader::new(stream);
                 let inserts: Vec<_> = reader
@@ -205,7 +206,7 @@ impl ParseOpts {
                 let _: Vec<_> = map_result(codes)?;
                 insert_intrusion_log(&pool, &inserts)?;
 
-                println!("{}", inserts.len());
+                writeln!(stdout().lock(), "inserts {}", inserts.len())?;
                 Ok(())
             }
             ParseActions::CountryPlot => {
