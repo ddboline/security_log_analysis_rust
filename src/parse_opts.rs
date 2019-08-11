@@ -137,7 +137,7 @@ impl ParseOpts {
                     let results = get_intrusion_log_filtered(&pool, service, &server.0, datetime)?;
                     for result in results {
                         let val: IntrusionLogSerde = result.into();
-                        debug!("{}", serde_json::to_string(&val)?);
+                        writeln!(stdout().lock(), "{}", serde_json::to_string(&val)?)?;
                     }
                 }
                 Ok(())
