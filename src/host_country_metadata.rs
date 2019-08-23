@@ -45,13 +45,13 @@ impl HostCountryMetadata {
             country_code_map: Arc::new(RwLock::new(
                 get_country_code_list(&pool)?
                     .into_iter()
-                    .map(|item| (item.code.clone(), item))
+                    .map(|item| (item.code.to_string(), item))
                     .collect(),
             )),
             host_country_map: Arc::new(RwLock::new(
                 get_host_country(&pool)?
                     .into_iter()
-                    .map(|item| (item.host.clone(), item))
+                    .map(|item| (item.host.to_string(), item))
                     .collect(),
             )),
         };
@@ -91,7 +91,7 @@ impl HostCountryMetadata {
 
     pub fn get_country_info(&self, host: &str) -> Result<String, Error> {
         if let Some(entry) = (*self.host_country_map.read()).get(host) {
-            return Ok(entry.code.clone());
+            return Ok(entry.code.to_string());
         }
         let timeout = 1.0;
         let whois_code = self.get_whois_country_info(host, timeout)?;

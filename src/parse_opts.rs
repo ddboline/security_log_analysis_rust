@@ -113,7 +113,8 @@ impl ParseOpts {
                     "/var/log/apache2/access.log",
                 )?);
                 writeln!(stdout().lock(), "new lines {}", inserts.len())?;
-                let new_hosts: HashSet<_> = inserts.iter().map(|item| item.host.clone()).collect();
+                let new_hosts: HashSet<_> =
+                    inserts.iter().map(|item| item.host.to_string()).collect();
                 let codes: Vec<_> = new_hosts
                     .into_par_iter()
                     .map(|host| metadata.get_country_info(&host))
@@ -198,7 +199,8 @@ impl ParseOpts {
                     })
                     .collect();
                 let inserts: Vec<_> = map_result(inserts)?;
-                let new_hosts: HashSet<_> = inserts.iter().map(|item| item.host.clone()).collect();
+                let new_hosts: HashSet<_> =
+                    inserts.iter().map(|item| item.host.to_string()).collect();
                 let codes: Vec<_> = new_hosts
                     .into_par_iter()
                     .map(|host| metadata.get_country_info(&host))
