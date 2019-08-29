@@ -1,6 +1,5 @@
 use failure::Error;
 
-use crate::map_result;
 use crate::pgpool_pg::PgPoolPg;
 use crate::row_index_trait::RowIndexTrait;
 
@@ -24,8 +23,7 @@ pub fn get_country_count_recent(
     "#,
         ndays
     );
-    let results: Vec<_> = pool
-        .get()?
+    pool.get()?
         .query(&query, &[&service, &server])?
         .iter()
         .map(|row| {
@@ -33,6 +31,5 @@ pub fn get_country_count_recent(
             let count: i64 = row.get_idx(1)?;
             Ok((country, count))
         })
-        .collect();
-    map_result(results)
+        .collect()
 }

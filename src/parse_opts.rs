@@ -14,7 +14,6 @@ use subprocess::Exec;
 
 use crate::config::Config;
 use crate::host_country_metadata::HostCountryMetadata;
-use crate::map_result;
 use crate::models::{
     get_intrusion_log_filtered, get_intrusion_log_max_datetime, insert_intrusion_log,
     IntrusionLogInsert, IntrusionLogSerde,
@@ -115,11 +114,11 @@ impl ParseOpts {
                 writeln!(stdout().lock(), "new lines {}", inserts.len())?;
                 let new_hosts: HashSet<_> =
                     inserts.iter().map(|item| item.host.to_string()).collect();
-                let codes: Vec<_> = new_hosts
+                let results: Result<Vec<_>, Error> = new_hosts
                     .into_par_iter()
                     .map(|host| metadata.get_country_info(&host))
                     .collect();
-                let _: Vec<_> = map_result(codes)?;
+                results?;
                 insert_intrusion_log(&pool, &inserts)?;
 
                 Ok(())
@@ -189,7 +188,7 @@ impl ParseOpts {
                 debug!("{}", command);
                 let stream = Exec::shell(command).stream_stdout()?;
                 let reader = BufReader::new(stream);
-                let inserts: Vec<_> = reader
+                let inserts: Result<Vec<_>, Error> = reader
                     .lines()
                     .map(|line| {
                         let l = line?;
@@ -198,14 +197,14 @@ impl ParseOpts {
                         Ok(val)
                     })
                     .collect();
-                let inserts: Vec<_> = map_result(inserts)?;
+                let inserts = inserts?;
                 let new_hosts: HashSet<_> =
                     inserts.iter().map(|item| item.host.to_string()).collect();
-                let codes: Vec<_> = new_hosts
+                let results: Result<Vec<_>, Error> = new_hosts
                     .into_par_iter()
                     .map(|host| metadata.get_country_info(&host))
                     .collect();
-                let _: Vec<_> = map_result(codes)?;
+                results?;
                 insert_intrusion_log(&pool, &inserts)?;
 
                 writeln!(stdout().lock(), "inserts {}", inserts.len())?;
