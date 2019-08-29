@@ -9,7 +9,6 @@ use std::fs::File;
 use std::io::{BufRead, BufReader, Read};
 
 use crate::host_country_metadata::HostCountryMetadata;
-use crate::map_result;
 use crate::models::{get_intrusion_log_max_datetime, IntrusionLogInsert};
 
 #[derive(Debug, PartialEq, Eq, Hash)]
@@ -58,9 +57,8 @@ where
     U: Fn(i32, &str) -> Result<Option<LogLineSSH>, Error> + Send + Sync,
 {
     let b = BufReader::new(infile);
-    let results: Vec<_> = b.lines().map(|l| l.map_err(err_msg)).collect();
-    let lines: Vec<_> = map_result(results)?;
-    let results: Vec<_> = lines
+    let lines: Result<Vec<_>, Error> = b.lines().map(|l| l.map_err(err_msg)).collect();
+    let lines: Result<Vec<_>, Error> = lines?
         .into_par_iter()
         .filter_map(|line| match parse_func(year, &line) {
             Ok(Some(x)) => Some(Ok(x)),
@@ -68,9 +66,9 @@ where
             Err(e) => Some(Err(e)),
         })
         .collect();
-    let results: Vec<_> = map_result(results)?;
-    debug!("results {}", results.len());
-    Ok(results)
+    let lines = lines?;
+    debug!("results {}", lines.len());
+    Ok(lines)
 }
 
 pub fn parse_all_log_files<T>(
