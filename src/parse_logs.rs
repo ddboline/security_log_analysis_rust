@@ -3,7 +3,6 @@ use failure::{err_msg, Error};
 use flate2::read::GzDecoder;
 use glob::glob;
 use log::debug;
-use rayon::iter::{IntoParallelIterator, ParallelIterator};
 use std::collections::HashSet;
 use std::fs::File;
 use std::io::{BufRead, BufReader, Read};
@@ -57,13 +56,12 @@ where
     U: Fn(i32, &str) -> Result<Option<LogLineSSH>, Error> + Send + Sync,
 {
     let b = BufReader::new(infile);
-    let lines: Result<Vec<_>, Error> = b.lines().map(|l| l.map_err(err_msg)).collect();
-    let lines: Result<Vec<_>, Error> = lines?
-        .into_par_iter()
-        .filter_map(|line| match parse_func(year, &line) {
-            Ok(Some(x)) => Some(Ok(x)),
-            Ok(None) => None,
-            Err(e) => Some(Err(e)),
+    let lines: Result<Vec<_>, Error> = b
+        .lines()
+        .filter_map(|l| {
+            l.map_err(err_msg)
+                .and_then(|line| parse_func(year, &line))
+                .transpose()
         })
         .collect();
     let lines = lines?;

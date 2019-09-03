@@ -103,8 +103,8 @@ pub fn insert_host_country(pool: &PgPool, hc: &HostCountry) -> Result<(), Error>
     diesel::insert_into(host_country)
         .values(hc)
         .execute(&conn)
-        .map_err(err_msg)?;
-    Ok(())
+        .map_err(err_msg)
+        .map(|_| ())
 }
 
 pub fn insert_intrusion_log(pool: &PgPool, il: &[IntrusionLogInsert]) -> Result<(), Error> {
@@ -114,8 +114,8 @@ pub fn insert_intrusion_log(pool: &PgPool, il: &[IntrusionLogInsert]) -> Result<
     diesel::insert_into(intrusion_log)
         .values(il)
         .execute(&conn)
-        .map_err(err_msg)?;
-    Ok(())
+        .map_err(err_msg)
+        .map(|_| ())
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
