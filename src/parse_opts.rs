@@ -1,5 +1,5 @@
 use chrono::{DateTime, Utc};
-use failure::{err_msg, Error};
+use failure::{err_msg, format_err, Error};
 use log::debug;
 use rayon::iter::{IntoParallelIterator, ParallelIterator};
 use std::collections::HashSet;
@@ -158,7 +158,7 @@ impl ParseOpts {
                 debug!("{}", command);
                 let status = Exec::shell(&command).join()?.success();
                 if !status {
-                    return Err(err_msg(format!("{} failed", command)));
+                    return Err(format_err!("{} failed", command));
                 }
 
                 let max_datetime = get_intrusion_log_max_datetime(&pool, "ssh", &server.0)?
@@ -225,7 +225,7 @@ impl ParseOpts {
                         let results = template
                             .replace("PUTLISTOFCOUNTRIESANDATTEMPTSHERE", &results.join(","));
                         let home_dir =
-                            var("HOME").map_err(|e| err_msg(format!("No HOME directory {}", e)))?;
+                            var("HOME").map_err(|e| format_err!("No HOME directory {}", e))?;
                         let outfname = format!(
                             "{}/public_html/{}_intrusion_attempts_{}.html",
                             home_dir, service, server_prefix

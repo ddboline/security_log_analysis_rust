@@ -1,5 +1,5 @@
 use diesel::connection::SimpleConnection;
-use failure::{err_msg, Error};
+use failure::{format_err, Error};
 use log::{debug, error};
 use parking_lot::RwLock;
 use rand::distributions::{Distribution, Uniform};
@@ -86,7 +86,7 @@ impl HostCountryMetadata {
             }
             return Ok(code.to_string());
         }
-        Err(err_msg(format!("Failed to insert {}", code)))
+        Err(format_err!("Failed to insert {}", code))
     }
 
     pub fn get_country_info(&self, host: &str) -> Result<String, Error> {
@@ -148,17 +148,14 @@ impl HostCountryMetadata {
                 if new_timeout <= 60.0 {
                     _get_whois_country_info(command, host, new_timeout)
                 } else {
-                    Err(err_msg(format!("No country found {}", host)))
+                    Err(format_err!("No country found {}", host))
                 }
             } else if !command.contains(" -r ") {
                 let new_command = format!("whois -r {}", host);
                 debug!("command {}", new_command);
                 _get_whois_country_info(&new_command, host, timeout)
             } else {
-                Err(err_msg(format!(
-                    "Failed with exit status {:?}",
-                    exit_status
-                )))
+                Err(format_err!("Failed with exit status {:?}", exit_status))
             }
         }
 
