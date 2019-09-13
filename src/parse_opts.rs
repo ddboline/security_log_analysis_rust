@@ -3,7 +3,6 @@ use failure::{err_msg, Error};
 use log::debug;
 use rayon::iter::{IntoParallelIterator, ParallelIterator};
 use std::collections::HashSet;
-use std::convert::TryInto;
 use std::env::var;
 use std::fs::File;
 use std::io::{stdout, BufRead, BufReader, Write};
@@ -16,7 +15,7 @@ use crate::config::Config;
 use crate::host_country_metadata::HostCountryMetadata;
 use crate::models::{
     get_intrusion_log_filtered, get_intrusion_log_max_datetime, insert_intrusion_log,
-    IntrusionLogInsert, IntrusionLogSerde,
+    IntrusionLogInsert,
 };
 use crate::parse_logs::{parse_all_log_files, parse_log_line_apache, parse_log_line_ssh};
 use crate::pgpool::PgPool;
@@ -136,8 +135,7 @@ impl ParseOpts {
                 for service in &["ssh", "apache"] {
                     let results = get_intrusion_log_filtered(&pool, service, &server.0, datetime)?;
                     for result in results {
-                        let val: IntrusionLogSerde = result.into();
-                        writeln!(stdout().lock(), "{}", serde_json::to_string(&val)?)?;
+                        writeln!(stdout().lock(), "{}", serde_json::to_string(&result)?)?;
                     }
                 }
                 Ok(())
@@ -192,8 +190,7 @@ impl ParseOpts {
                     .lines()
                     .map(|line| {
                         let l = line?;
-                        let val: IntrusionLogSerde = serde_json::from_str(&l)?;
-                        let val: IntrusionLogInsert = val.try_into()?;
+                        let val: IntrusionLogInsert = serde_json::from_str(&l)?;
                         Ok(val)
                     })
                     .collect();
