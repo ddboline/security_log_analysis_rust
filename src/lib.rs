@@ -5,6 +5,7 @@ extern crate serde_derive;
 
 pub mod config;
 pub mod host_country_metadata;
+pub mod iso_8601_datetime;
 pub mod models;
 pub mod parse_logs;
 pub mod parse_opts;

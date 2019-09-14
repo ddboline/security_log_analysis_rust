@@ -1,8 +1,8 @@
 use chrono::{DateTime, Utc};
 use diesel::{ExpressionMethods, QueryDsl, RunQueryDsl};
 use failure::{err_msg, Error};
-use std::convert::TryFrom;
 
+use crate::iso_8601_datetime;
 use crate::pgpool::PgPool;
 use crate::schema::{country_code, host_country, intrusion_log};
 
@@ -21,21 +21,23 @@ pub struct HostCountry {
     pub ipaddr: Option<String>,
 }
 
-#[derive(Queryable, Clone, Debug)]
+#[derive(Queryable, Clone, Debug, Serialize, Deserialize)]
 pub struct IntrusionLog {
     pub id: i32,
     pub service: String,
     pub server: String,
+    #[serde(with = "iso_8601_datetime")]
     pub datetime: DateTime<Utc>,
     pub host: String,
     pub username: Option<String>,
 }
 
-#[derive(Insertable, Clone, Debug, PartialEq, Eq, Hash)]
+#[derive(Insertable, Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[table_name = "intrusion_log"]
 pub struct IntrusionLogInsert {
     pub service: String,
     pub server: String,
+    #[serde(with = "iso_8601_datetime")]
     pub datetime: DateTime<Utc>,
     pub host: String,
     pub username: Option<String>,
@@ -116,44 +118,6 @@ pub fn insert_intrusion_log(pool: &PgPool, il: &[IntrusionLogInsert]) -> Result<
         .execute(&conn)
         .map_err(err_msg)
         .map(|_| ())
-}
-
-#[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct IntrusionLogSerde {
-    pub id: i32,
-    pub service: String,
-    pub server: String,
-    pub datetime: String,
-    pub host: String,
-    pub username: Option<String>,
-}
-
-impl From<IntrusionLog> for IntrusionLogSerde {
-    fn from(item: IntrusionLog) -> Self {
-        IntrusionLogSerde {
-            id: item.id,
-            service: item.service,
-            server: item.server,
-            datetime: item.datetime.to_rfc3339(),
-            host: item.host,
-            username: item.username,
-        }
-    }
-}
-
-impl TryFrom<IntrusionLogSerde> for IntrusionLogInsert {
-    type Error = Error;
-
-    fn try_from(item: IntrusionLogSerde) -> Result<Self, Self::Error> {
-        let result = IntrusionLogInsert {
-            service: item.service,
-            server: item.server,
-            datetime: DateTime::parse_from_rfc3339(&item.datetime)?.with_timezone(&Utc),
-            host: item.host,
-            username: item.username,
-        };
-        Ok(result)
-    }
 }
 
 #[cfg(test)]
