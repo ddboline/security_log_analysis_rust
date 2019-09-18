@@ -1,5 +1,5 @@
 use chrono::{DateTime, Utc};
-use diesel::{ExpressionMethods, QueryDsl, RunQueryDsl};
+use diesel::{Connection, ExpressionMethods, QueryDsl, RunQueryDsl};
 use failure::{err_msg, Error};
 
 use crate::iso_8601_datetime;
@@ -48,9 +48,7 @@ pub fn get_country_code_list(pool: &PgPool) -> Result<Vec<CountryCode>, Error> {
 
     let conn = pool.get()?;
 
-    let country_code_list: Vec<_> = country_code.load(&conn)?;
-
-    Ok(country_code_list)
+    country_code.load(&conn).map_err(err_msg)
 }
 
 pub fn get_host_country(pool: &PgPool) -> Result<Vec<HostCountry>, Error> {
@@ -58,9 +56,7 @@ pub fn get_host_country(pool: &PgPool) -> Result<Vec<HostCountry>, Error> {
 
     let conn = pool.get()?;
 
-    let host_country_list: Vec<_> = host_country.load(&conn)?;
-
-    Ok(host_country_list)
+    host_country.load(&conn).map_err(err_msg)
 }
 
 pub fn get_intrusion_log_max_datetime(
@@ -99,14 +95,22 @@ pub fn get_intrusion_log_filtered(
 }
 
 pub fn insert_host_country(pool: &PgPool, hc: &HostCountry) -> Result<(), Error> {
-    use crate::schema::host_country::dsl::host_country;
+    use crate::schema::host_country::dsl::{host, host_country};
     let conn = pool.get()?;
 
-    diesel::insert_into(host_country)
-        .values(hc)
-        .execute(&conn)
-        .map_err(err_msg)
-        .map(|_| ())
+    conn.transaction(|| {
+        let current_entry: Vec<HostCountry> = host_country
+            .filter(host.eq(&hc.host))
+            .load(&conn)
+            .map_err(err_msg)?;
+        if current_entry.is_empty() {
+            diesel::insert_into(host_country)
+                .values(hc)
+                .execute(&conn)
+                .map_err(err_msg)?;
+        }
+        Ok(())
+    })
 }
 
 pub fn insert_intrusion_log(pool: &PgPool, il: &[IntrusionLogInsert]) -> Result<(), Error> {
