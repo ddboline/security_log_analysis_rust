@@ -120,8 +120,8 @@ pub fn insert_intrusion_log(pool: &PgPool, il: &[IntrusionLogInsert]) -> Result<
     diesel::insert_into(intrusion_log)
         .values(il)
         .execute(&conn)
-        .map_err(err_msg)
         .map(|_| ())
+        .map_err(err_msg)
 }
 
 #[cfg(test)]
