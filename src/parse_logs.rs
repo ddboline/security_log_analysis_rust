@@ -86,8 +86,8 @@ where
         let modified: DateTime<Utc> = metadata.modified()?.into();
         let year = modified.year();
         let ext = match fname.extension() {
-            Some(x) => x.to_str().unwrap_or_else(|| ""),
-            None => "",
+            Some(x) => x.to_string_lossy(),
+            None => "".into(),
         };
         debug!("{:?} {}", fname, ext);
         if ext == "gz" {
