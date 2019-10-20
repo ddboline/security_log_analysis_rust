@@ -2,16 +2,13 @@ use diesel::connection::SimpleConnection;
 use failure::{format_err, Error};
 use log::{debug, error};
 use parking_lot::RwLock;
-use rand::distributions::{Distribution, Uniform};
-use rand::thread_rng;
 use std::collections::HashMap;
 use std::io::{BufRead, BufReader};
 use std::net::ToSocketAddrs;
 use std::sync::Arc;
-use std::thread::sleep;
-use std::time::Duration;
 use subprocess::{Exec, Redirection};
 
+use crate::exponential_retry;
 use crate::models::{
     get_country_code_list, get_host_country, insert_host_country, CountryCode, HostCountry,
 };
@@ -93,17 +90,12 @@ impl HostCountryMetadata {
         if let Some(entry) = (*self.host_country_map.read()).get(host) {
             return Ok(entry.code.to_string());
         }
-        let timeout = 1.0;
-        let whois_code = self.get_whois_country_info(host, timeout)?;
+        let whois_code = self.get_whois_country_info(host)?;
         self.insert_host_code(host, &whois_code)
     }
 
-    pub fn get_whois_country_info(&self, host: &str, timeout: f64) -> Result<String, Error> {
-        fn _get_whois_country_info(
-            command: &str,
-            host: &str,
-            timeout: f64,
-        ) -> Result<String, Error> {
+    pub fn get_whois_country_info(&self, host: &str) -> Result<String, Error> {
+        fn _get_whois_country_info(command: &str, host: &str) -> Result<String, Error> {
             let mut process = Exec::shell(command).stdout(Redirection::Pipe).popen()?;
             let exit_status = process.wait()?;
             if exit_status.success() {
@@ -138,22 +130,11 @@ impl HostCountryMetadata {
                         }
                     }
                 }
-                let mut rng = thread_rng();
-                let range = Uniform::from(0..1000);
-                let modifier = f64::from(range.sample(&mut rng));
-                error!("{} timeout {} {}", host, timeout, modifier);
-                sleep(Duration::from_millis((timeout * modifier) as u64 * 2));
-
-                let new_timeout = timeout * 2.0;
-                if new_timeout <= 60.0 {
-                    _get_whois_country_info(command, host, new_timeout)
-                } else {
-                    Err(format_err!("No country found {}", host))
-                }
+                Err(format_err!("No country found {}", host))
             } else if !command.contains(" -r ") {
                 let new_command = format!("whois -r {}", host);
                 debug!("command {}", new_command);
-                _get_whois_country_info(&new_command, host, timeout)
+                exponential_retry(|| _get_whois_country_info(&new_command, host))
             } else {
                 Err(format_err!("Failed with exit status {:?}", exit_status))
             }
@@ -161,7 +142,7 @@ impl HostCountryMetadata {
 
         let command = format!("whois {}", host);
         debug!("command {}", command);
-        _get_whois_country_info(&command, host, timeout)
+        exponential_retry(|| _get_whois_country_info(&command, host))
     }
 
     pub fn cleanup_intrusion_log(&self) -> Result<(), Error> {
@@ -204,29 +185,29 @@ mod test {
         let metadata = HostCountryMetadata::new();
         assert_eq!(
             metadata
-                .get_whois_country_info("36.110.50.217", 1.0)
+                .get_whois_country_info("36.110.50.217")
                 .unwrap(),
             "CN".to_string()
         );
         assert_eq!(
-            metadata.get_whois_country_info("82.73.86.33", 1.0).unwrap(),
+            metadata.get_whois_country_info("82.73.86.33").unwrap(),
             "NL".to_string()
         );
         assert_eq!(
             metadata
-                .get_whois_country_info("217.29.210.13", 1.0)
+                .get_whois_country_info("217.29.210.13")
                 .unwrap(),
             "EU".to_string()
         );
         assert_eq!(
             metadata
-                .get_whois_country_info("31.162.240.19", 1.0)
+                .get_whois_country_info("31.162.240.19")
                 .unwrap(),
             "RU"
         );
         assert_eq!(
             metadata
-                .get_whois_country_info("174.61.53.116", 1.0)
+                .get_whois_country_info("174.61.53.116")
                 .unwrap(),
             "US"
         );
