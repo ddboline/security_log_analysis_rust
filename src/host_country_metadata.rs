@@ -184,9 +184,7 @@ mod test {
     fn test_get_whois_country_info() {
         let metadata = HostCountryMetadata::new();
         assert_eq!(
-            metadata
-                .get_whois_country_info("36.110.50.217")
-                .unwrap(),
+            metadata.get_whois_country_info("36.110.50.217").unwrap(),
             "CN".to_string()
         );
         assert_eq!(
@@ -194,21 +192,15 @@ mod test {
             "NL".to_string()
         );
         assert_eq!(
-            metadata
-                .get_whois_country_info("217.29.210.13")
-                .unwrap(),
+            metadata.get_whois_country_info("217.29.210.13").unwrap(),
             "EU".to_string()
         );
         assert_eq!(
-            metadata
-                .get_whois_country_info("31.162.240.19")
-                .unwrap(),
+            metadata.get_whois_country_info("31.162.240.19").unwrap(),
             "RU"
         );
         assert_eq!(
-            metadata
-                .get_whois_country_info("174.61.53.116")
-                .unwrap(),
+            metadata.get_whois_country_info("174.61.53.116").unwrap(),
             "US"
         );
     }
