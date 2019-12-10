@@ -84,7 +84,7 @@ pub struct ParseOpts {
     pub datetime: Option<DateTimeInput>,
     #[structopt(short = "u", long = "username")]
     pub username: Option<String>,
-    #[structopt(short, long)]
+    #[structopt(long)]
     /// List of <host>:<country code> combinations i.e. 8.8.8.8:US
     pub host_codes: Vec<String>,
 }
@@ -243,7 +243,7 @@ impl ParseOpts {
                 let pool = PgPool::new(&config.database_url);
                 let metadata = HostCountryMetadata::from_pool(&pool)?;
                 for host_country in &opts.host_codes {
-                    let vals: Vec<_> = host_country.split(":").collect();
+                    let vals: Vec<_> = host_country.split(':').collect();
                     if vals.len() < 2 {
                         continue;
                     }
