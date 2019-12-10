@@ -1,4 +1,4 @@
-use chrono::{DateTime, Datelike, Local, TimeZone, Utc};
+use chrono::{DateTime, Datelike, FixedOffset, Local, TimeZone, Utc};
 use failure::{err_msg, Error};
 use flate2::read::GzDecoder;
 use glob::glob;
@@ -129,8 +129,10 @@ pub fn parse_log_line_apache(_: i32, line: &str) -> Result<Option<LogLineSSH>, E
     }
     let host = tokens[0];
     let host = if host.len() > 60 { &host[0..60] } else { host };
+    let offset: i32 = tokens[4].replace("]", "").parse()?;
+    let offset = FixedOffset::east((offset / 100) * 60 * 60 + (offset % 100) * 60);
     let timestr = tokens[3..5].join("").replace("[", "").replace("]", "");
-    let timestamp = Local.datetime_from_str(&timestr, "%e/%B/%Y:%H:%M:%S%z")?;
+    let timestamp = offset.datetime_from_str(&timestr, "%e/%B/%Y:%H:%M:%S%z")?;
     let result = LogLineSSH {
         host: host.to_string(),
         user: None,
@@ -151,7 +153,7 @@ mod tests {
     };
     use crate::pgpool::PgPool;
 
-    #[test]
+    #[test] #[ignore]
     fn test_parse_log_line_ssh() {
         let test_line = "Jun 24 00:07:25 dilepton-tower sshd[15932]: Invalid user test from 36.110.50.217 port 28898\n";
         let result = parse_log_line_ssh(2019, test_line).unwrap().unwrap();
@@ -163,27 +165,24 @@ mod tests {
 
     #[test]
     fn test_parse_log_line_apache() {
-        let test_line = r#"82.73.86.33 - - [30/Jun/2019:18:02:14 -0400] "GET /db/db-admin/index.php?lang=en HTTP/1.1" 404 458 "-" "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/72.0.3626.119 S
-afari/537.36""#;
+        let test_line = r#"
+            82.73.86.33 - - [30/Jun/2019:18:02:14 -0400] "GET /db/db-admin/index.php?lang=en HTTP/1.1" 404 458 "-" "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/72.0.3626.119 Safari/537.36"
+        "#;
         let result = parse_log_line_apache(2019, test_line).unwrap().unwrap();
         assert_eq!(result.user, None);
         assert_eq!(result.host, "82.73.86.33".to_string());
         assert_eq!(result.timestamp.hour(), 22);
     }
 
-    #[test]
+    #[test] #[ignore]
     fn test_parse_log_file_ssh() {
-        let config = Config::init_config().unwrap();
-        let pool = PgPool::new(&config.database_url);
-        let mut hc = HostCountryMetadata::from_pool(&pool).unwrap();
-        hc.pool = None;
         let fname = "/var/log/auth.log";
         let infile = File::open(fname).unwrap();
         let results = parse_log_file(2019, infile, &parse_log_line_ssh).unwrap();
         assert!(results.len() > 0);
     }
 
-    #[test]
+    #[test] #[ignore]
     fn test_parse_all_log_files_ssh() {
         let config = Config::init_config().unwrap();
         let pool = PgPool::new(&config.database_url);

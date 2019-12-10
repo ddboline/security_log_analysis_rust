@@ -128,16 +128,17 @@ pub fn insert_intrusion_log(pool: &PgPool, il: &[IntrusionLogInsert]) -> Result<
 mod tests {
     use diesel::{QueryDsl, RunQueryDsl};
 
+    use crate::config::Config;
     use crate::models::{CountryCode, HostCountry, IntrusionLog};
     use crate::pgpool::PgPool;
 
     #[test]
+    #[ignore]
     fn test_country_code_query() {
         use crate::schema::country_code::dsl::country_code;
+        let config = Config::init_config().unwrap();
 
-        let database_url = "postgresql://ddboline:BQGIvkKFZPejrKvX@localhost:5432/security_logs";
-
-        let pool = PgPool::new(database_url);
+        let pool = PgPool::new(&config.database_url);
         let conn = pool.get().unwrap();
 
         let country_code_list: Vec<CountryCode> = country_code.load(&conn).unwrap();
@@ -149,12 +150,12 @@ mod tests {
     }
 
     #[test]
+    #[ignore]
     fn test_host_country_query() {
         use crate::schema::host_country::dsl::host_country;
+        let config = Config::init_config().unwrap();
 
-        let database_url = "postgresql://ddboline:BQGIvkKFZPejrKvX@localhost:5432/security_logs";
-
-        let pool = PgPool::new(database_url);
+        let pool = PgPool::new(&config.database_url);
         let conn = pool.get().unwrap();
 
         let host_country_list: Vec<HostCountry> = host_country.limit(10).load(&conn).unwrap();
@@ -166,12 +167,12 @@ mod tests {
     }
 
     #[test]
+    #[ignore]
     fn test_intrusion_log_query() {
         use crate::schema::intrusion_log::dsl::intrusion_log;
+        let config = Config::init_config().unwrap();
 
-        let database_url = "postgresql://ddboline:BQGIvkKFZPejrKvX@localhost:5432/security_logs";
-
-        let pool = PgPool::new(database_url);
+        let pool = PgPool::new(&config.database_url);
         let conn = pool.get().unwrap();
 
         let intrusion_log_list: Vec<IntrusionLog> = intrusion_log.limit(10).load(&conn).unwrap();
