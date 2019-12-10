@@ -153,7 +153,8 @@ mod tests {
     };
     use crate::pgpool::PgPool;
 
-    #[test] #[ignore]
+    #[test]
+    #[ignore]
     fn test_parse_log_line_ssh() {
         let test_line = "Jun 24 00:07:25 dilepton-tower sshd[15932]: Invalid user test from 36.110.50.217 port 28898\n";
         let result = parse_log_line_ssh(2019, test_line).unwrap().unwrap();
@@ -174,7 +175,8 @@ mod tests {
         assert_eq!(result.timestamp.hour(), 22);
     }
 
-    #[test] #[ignore]
+    #[test]
+    #[ignore]
     fn test_parse_log_file_ssh() {
         let fname = "/var/log/auth.log";
         let infile = File::open(fname).unwrap();
@@ -182,7 +184,8 @@ mod tests {
         assert!(results.len() > 0);
     }
 
-    #[test] #[ignore]
+    #[test]
+    #[ignore]
     fn test_parse_all_log_files_ssh() {
         let config = Config::init_config().unwrap();
         let pool = PgPool::new(&config.database_url);
