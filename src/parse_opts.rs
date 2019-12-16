@@ -75,7 +75,7 @@ impl FromStr for DateTimeInput {
 
 #[derive(StructOpt, Debug)]
 pub struct ParseOpts {
-    /// parse, serialize|ser, sync, plot|country_plot
+    /// parse, serialize|ser, sync, plot|country_plot, add|add_host
     #[structopt(parse(try_from_str), default_value = "parse")]
     pub action: ParseActions,
     #[structopt(short = "s", long = "server", parse(try_from_str))]
