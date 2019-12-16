@@ -28,6 +28,7 @@ pub enum ParseActions {
     Serialize,
     Sync,
     CountryPlot,
+    AddHost,
 }
 
 impl FromStr for ParseActions {
@@ -39,6 +40,7 @@ impl FromStr for ParseActions {
             "serialize" | "ser" => Ok(ParseActions::Serialize),
             "sync" => Ok(ParseActions::Sync),
             "plot" | "country_plot" => Ok(ParseActions::CountryPlot),
+            "add_host" | "add" => Ok(ParseActions::AddHost),
             _ => Err(err_msg("Invalid Action")),
         }
     }
@@ -82,6 +84,9 @@ pub struct ParseOpts {
     pub datetime: Option<DateTimeInput>,
     #[structopt(short = "u", long = "username")]
     pub username: Option<String>,
+    #[structopt(long)]
+    /// List of <host>:<country code> combinations i.e. 8.8.8.8:US
+    pub host_codes: Vec<String>,
 }
 
 impl ParseOpts {
@@ -229,6 +234,24 @@ impl ParseOpts {
                         );
                         let mut output = File::create(&outfname)?;
                         write!(output, "{}", results)?;
+                    }
+                }
+                Ok(())
+            }
+            ParseActions::AddHost => {
+                let config = Config::init_config()?;
+                let pool = PgPool::new(&config.database_url);
+                let metadata = HostCountryMetadata::from_pool(&pool)?;
+                for host_country in &opts.host_codes {
+                    let vals: Vec<_> = host_country.split(':').collect();
+                    if vals.len() < 2 {
+                        continue;
+                    }
+                    match vals[..2] {
+                        [host, code] => {
+                            metadata.insert_host_code(&host, &code)?;
+                        }
+                        _ => continue,
                     }
                 }
                 Ok(())
