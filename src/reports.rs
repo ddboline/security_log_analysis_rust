@@ -24,7 +24,7 @@ pub fn get_country_count_recent(
         ndays
     );
     pool.get()?
-        .query(&query, &[&service, &server])?
+        .query(query.as_str(), &[&service, &server])?
         .iter()
         .map(|row| {
             let country: String = row.get_idx(0)?;
