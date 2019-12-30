@@ -129,6 +129,10 @@ impl HostCountryMetadata {
                             return Ok(code);
                         }
                     }
+                } else if !command.contains(" -B ") {
+                    let new_command = format!("whois -B {}", host);
+                    debug!("command {}", new_command);
+                    return exponential_retry(|| _get_whois_country_info(&new_command, host));
                 }
                 Err(format_err!("No country found {}", host))
             } else if !command.contains(" -r ") {
