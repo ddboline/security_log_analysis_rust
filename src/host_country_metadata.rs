@@ -181,8 +181,10 @@ impl HostCountryMetadata {
 
 #[cfg(test)]
 mod test {
-    use crate::host_country_metadata::HostCountryMetadata;
+    use std::io::{stdout, Write};
     use std::net::ToSocketAddrs;
+
+    use crate::host_country_metadata::HostCountryMetadata;
 
     #[test]
     fn test_get_whois_country_info() {
@@ -218,6 +220,6 @@ mod test {
             .unwrap();
         let ipaddr = sockaddr.ip();
         assert!(ipaddr.is_ipv4());
-        println!("{}", ipaddr);
+        writeln!(stdout(), "{}", ipaddr).unwrap();
     }
 }
