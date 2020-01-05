@@ -1,7 +1,6 @@
 use failure::Error;
 
 use crate::pgpool_pg::PgPoolPg;
-use crate::row_index_trait::RowIndexTrait;
 
 pub fn get_country_count_recent(
     pool: &PgPoolPg,
@@ -27,8 +26,8 @@ pub fn get_country_count_recent(
         .query(query.as_str(), &[&service, &server])?
         .iter()
         .map(|row| {
-            let country: String = row.get_idx(0)?;
-            let count: i64 = row.get_idx(1)?;
+            let country: String = row.try_get(0)?;
+            let count: i64 = row.try_get(1)?;
             Ok((country, count))
         })
         .collect()

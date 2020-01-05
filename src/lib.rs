@@ -12,7 +12,6 @@ pub mod parse_opts;
 pub mod pgpool;
 pub mod pgpool_pg;
 pub mod reports;
-pub mod row_index_trait;
 pub mod schema;
 
 use failure::{format_err, Error};
