@@ -1,5 +1,5 @@
+use anyhow::{format_err, Error};
 use chrono::{DateTime, Datelike, FixedOffset, Local, TimeZone, Utc};
-use failure::{err_msg, Error};
 use flate2::read::GzDecoder;
 use glob::glob;
 use log::debug;
@@ -32,14 +32,14 @@ pub fn parse_log_line_ssh(year: i32, line: &str) -> Result<Option<LogLineSSH>, E
         None => return Ok(None),
     };
     let remaining: Vec<_> = user.split(" from ").collect();
-    let user = remaining.get(0).ok_or_else(|| err_msg("No user"))?;
+    let user = remaining.get(0).ok_or_else(|| format_err!("No user"))?;
     let user = if user.len() > 15 { &user[0..15] } else { user };
     let host = remaining
         .get(1)
-        .ok_or_else(|| err_msg("No host"))?
+        .ok_or_else(|| format_err!("No host"))?
         .split("port")
         .nth(0)
-        .ok_or_else(|| err_msg("No host"))?
+        .ok_or_else(|| format_err!("No host"))?
         .trim();
     let host = if host.len() > 60 { &host[0..60] } else { host };
     let result = LogLineSSH {
@@ -59,7 +59,7 @@ where
     let lines: Result<Vec<_>, Error> = b
         .lines()
         .filter_map(|l| {
-            l.map_err(err_msg)
+            l.map_err(Into::into)
                 .and_then(|line| parse_func(year, &line))
                 .transpose()
         })
@@ -143,9 +143,9 @@ pub fn parse_log_line_apache(_: i32, line: &str) -> Result<Option<LogLineSSH>, E
 
 #[cfg(test)]
 mod tests {
-    use std::io::{stdout, Write};
     use chrono::Timelike;
     use std::fs::File;
+    use std::io::{stdout, Write};
 
     use crate::config::Config;
     use crate::host_country_metadata::HostCountryMetadata;
@@ -159,7 +159,7 @@ mod tests {
     fn test_parse_log_line_ssh() {
         let test_line = "Jun 24 00:07:25 dilepton-tower sshd[15932]: Invalid user test from 36.110.50.217 port 28898\n";
         let result = parse_log_line_ssh(2019, test_line).unwrap().unwrap();
-        writeln!(stdout(),"{:?}", result).unwrap();
+        writeln!(stdout(), "{:?}", result).unwrap();
         assert_eq!(result.user, Some("test".to_string()));
         assert_eq!(result.host, "36.110.50.217".to_string());
         assert_eq!(result.timestamp.hour(), 4);

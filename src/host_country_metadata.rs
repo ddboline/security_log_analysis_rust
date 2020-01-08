@@ -1,5 +1,5 @@
+use anyhow::{format_err, Error};
 use diesel::connection::SimpleConnection;
-use failure::{format_err, Error};
 use log::{debug, error};
 use parking_lot::RwLock;
 use std::collections::HashMap;

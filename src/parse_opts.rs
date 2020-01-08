@@ -1,5 +1,5 @@
+use anyhow::{format_err, Error};
 use chrono::{DateTime, Utc};
-use failure::{err_msg, format_err, Error};
 use log::debug;
 use rayon::iter::{IntoParallelIterator, ParallelIterator};
 use std::collections::HashSet;
@@ -41,7 +41,7 @@ impl FromStr for ParseActions {
             "sync" => Ok(ParseActions::Sync),
             "plot" | "country_plot" => Ok(ParseActions::CountryPlot),
             "add_host" | "add" => Ok(ParseActions::AddHost),
-            _ => Err(err_msg("Invalid Action")),
+            _ => Err(format_err!("Invalid Action")),
         }
     }
 }
@@ -69,7 +69,7 @@ impl FromStr for DateTimeInput {
         DateTime::parse_from_rfc3339(s)
             .map(|d| d.with_timezone(&Utc))
             .map(DateTimeInput)
-            .map_err(err_msg)
+            .map_err(Into::into)
     }
 }
 
@@ -100,7 +100,7 @@ impl ParseOpts {
                 let metadata = HostCountryMetadata::from_pool(&pool)?;
                 let server = opts
                     .server
-                    .ok_or_else(|| err_msg("Must specify server for parse action"))?;
+                    .ok_or_else(|| format_err!("Must specify server for parse action"))?;
                 let mut inserts = parse_all_log_files(
                     &metadata,
                     "ssh",
@@ -136,7 +136,7 @@ impl ParseOpts {
                 };
                 let server = opts
                     .server
-                    .ok_or_else(|| err_msg("Must specify server for ser action"))?;
+                    .ok_or_else(|| format_err!("Must specify server for ser action"))?;
                 for service in &["ssh", "apache"] {
                     let results = get_intrusion_log_filtered(&pool, service, &server.0, datetime)?;
                     for result in results {
@@ -152,7 +152,7 @@ impl ParseOpts {
                 debug!("{:?}", opts);
                 let server = opts
                     .server
-                    .ok_or_else(|| err_msg("Must specify server for sync action"))?;
+                    .ok_or_else(|| format_err!("Must specify server for sync action"))?;
                 let username = opts.username.as_ref().unwrap_or_else(|| &config.username);
                 let command = format!(
                     r#"ssh {}@{} "security-log-parse-rust parse -s {}""#,

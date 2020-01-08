@@ -1,6 +1,6 @@
+use anyhow::Error;
 use chrono::{DateTime, Utc};
 use diesel::{Connection, ExpressionMethods, QueryDsl, RunQueryDsl};
-use failure::{err_msg, Error};
 
 use crate::iso_8601_datetime;
 use crate::pgpool::PgPool;
@@ -48,7 +48,7 @@ pub fn get_country_code_list(pool: &PgPool) -> Result<Vec<CountryCode>, Error> {
 
     let conn = pool.get()?;
 
-    country_code.load(&conn).map_err(err_msg)
+    country_code.load(&conn).map_err(Into::into)
 }
 
 pub fn get_host_country(pool: &PgPool) -> Result<Vec<HostCountry>, Error> {
@@ -56,7 +56,7 @@ pub fn get_host_country(pool: &PgPool) -> Result<Vec<HostCountry>, Error> {
 
     let conn = pool.get()?;
 
-    host_country.load(&conn).map_err(err_msg)
+    host_country.load(&conn).map_err(Into::into)
 }
 
 pub fn get_intrusion_log_max_datetime(
@@ -74,7 +74,7 @@ pub fn get_intrusion_log_max_datetime(
         .filter(service.eq(service_val))
         .filter(server.eq(server_val))
         .first(&conn)
-        .map_err(err_msg)
+        .map_err(Into::into)
 }
 
 pub fn get_intrusion_log_filtered(
@@ -91,7 +91,7 @@ pub fn get_intrusion_log_filtered(
         .filter(server.eq(server_val))
         .filter(datetime.gt(max_datetime))
         .load(&conn)
-        .map_err(err_msg)
+        .map_err(Into::into)
 }
 
 pub fn insert_host_country(pool: &PgPool, hc: &HostCountry) -> Result<(), Error> {
@@ -101,13 +101,12 @@ pub fn insert_host_country(pool: &PgPool, hc: &HostCountry) -> Result<(), Error>
     conn.transaction(|| {
         let current_entry: Vec<HostCountry> = host_country
             .filter(host.eq(&hc.host))
-            .load(&conn)
-            .map_err(err_msg)?;
+            .load(&conn)?;
         if current_entry.is_empty() {
             diesel::insert_into(host_country)
                 .values(hc)
                 .execute(&conn)
-                .map_err(err_msg)?;
+                ?;
         }
         Ok(())
     })
@@ -121,7 +120,7 @@ pub fn insert_intrusion_log(pool: &PgPool, il: &[IntrusionLogInsert]) -> Result<
         .values(il)
         .execute(&conn)
         .map(|_| ())
-        .map_err(err_msg)
+        .map_err(Into::into)
 }
 
 #[cfg(test)]
