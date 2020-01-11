@@ -25,6 +25,7 @@ log = "0.4"
 env_logger = "0.7"
 retry = "0.5"
 anyhow = "1.0"
+postgres_query = "0.3"
 
 [[bin]]
 name = "security-log-parse-rust"

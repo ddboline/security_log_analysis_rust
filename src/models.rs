@@ -99,14 +99,11 @@ pub fn insert_host_country(pool: &PgPool, hc: &HostCountry) -> Result<(), Error>
     let conn = pool.get()?;
 
     conn.transaction(|| {
-        let current_entry: Vec<HostCountry> = host_country
-            .filter(host.eq(&hc.host))
-            .load(&conn)?;
+        let current_entry: Vec<HostCountry> = host_country.filter(host.eq(&hc.host)).load(&conn)?;
         if current_entry.is_empty() {
             diesel::insert_into(host_country)
                 .values(hc)
-                .execute(&conn)
-                ?;
+                .execute(&conn)?;
         }
         Ok(())
     })

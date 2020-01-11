@@ -8,26 +8,30 @@ pub fn get_country_count_recent(
     server: &str,
     ndays: i32,
 ) -> Result<Vec<(String, i64)>, Error> {
-    let query = format!(
-        r#"
-        SELECT c.country, count(1) AS COUNT
+    let query = postgres_query::query_dyn!(
+        &format!(
+            r#"
+        SELECT c.country, count(1) AS count
         FROM intrusion_log a
             JOIN host_country b ON a.host = b.host
             JOIN country_code c ON b.code = c.code
         WHERE a.datetime >= ('now'::text::date - '{} days'::interval)
-            AND a.service = $1
-            AND a.server = $2
+            AND a.service = $service
+            AND a.server = $server
         GROUP BY c.country
         ORDER BY (count(1)) DESC
     "#,
-        ndays
-    );
+            ndays
+        ),
+        service = service,
+        server = server
+    )?;
     pool.get()?
-        .query(query.as_str(), &[&service, &server])?
+        .query(query.sql(), query.parameters())?
         .iter()
         .map(|row| {
-            let country: String = row.try_get(0)?;
-            let count: i64 = row.try_get(1)?;
+            let country: String = row.try_get("country")?;
+            let count: i64 = row.try_get("count")?;
             Ok((country, count))
         })
         .collect()
