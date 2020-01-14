@@ -14,11 +14,11 @@ pub struct ConfigInner {
 pub struct Config(Arc<ConfigInner>);
 
 impl Config {
-    pub fn new() -> Config {
-        Default::default()
+    pub fn new() -> Self {
+        Self::default()
     }
 
-    pub fn init_config() -> Result<Config, Error> {
+    pub fn init_config() -> Result<Self, Error> {
         let fname = "config.env";
 
         let home_dir = var("HOME").map_err(|e| format_err!("No HOME directory {}", e))?;
@@ -45,7 +45,7 @@ impl Config {
             username: var("USER").map_err(|e| format_err!("USER must be set {}", e))?,
         };
 
-        Ok(Config(Arc::new(conf)))
+        Ok(Self(Arc::new(conf)))
     }
 }
 

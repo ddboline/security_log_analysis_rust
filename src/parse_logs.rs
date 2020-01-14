@@ -106,16 +106,22 @@ where
 
     let inserts: HashSet<_> = results
         .into_iter()
-        .filter(|log_line| match max_datetime.as_ref() {
-            Some(maxdt) => log_line.timestamp > *maxdt,
-            None => true,
-        })
-        .map(|log_line| IntrusionLogInsert {
-            service: service.to_string(),
-            server: server.to_string(),
-            datetime: log_line.timestamp,
-            host: log_line.host,
-            username: log_line.user,
+        .filter_map(|log_line| {
+            let cond = match max_datetime.as_ref() {
+                Some(maxdt) => log_line.timestamp > *maxdt,
+                None => true,
+            };
+            if cond {
+                Some(IntrusionLogInsert {
+                    service: service.to_string(),
+                    server: server.to_string(),
+                    datetime: log_line.timestamp,
+                    host: log_line.host,
+                    username: log_line.user,
+                })
+            } else {
+                None
+            }
         })
         .collect();
     let inserts: Vec<_> = inserts.into_iter().collect();

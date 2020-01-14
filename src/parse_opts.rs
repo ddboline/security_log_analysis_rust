@@ -36,11 +36,11 @@ impl FromStr for ParseActions {
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s {
-            "parse" => Ok(ParseActions::Parse),
-            "serialize" | "ser" => Ok(ParseActions::Serialize),
-            "sync" => Ok(ParseActions::Sync),
-            "plot" | "country_plot" => Ok(ParseActions::CountryPlot),
-            "add_host" | "add" => Ok(ParseActions::AddHost),
+            "parse" => Ok(Self::Parse),
+            "serialize" | "ser" => Ok(Self::Serialize),
+            "sync" => Ok(Self::Sync),
+            "plot" | "country_plot" => Ok(Self::CountryPlot),
+            "add_host" | "add" => Ok(Self::AddHost),
             _ => Err(format_err!("Invalid Action")),
         }
     }
@@ -55,7 +55,7 @@ impl FromStr for HostName {
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         let host_port_str = format!("{}:{}", s, 22);
         host_port_str.to_socket_addrs()?;
-        Ok(HostName(s.to_string()))
+        Ok(Self(s.to_string()))
     }
 }
 
@@ -68,7 +68,7 @@ impl FromStr for DateTimeInput {
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         DateTime::parse_from_rfc3339(s)
             .map(|d| d.with_timezone(&Utc))
-            .map(DateTimeInput)
+            .map(Self)
             .map_err(Into::into)
     }
 }
@@ -91,7 +91,7 @@ pub struct ParseOpts {
 
 impl ParseOpts {
     pub fn process_args() -> Result<(), Error> {
-        let opts = ParseOpts::from_args();
+        let opts = Self::from_args();
 
         match opts.action {
             ParseActions::Parse => {

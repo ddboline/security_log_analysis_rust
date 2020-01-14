@@ -37,7 +37,7 @@ impl HostCountryMetadata {
     }
 
     pub fn from_pool(pool: &PgPool) -> Result<Self, Error> {
-        let result = HostCountryMetadata {
+        let result = Self {
             pool: Some(pool.clone()),
             country_code_map: Arc::new(RwLock::new(
                 get_country_code_list(&pool)?
@@ -90,11 +90,11 @@ impl HostCountryMetadata {
         if let Some(entry) = (*self.host_country_map.read()).get(host) {
             return Ok(entry.code.to_string());
         }
-        let whois_code = self.get_whois_country_info(host)?;
+        let whois_code = Self::get_whois_country_info(host)?;
         self.insert_host_code(host, &whois_code)
     }
 
-    pub fn get_whois_country_info(&self, host: &str) -> Result<String, Error> {
+    pub fn get_whois_country_info(host: &str) -> Result<String, Error> {
         fn _get_whois_country_info(command: &str, host: &str) -> Result<String, Error> {
             let mut process = Exec::shell(command).stdout(Redirection::Pipe).popen()?;
             let exit_status = process.wait()?;
@@ -135,12 +135,12 @@ impl HostCountryMetadata {
                     return exponential_retry(|| _get_whois_country_info(&new_command, host));
                 }
                 Err(format_err!("No country found {}", host))
-            } else if !command.contains(" -r ") {
+            } else if command.contains(" -r ") {
+                Err(format_err!("Failed with exit status {:?}", exit_status))
+            } else {
                 let new_command = format!("whois -r {}", host);
                 debug!("command {}", new_command);
                 exponential_retry(|| _get_whois_country_info(&new_command, host))
-            } else {
-                Err(format_err!("Failed with exit status {:?}", exit_status))
             }
         }
 
@@ -190,23 +190,23 @@ mod test {
     fn test_get_whois_country_info() {
         let metadata = HostCountryMetadata::new();
         assert_eq!(
-            metadata.get_whois_country_info("36.110.50.217").unwrap(),
+            HostCountryMetadata::get_whois_country_info("36.110.50.217").unwrap(),
             "CN".to_string()
         );
         assert_eq!(
-            metadata.get_whois_country_info("82.73.86.33").unwrap(),
+            HostCountryMetadata::get_whois_country_info("82.73.86.33").unwrap(),
             "NL".to_string()
         );
         assert_eq!(
-            metadata.get_whois_country_info("217.29.210.13").unwrap(),
+            HostCountryMetadata::get_whois_country_info("217.29.210.13").unwrap(),
             "EU".to_string()
         );
         assert_eq!(
-            metadata.get_whois_country_info("31.162.240.19").unwrap(),
+            HostCountryMetadata::get_whois_country_info("31.162.240.19").unwrap(),
             "RU"
         );
         assert_eq!(
-            metadata.get_whois_country_info("174.61.53.116").unwrap(),
+            HostCountryMetadata::get_whois_country_info("174.61.53.116").unwrap(),
             "US"
         );
     }

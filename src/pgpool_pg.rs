@@ -17,12 +17,12 @@ impl fmt::Debug for PgPoolPg {
 }
 
 impl PgPoolPg {
-    pub fn new(pgurl: &str) -> PgPoolPg {
+    pub fn new(pgurl: &str) -> Self {
         let manager = PostgresConnectionManager::new(
             pgurl.parse().expect("Failed to open DB connection"),
             NoTls,
         );
-        PgPoolPg {
+        Self {
             pgurl: pgurl.to_string(),
             pool: Pool::new(manager).expect("Failed to open DB connection"),
         }
