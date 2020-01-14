@@ -188,7 +188,6 @@ mod test {
 
     #[test]
     fn test_get_whois_country_info() {
-        let metadata = HostCountryMetadata::new();
         assert_eq!(
             HostCountryMetadata::get_whois_country_info("36.110.50.217").unwrap(),
             "CN".to_string()
