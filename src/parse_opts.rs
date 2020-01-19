@@ -2,6 +2,7 @@ use anyhow::{format_err, Error};
 use chrono::{DateTime, Utc};
 use log::debug;
 use rayon::iter::{IntoParallelIterator, ParallelIterator};
+use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
 use std::env::var;
 use std::fs::File;
