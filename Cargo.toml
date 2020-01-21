@@ -1,6 +1,6 @@
 [package]
 name = "security_log_analysis_rust"
-version = "0.2.4"
+version = "0.2.5"
 authors = ["Daniel Boline <ddboline@gmail.com>"]
 edition = "2018"
 
@@ -25,6 +25,7 @@ env_logger = "0.7"
 retry = "1.0"
 anyhow = "1.0"
 postgres_query = "0.3"
+dirs = "2.0"
 
 [[bin]]
 name = "security-log-parse-rust"

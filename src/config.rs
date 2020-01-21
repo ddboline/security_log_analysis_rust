@@ -19,24 +19,22 @@ impl Config {
     }
 
     pub fn init_config() -> Result<Self, Error> {
-        let fname = "config.env";
+        let fname = Path::new("config.env");
+        let config_dir = dirs::config_dir().ok_or_else(|| format_err!("No Config directory"))?;
+        let default_fname = config_dir
+            .join("security_log_analysis_rust")
+            .join("config.env");
 
-        let home_dir = var("HOME").map_err(|e| format_err!("No HOME directory {}", e))?;
-
-        let default_fname = format!("{}/.config/security_log_analysis_rust/config.env", home_dir);
-
-        let env_file = if Path::new(fname).exists() {
-            fname.to_string()
+        let env_file = if fname.exists() {
+            fname
         } else {
-            default_fname
+            &default_fname
         };
 
         dotenv::dotenv().ok();
 
-        if Path::new(&env_file).exists() {
-            dotenv::from_path(&env_file).ok();
-        } else if Path::new("config.env").exists() {
-            dotenv::from_filename("config.env").ok();
+        if env_file.exists() {
+            dotenv::from_path(env_file).ok();
         }
 
         let conf = ConfigInner {
