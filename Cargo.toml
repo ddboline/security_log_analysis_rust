@@ -26,6 +26,7 @@ retry = "1.0"
 anyhow = "1.0"
 postgres_query = "0.3"
 dirs = "2.0"
+whois-rust = { git="https://github.com/ddboline/whois-rust", branch="handle_non_utf8_chars" }
 
 [[bin]]
 name = "security-log-parse-rust"

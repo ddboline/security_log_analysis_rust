@@ -7,6 +7,7 @@ use std::io::{BufRead, BufReader};
 use std::net::ToSocketAddrs;
 use std::sync::Arc;
 use subprocess::{Exec, Redirection};
+use whois_rust::{WhoIs, WhoIsError, WhoIsLookupOptions};
 
 use crate::exponential_retry;
 use crate::models::{
@@ -19,6 +20,7 @@ pub struct HostCountryMetadata {
     pub pool: Option<PgPool>,
     pub country_code_map: Arc<RwLock<HashMap<String, CountryCode>>>,
     pub host_country_map: Arc<RwLock<HashMap<String, HostCountry>>>,
+    pub whois: Arc<WhoIs>,
 }
 
 impl Default for HostCountryMetadata {
@@ -33,6 +35,9 @@ impl HostCountryMetadata {
             pool: None,
             country_code_map: Arc::new(RwLock::new(HashMap::new())),
             host_country_map: Arc::new(RwLock::new(HashMap::new())),
+            whois: Arc::new(
+                WhoIs::from_string(include_str!("servers.json")).expect("No server json"),
+            ),
         }
     }
 
@@ -51,6 +56,7 @@ impl HostCountryMetadata {
                     .map(|item| (item.host.to_string(), item))
                     .collect(),
             )),
+            ..Self::default()
         };
         Ok(result)
     }
@@ -90,63 +96,36 @@ impl HostCountryMetadata {
         if let Some(entry) = (*self.host_country_map.read()).get(host) {
             return Ok(entry.code.to_string());
         }
-        let whois_code = Self::get_whois_country_info(host)?;
+        let whois_code = self.get_whois_country_info(host)?;
         self.insert_host_code(host, &whois_code)
     }
 
-    pub fn get_whois_country_info(host: &str) -> Result<String, Error> {
-        fn _get_whois_country_info(command: &str, host: &str) -> Result<String, Error> {
-            let mut process = Exec::shell(command).stdout(Redirection::Pipe).popen()?;
-            let exit_status = process.wait()?;
-            if exit_status.success() {
-                if let Some(f) = process.stdout.as_ref() {
-                    let reader = BufReader::new(f);
-                    for line in reader.lines() {
-                        let l = match line {
-                            Ok(l) => l.trim().to_uppercase(),
-                            Err(e) => {
-                                error!("{:?}", e);
-                                continue;
-                            }
-                        };
-                        if l.contains("QUERY RATE") {
-                            error!("Retry {} : {}", host, l.trim());
-                            break;
-                        } else if l.contains("KOREA") {
-                            return Ok("KR".to_string());
-                        } else if l.ends_with(".BR") {
-                            return Ok("BR".to_string());
-                        } else if l.contains("COMCAST CABLE") {
-                            return Ok("US".to_string());
-                        } else if l.contains("HINET-NET") {
-                            return Ok("TW".to_string());
-                        } else if l.contains(".JP") {
-                            return Ok("JP".to_string());
-                        }
-                        let tokens: Vec<_> = l.split_whitespace().collect();
-                        if tokens.len() >= 2 && tokens[0] == "COUNTRY:" {
-                            let code = tokens[1].to_string();
-                            return Ok(code);
-                        }
-                    }
-                } else if !command.contains(" -B ") {
-                    let new_command = format!("whois -B {}", host);
-                    debug!("command {}", new_command);
-                    return exponential_retry(|| _get_whois_country_info(&new_command, host));
+    fn run_lookup(&self, host: &str) -> Result<String, WhoIsError> {
+        let opts = WhoIsLookupOptions::from_string(host)?;
+        self.whois.lookup(opts)
+    }
+
+    pub fn get_whois_country_info(&self, host: &str) -> Result<String, Error> {
+        let lookup_str = match self.run_lookup(host) {
+            Ok(s) => s,
+            Err(WhoIsError::SerdeJsonError(e)) => return Err(e.into()),
+            Err(WhoIsError::IOError(e)) => return Err(e.into()),
+            Err(WhoIsError::DomainError(e)) => return Err(e.into()),
+            Err(WhoIsError::IPv4Error(e)) => return Err(e.into()),
+            Err(WhoIsError::IPv6Error(e)) => return Err(e.into()),
+            Err(WhoIsError::MapError(e)) => panic!("Unrecoverable error {}", e),
+        };
+        for line in lookup_str.split('\n') {
+            match process_line(&line.to_uppercase()) {
+                LineResult::Country(country) => return Ok(country),
+                LineResult::Break => {
+                    error!("Retry {} : {}", host, line.trim());
+                    break;
                 }
-                Err(format_err!("No country found {}", host))
-            } else if command.contains(" -r ") {
-                Err(format_err!("Failed with exit status {:?}", exit_status))
-            } else {
-                let new_command = format!("whois -r {}", host);
-                debug!("command {}", new_command);
-                exponential_retry(|| _get_whois_country_info(&new_command, host))
+                LineResult::Continue => {}
             }
         }
-
-        let command = format!("whois {}", host);
-        debug!("command {}", command);
-        exponential_retry(|| _get_whois_country_info(&command, host))
+        Err(format_err!("No country found {}", host))
     }
 
     pub fn cleanup_intrusion_log(&self) -> Result<(), Error> {
@@ -179,35 +158,62 @@ impl HostCountryMetadata {
     }
 }
 
+enum LineResult {
+    Country(String),
+    Break,
+    Continue,
+}
+
+fn process_line(line: &str) -> LineResult {
+    if line.contains("QUERY RATE") {
+        LineResult::Break
+    } else if line.contains("KOREA") {
+        LineResult::Country("KR".to_string())
+    } else if line.ends_with(".BR") {
+        LineResult::Country("BR".to_string())
+    } else if line.contains("COMCAST CABLE") {
+        LineResult::Country("US".to_string())
+    } else if line.contains("HINET-NET") {
+        LineResult::Country("TW".to_string())
+    } else if line.contains(".JP") {
+        LineResult::Country("JP".to_string())
+    } else {
+        let tokens: Vec<_> = line.split_whitespace().collect();
+        if tokens.len() >= 2 && tokens[0] == "COUNTRY:" {
+            let code = tokens[1].to_string();
+            LineResult::Country(code)
+        } else {
+            LineResult::Continue
+        }
+    }
+}
+
 #[cfg(test)]
 mod test {
+    use anyhow::Error;
     use std::io::{stdout, Write};
     use std::net::ToSocketAddrs;
 
     use crate::host_country_metadata::HostCountryMetadata;
 
     #[test]
-    fn test_get_whois_country_info() {
+    fn test_get_whois_country_info() -> Result<(), Error> {
+        let hm = HostCountryMetadata::new();
         assert_eq!(
-            HostCountryMetadata::get_whois_country_info("36.110.50.217").unwrap(),
+            hm.get_whois_country_info("36.110.50.217")?,
             "CN".to_string()
         );
         assert_eq!(
-            HostCountryMetadata::get_whois_country_info("82.73.86.33").unwrap(),
+            hm.get_whois_country_info("82.73.86.33")?,
             "NL".to_string()
         );
         assert_eq!(
-            HostCountryMetadata::get_whois_country_info("217.29.210.13").unwrap(),
+            hm.get_whois_country_info("217.29.210.13")?,
             "EU".to_string()
         );
-        assert_eq!(
-            HostCountryMetadata::get_whois_country_info("31.162.240.19").unwrap(),
-            "RU"
-        );
-        assert_eq!(
-            HostCountryMetadata::get_whois_country_info("174.61.53.116").unwrap(),
-            "US"
-        );
+        assert_eq!(hm.get_whois_country_info("31.162.240.19")?, "RU");
+        assert_eq!(hm.get_whois_country_info("174.61.53.116")?, "US");
+        Ok(())
     }
 
     #[test]
