@@ -125,7 +125,62 @@ impl HostCountryMetadata {
                 LineResult::Continue => {}
             }
         }
-        Err(format_err!("No country found {}", host))
+        Self::get_whois_country_info_cmd(host)
+    }
+
+    pub fn get_whois_country_info_cmd(host: &str) -> Result<String, Error> {
+        fn _get_whois_country_info(command: &str, host: &str) -> Result<String, Error> {
+            let mut process = Exec::shell(command).stdout(Redirection::Pipe).popen()?;
+            let exit_status = process.wait()?;
+            if exit_status.success() {
+                if let Some(f) = process.stdout.as_ref() {
+                    let reader = BufReader::new(f);
+                    for line in reader.lines() {
+                        let l = match line {
+                            Ok(l) => l.trim().to_uppercase(),
+                            Err(e) => {
+                                error!("{:?}", e);
+                                continue;
+                            }
+                        };
+                        if l.contains("QUERY RATE") {
+                            error!("Retry {} : {}", host, l.trim());
+                            break;
+                        } else if l.contains("KOREA") {
+                            return Ok("KR".to_string());
+                        } else if l.ends_with(".BR") {
+                            return Ok("BR".to_string());
+                        } else if l.contains("COMCAST CABLE") {
+                            return Ok("US".to_string());
+                        } else if l.contains("HINET-NET") {
+                            return Ok("TW".to_string());
+                        } else if l.contains(".JP") {
+                            return Ok("JP".to_string());
+                        }
+                        let tokens: Vec<_> = l.split_whitespace().collect();
+                        if tokens.len() >= 2 && tokens[0] == "COUNTRY:" {
+                            let code = tokens[1].to_string();
+                            return Ok(code);
+                        }
+                    }
+                } else if !command.contains(" -B ") {
+                    let new_command = format!("whois -B {}", host);
+                    debug!("command {}", new_command);
+                    return exponential_retry(|| _get_whois_country_info(&new_command, host));
+                }
+                Err(format_err!("No country found {}", host))
+            } else if command.contains(" -r ") {
+                Err(format_err!("Failed with exit status {:?}", exit_status))
+            } else {
+                let new_command = format!("whois -r {}", host);
+                debug!("command {}", new_command);
+                exponential_retry(|| _get_whois_country_info(&new_command, host))
+            }
+        }
+
+        let command = format!("whois {}", host);
+        debug!("command {}", command);
+        exponential_retry(|| _get_whois_country_info(&command, host))
     }
 
     pub fn cleanup_intrusion_log(&self) -> Result<(), Error> {
@@ -203,16 +258,38 @@ mod test {
             hm.get_whois_country_info("36.110.50.217")?,
             "CN".to_string()
         );
-        assert_eq!(
-            hm.get_whois_country_info("82.73.86.33")?,
-            "NL".to_string()
-        );
+        assert_eq!(hm.get_whois_country_info("82.73.86.33")?, "NL".to_string());
         assert_eq!(
             hm.get_whois_country_info("217.29.210.13")?,
             "EU".to_string()
         );
         assert_eq!(hm.get_whois_country_info("31.162.240.19")?, "RU");
         assert_eq!(hm.get_whois_country_info("174.61.53.116")?, "US");
+        Ok(())
+    }
+
+    #[test]
+    fn test_get_whois_country_info_cmd() -> Result<(), Error> {
+        assert_eq!(
+            HostCountryMetadata::get_whois_country_info_cmd("36.110.50.217")?,
+            "CN".to_string()
+        );
+        assert_eq!(
+            HostCountryMetadata::get_whois_country_info_cmd("82.73.86.33")?,
+            "NL".to_string()
+        );
+        assert_eq!(
+            HostCountryMetadata::get_whois_country_info_cmd("217.29.210.13")?,
+            "EU".to_string()
+        );
+        assert_eq!(
+            HostCountryMetadata::get_whois_country_info_cmd("31.162.240.19")?,
+            "RU"
+        );
+        assert_eq!(
+            HostCountryMetadata::get_whois_country_info_cmd("174.61.53.116")?,
+            "US"
+        );
         Ok(())
     }
 
