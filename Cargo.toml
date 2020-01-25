@@ -27,6 +27,7 @@ anyhow = "1.0"
 postgres_query = "0.3"
 dirs = "2.0"
 whois-rust = { git="https://github.com/ddboline/whois-rust", branch="handle_non_utf8_chars" }
+reqwest = {version="0.10", features=["blocking", "json"]}
 
 [[bin]]
 name = "security-log-parse-rust"

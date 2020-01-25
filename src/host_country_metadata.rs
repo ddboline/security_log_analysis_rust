@@ -2,6 +2,9 @@ use anyhow::{format_err, Error};
 use diesel::connection::SimpleConnection;
 use log::{debug, error};
 use parking_lot::RwLock;
+use reqwest::blocking::Client;
+use reqwest::Url;
+use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::io::{BufRead, BufReader};
 use std::net::ToSocketAddrs;
@@ -21,6 +24,7 @@ pub struct HostCountryMetadata {
     pub country_code_map: Arc<RwLock<HashMap<String, CountryCode>>>,
     pub host_country_map: Arc<RwLock<HashMap<String, HostCountry>>>,
     pub whois: Arc<WhoIs>,
+    pub client: Client,
 }
 
 impl Default for HostCountryMetadata {
@@ -38,6 +42,7 @@ impl HostCountryMetadata {
             whois: Arc::new(
                 WhoIs::from_string(include_str!("servers.json")).expect("No server json"),
             ),
+            client: Client::new(),
         }
     }
 
@@ -125,7 +130,33 @@ impl HostCountryMetadata {
                 LineResult::Continue => {}
             }
         }
-        Self::get_whois_country_info_cmd(host)
+        self.get_whois_country_info_ipwhois(&host)
+            .and_then(|_| Self::get_whois_country_info_cmd(host))
+    }
+
+    pub fn get_whois_country_info_ipwhois(&self, host: &str) -> Result<String, Error> {
+        #[derive(Serialize, Deserialize)]
+        struct IpWhoIsOutput {
+            country_code: String,
+        }
+
+        let ipaddr = (host, 22)
+            .to_socket_addrs()?
+            .nth(0)
+            .and_then(|s| {
+                let ip = s.ip();
+                if ip.is_ipv4() {
+                    Some(ip.to_string())
+                } else {
+                    None
+                }
+            })
+            .ok_or_else(|| format_err!("Failed to extract IP address from {}", host))?;
+        let url = Url::parse("http://free.ipwhois.io/json/")?.join(&ipaddr)?;
+        println!("{}", url);
+        let resp = self.client.get(url).send()?.error_for_status()?;
+        let output: IpWhoIsOutput = resp.json()?;
+        Ok(output.country_code)
     }
 
     pub fn get_whois_country_info_cmd(host: &str) -> Result<String, Error> {
@@ -290,6 +321,26 @@ mod test {
             HostCountryMetadata::get_whois_country_info_cmd("174.61.53.116")?,
             "US"
         );
+        Ok(())
+    }
+
+    #[test]
+    fn test_get_whois_country_info_ipwhois() -> Result<(), Error> {
+        let hm = HostCountryMetadata::new();
+        assert_eq!(
+            hm.get_whois_country_info_ipwhois("36.110.50.217")?,
+            "CN".to_string()
+        );
+        assert_eq!(
+            hm.get_whois_country_info_ipwhois("82.73.86.33")?,
+            "NL".to_string()
+        );
+        assert_eq!(
+            hm.get_whois_country_info_ipwhois("217.29.210.13")?,
+            "ZA".to_string()
+        );
+        assert_eq!(hm.get_whois_country_info_ipwhois("31.162.240.19")?, "RU");
+        assert_eq!(hm.get_whois_country_info_ipwhois("174.61.53.116")?, "US");
         Ok(())
     }
 
