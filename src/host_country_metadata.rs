@@ -111,6 +111,9 @@ impl HostCountryMetadata {
     }
 
     pub fn get_whois_country_info(&self, host: &str) -> Result<String, Error> {
+        if let Ok(country) = self.get_whois_country_info_ipwhois(&host) {
+            return Ok(country);
+        }
         let lookup_str = match self.run_lookup(host) {
             Ok(s) => s,
             Err(WhoIsError::SerdeJsonError(e)) => return Err(e.into()),
@@ -130,8 +133,7 @@ impl HostCountryMetadata {
                 LineResult::Continue => {}
             }
         }
-        self.get_whois_country_info_ipwhois(&host)
-            .and_then(|_| Self::get_whois_country_info_cmd(host))
+        Self::get_whois_country_info_cmd(host)
     }
 
     pub fn get_whois_country_info_ipwhois(&self, host: &str) -> Result<String, Error> {
