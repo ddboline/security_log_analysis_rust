@@ -1,6 +1,9 @@
+use anyhow::Error;
+
 use security_log_analysis_rust::parse_opts::ParseOpts;
 
-fn main() {
+#[tokio::main]
+async fn main() -> Result<(), Error> {
     env_logger::init();
-    ParseOpts::process_args().unwrap();
+    ParseOpts::process_args().await
 }

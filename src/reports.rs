@@ -2,7 +2,7 @@ use anyhow::Error;
 
 use crate::pgpool_pg::PgPoolPg;
 
-pub fn get_country_count_recent(
+pub async fn get_country_count_recent(
     pool: &PgPoolPg,
     service: &str,
     server: &str,
@@ -26,8 +26,10 @@ pub fn get_country_count_recent(
         service = service,
         server = server
     )?;
-    pool.get()?
-        .query(query.sql(), query.parameters())?
+    pool.get()
+        .await?
+        .query(query.sql(), query.parameters())
+        .await?
         .iter()
         .map(|row| {
             let country: String = row.try_get("country")?;

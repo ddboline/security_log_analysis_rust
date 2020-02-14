@@ -1,5 +1,6 @@
 use anyhow::{format_err, Error};
 use chrono::{DateTime, Utc};
+use futures::future::try_join_all;
 use log::debug;
 use rayon::iter::{IntoParallelIterator, ParallelIterator};
 use serde::{Deserialize, Serialize};
@@ -91,7 +92,7 @@ pub struct ParseOpts {
 }
 
 impl ParseOpts {
-    pub fn process_args() -> Result<(), Error> {
+    pub async fn process_args() -> Result<(), Error> {
         let opts = Self::from_args();
 
         match opts.action {
@@ -119,11 +120,14 @@ impl ParseOpts {
                 writeln!(stdout().lock(), "new lines {}", inserts.len())?;
                 let new_hosts: HashSet<_> =
                     inserts.iter().map(|item| item.host.to_string()).collect();
-                let results: Result<Vec<_>, Error> = new_hosts
-                    .into_par_iter()
-                    .map(|host| metadata.get_country_info(&host))
+                let futures: Vec<_> = new_hosts
+                    .into_iter()
+                    .map(|host| {
+                        let metadata_ = metadata.clone();
+                        async move { metadata_.get_country_info(&host).await }
+                    })
                     .collect();
-                results?;
+                try_join_all(futures).await?;
                 insert_intrusion_log(&pool, &inserts)?;
 
                 Ok(())
@@ -203,11 +207,14 @@ impl ParseOpts {
                 let inserts = inserts?;
                 let new_hosts: HashSet<_> =
                     inserts.iter().map(|item| item.host.to_string()).collect();
-                let results: Result<Vec<_>, Error> = new_hosts
-                    .into_par_iter()
-                    .map(|host| metadata.get_country_info(&host))
+                let futures: Vec<_> = new_hosts
+                    .into_iter()
+                    .map(|host| {
+                        let metadata_ = metadata.clone();
+                        async move { metadata_.get_country_info(&host).await }
+                    })
                     .collect();
-                results?;
+                try_join_all(futures).await?;
                 insert_intrusion_log(&pool, &inserts)?;
 
                 writeln!(stdout().lock(), "inserts {}", inserts.len())?;
@@ -220,7 +227,7 @@ impl ParseOpts {
                 for service in &["ssh", "apache"] {
                     for server_prefix in &["home", "cloud"] {
                         let server = format!("{}.ddboline.net", server_prefix);
-                        let results = get_country_count_recent(&pool, service, &server, 20)?;
+                        let results = get_country_count_recent(&pool, service, &server, 20).await?;
                         let results: Vec<_> = results
                             .iter()
                             .map(|(x, y)| format!(r#"["{}", {}]"#, x, y))
