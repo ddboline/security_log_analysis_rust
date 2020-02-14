@@ -155,7 +155,7 @@ impl HostCountryMetadata {
             })
             .ok_or_else(|| format_err!("Failed to extract IP address from {}", host))?;
         let url = Url::parse("http://free.ipwhois.io/json/")?.join(&ipaddr)?;
-        println!("{}", url);
+        debug!("{}", url);
         let resp = self.client.get(url).send()?.error_for_status()?;
         let output: IpWhoIsOutput = resp.json()?;
         Ok(output.country_code)
