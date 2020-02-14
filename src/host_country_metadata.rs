@@ -294,7 +294,7 @@ mod test {
         assert_eq!(hm.get_whois_country_info("82.73.86.33")?, "NL".to_string());
         assert_eq!(
             hm.get_whois_country_info("217.29.210.13")?,
-            "EU".to_string()
+            "ZA".to_string()
         );
         assert_eq!(hm.get_whois_country_info("31.162.240.19")?, "RU");
         assert_eq!(hm.get_whois_country_info("174.61.53.116")?, "US");
