@@ -124,8 +124,8 @@ impl ParseOpts {
                 let futures: Vec<_> = new_hosts
                     .into_iter()
                     .map(|host| {
-                        let metadata_ = metadata.clone();
-                        async move { metadata_.get_country_info(&host).await }
+                        let metadata = metadata.clone();
+                        async move { metadata.get_country_info(&host).await }
                     })
                     .collect();
                 try_join_all(futures).await?;
@@ -211,8 +211,8 @@ impl ParseOpts {
                 let futures: Vec<_> = new_hosts
                     .into_iter()
                     .map(|host| {
-                        let metadata_ = metadata.clone();
-                        async move { metadata_.get_country_info(&host).await }
+                        let metadata = metadata.clone();
+                        async move { metadata.get_country_info(&host).await }
                     })
                     .collect();
                 try_join_all(futures).await?;
@@ -228,9 +228,9 @@ impl ParseOpts {
                 for service in &["ssh", "apache"] {
                     for server_prefix in &["home", "cloud"] {
                         let server = format!("{}.ddboline.net", server_prefix);
-                        let results = get_country_count_recent(&pool, service, &server, 20).await?;
-                        let results: Vec<_> = results
-                            .iter()
+                        let results: Vec<_> = get_country_count_recent(&pool, service, &server, 30)
+                            .await?
+                            .into_iter()
                             .map(|(x, y)| format!(r#"["{}", {}]"#, x, y))
                             .collect();
                         let results = template
