@@ -3,10 +3,11 @@ use diesel::pg::PgConnection;
 use diesel::r2d2::ConnectionManager;
 use r2d2::{Pool, PooledConnection};
 use std::fmt;
+use std::sync::Arc;
 
 #[derive(Clone)]
 pub struct PgPool {
-    pgurl: String,
+    pgurl: Arc<String>,
     pool: Pool<ConnectionManager<PgConnection>>,
 }
 
@@ -20,7 +21,7 @@ impl PgPool {
     pub fn new(pgurl: &str) -> Self {
         let manager = ConnectionManager::new(pgurl);
         Self {
-            pgurl: pgurl.to_string(),
+            pgurl: Arc::new(pgurl.to_string()),
             pool: Pool::new(manager).expect("Failed to open DB connection"),
         }
     }

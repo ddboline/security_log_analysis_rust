@@ -3,26 +3,21 @@ use deadpool::managed::Object;
 use deadpool_postgres::{ClientWrapper, Config, Pool};
 use std::env::set_var;
 use std::fmt;
+use std::sync::Arc;
 use tokio_postgres::error::Error as PgError;
 use tokio_postgres::{Config as PgConfig, NoTls};
 
-/// Wrapper around `r2d2::Pool`, two pools are considered equal if they have the same connection string
+/// Wrapper around `r2d2::Pool`
 /// The only way to use `PgPoolPg` is through the get method, which returns a `PooledConnection` object
 #[derive(Clone, Default)]
 pub struct PgPoolPg {
-    pgurl: String,
+    pgurl: Arc<String>,
     pool: Option<Pool>,
 }
 
 impl fmt::Debug for PgPoolPg {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "PgPoolPg {}", self.pgurl)
-    }
-}
-
-impl PartialEq for PgPoolPg {
-    fn eq(&self, other: &Self) -> bool {
-        self.pgurl == other.pgurl
     }
 }
 
@@ -41,7 +36,7 @@ impl PgPoolPg {
 
         let config = Config::from_env("PG").expect("Failed to create config");
         Self {
-            pgurl: pgurl.to_string(),
+            pgurl: Arc::new(pgurl.to_string()),
             pool: Some(
                 config
                     .create_pool(NoTls)
