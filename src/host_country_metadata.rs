@@ -2,7 +2,7 @@ use anyhow::{format_err, Error};
 use diesel::connection::SimpleConnection;
 use log::{debug, error};
 use parking_lot::RwLock;
-use reqwest::blocking::Client;
+use reqwest::Client;
 use reqwest::Url;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -97,31 +97,27 @@ impl HostCountryMetadata {
         Err(format_err!("Failed to insert {}", code))
     }
 
-    pub fn get_country_info(&self, host: &str) -> Result<String, Error> {
+    pub async fn get_country_info(&self, host: &str) -> Result<String, Error> {
         if let Some(entry) = (*self.host_country_map.read()).get(host) {
             return Ok(entry.code.to_string());
         }
-        let whois_code = self.get_whois_country_info(host)?;
+        let whois_code = self.get_whois_country_info(host).await?;
         self.insert_host_code(host, &whois_code)
     }
 
-    fn run_lookup(&self, host: &str) -> Result<String, WhoIsError> {
+    async fn run_lookup(&self, host: &str) -> Result<String, WhoIsError> {
         let opts = WhoIsLookupOptions::from_string(host)?;
-        self.whois.lookup(opts)
+        self.whois.lookup(opts).await
     }
 
-    pub fn get_whois_country_info(&self, host: &str) -> Result<String, Error> {
-        if let Ok(country) = self.get_whois_country_info_ipwhois(&host) {
+    pub async fn get_whois_country_info(&self, host: &str) -> Result<String, Error> {
+        if let Ok(country) = self.get_whois_country_info_ipwhois(&host).await {
             return Ok(country);
         }
-        let lookup_str = match self.run_lookup(host) {
+        let lookup_str = match self.run_lookup(host).await {
             Ok(s) => s,
-            Err(WhoIsError::SerdeJsonError(e)) => return Err(e.into()),
-            Err(WhoIsError::IOError(e)) => return Err(e.into()),
-            Err(WhoIsError::DomainError(e)) => return Err(e.into()),
-            Err(WhoIsError::IPv4Error(e)) => return Err(e.into()),
-            Err(WhoIsError::IPv6Error(e)) => return Err(e.into()),
             Err(WhoIsError::MapError(e)) => panic!("Unrecoverable error {}", e),
+            Err(e) => return Err(e.into()),
         };
         for line in lookup_str.split('\n') {
             match process_line(&line.to_uppercase()) {
@@ -136,7 +132,7 @@ impl HostCountryMetadata {
         Self::get_whois_country_info_cmd(host)
     }
 
-    pub fn get_whois_country_info_ipwhois(&self, host: &str) -> Result<String, Error> {
+    pub async fn get_whois_country_info_ipwhois(&self, host: &str) -> Result<String, Error> {
         #[derive(Serialize, Deserialize)]
         struct IpWhoIsOutput {
             country_code: String,
@@ -156,8 +152,8 @@ impl HostCountryMetadata {
             .ok_or_else(|| format_err!("Failed to extract IP address from {}", host))?;
         let url = Url::parse("http://free.ipwhois.io/json/")?.join(&ipaddr)?;
         debug!("{}", url);
-        let resp = self.client.get(url).send()?.error_for_status()?;
-        let output: IpWhoIsOutput = resp.json()?;
+        let resp = self.client.get(url).send().await?.error_for_status()?;
+        let output: IpWhoIsOutput = resp.json().await?;
         Ok(output.country_code)
     }
 
@@ -284,20 +280,23 @@ mod test {
 
     use crate::host_country_metadata::HostCountryMetadata;
 
-    #[test]
-    fn test_get_whois_country_info() -> Result<(), Error> {
+    #[tokio::test]
+    async fn test_get_whois_country_info() -> Result<(), Error> {
         let hm = HostCountryMetadata::new();
         assert_eq!(
-            hm.get_whois_country_info("36.110.50.217")?,
+            hm.get_whois_country_info("36.110.50.217").await?,
             "CN".to_string()
         );
-        assert_eq!(hm.get_whois_country_info("82.73.86.33")?, "NL".to_string());
         assert_eq!(
-            hm.get_whois_country_info("217.29.210.13")?,
+            hm.get_whois_country_info("82.73.86.33").await?,
+            "NL".to_string()
+        );
+        assert_eq!(
+            hm.get_whois_country_info("217.29.210.13").await?,
             "ZA".to_string()
         );
-        assert_eq!(hm.get_whois_country_info("31.162.240.19")?, "RU");
-        assert_eq!(hm.get_whois_country_info("174.61.53.116")?, "US");
+        assert_eq!(hm.get_whois_country_info("31.162.240.19").await?, "RU");
+        assert_eq!(hm.get_whois_country_info("174.61.53.116").await?, "US");
         Ok(())
     }
 
@@ -326,23 +325,29 @@ mod test {
         Ok(())
     }
 
-    #[test]
-    fn test_get_whois_country_info_ipwhois() -> Result<(), Error> {
+    #[tokio::test]
+    async fn test_get_whois_country_info_ipwhois() -> Result<(), Error> {
         let hm = HostCountryMetadata::new();
         assert_eq!(
-            hm.get_whois_country_info_ipwhois("36.110.50.217")?,
+            hm.get_whois_country_info_ipwhois("36.110.50.217").await?,
             "CN".to_string()
         );
         assert_eq!(
-            hm.get_whois_country_info_ipwhois("82.73.86.33")?,
+            hm.get_whois_country_info_ipwhois("82.73.86.33").await?,
             "NL".to_string()
         );
         assert_eq!(
-            hm.get_whois_country_info_ipwhois("217.29.210.13")?,
+            hm.get_whois_country_info_ipwhois("217.29.210.13").await?,
             "ZA".to_string()
         );
-        assert_eq!(hm.get_whois_country_info_ipwhois("31.162.240.19")?, "RU");
-        assert_eq!(hm.get_whois_country_info_ipwhois("174.61.53.116")?, "US");
+        assert_eq!(
+            hm.get_whois_country_info_ipwhois("31.162.240.19").await?,
+            "RU"
+        );
+        assert_eq!(
+            hm.get_whois_country_info_ipwhois("174.61.53.116").await?,
+            "US"
+        );
         Ok(())
     }
 

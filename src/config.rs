@@ -1,13 +1,14 @@
 use anyhow::{format_err, Error};
-use std::env::var;
+use std::env::{var, var_os};
 use std::ops::Deref;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 #[derive(Default, Debug)]
 pub struct ConfigInner {
     pub database_url: String,
     pub username: String,
+    pub export_dir: Option<PathBuf>,
 }
 
 #[derive(Default, Debug, Clone)]
@@ -41,6 +42,7 @@ impl Config {
             database_url: var("DATABASE_URL")
                 .map_err(|e| format_err!("DATABASE_URL must be set {}", e))?,
             username: var("USER").map_err(|e| format_err!("USER must be set {}", e))?,
+            export_dir: var_os("EXPORT_DIR").map(|s| s.into()),
         };
 
         Ok(Self(Arc::new(conf)))
