@@ -287,7 +287,10 @@ mod test {
             hm.get_whois_country_info("36.110.50.217").await?,
             "CN".to_string()
         );
-        assert_eq!(hm.get_whois_country_info("82.73.86.33").await?, "NL".to_string());
+        assert_eq!(
+            hm.get_whois_country_info("82.73.86.33").await?,
+            "NL".to_string()
+        );
         assert_eq!(
             hm.get_whois_country_info("217.29.210.13").await?,
             "ZA".to_string()
@@ -337,8 +340,14 @@ mod test {
             hm.get_whois_country_info_ipwhois("217.29.210.13").await?,
             "ZA".to_string()
         );
-        assert_eq!(hm.get_whois_country_info_ipwhois("31.162.240.19").await?, "RU");
-        assert_eq!(hm.get_whois_country_info_ipwhois("174.61.53.116").await?, "US");
+        assert_eq!(
+            hm.get_whois_country_info_ipwhois("31.162.240.19").await?,
+            "RU"
+        );
+        assert_eq!(
+            hm.get_whois_country_info_ipwhois("174.61.53.116").await?,
+            "US"
+        );
         Ok(())
     }
 

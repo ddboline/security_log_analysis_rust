@@ -6,12 +6,13 @@ use rayon::iter::{IntoParallelIterator, ParallelIterator};
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
 use std::env::var;
-use std::fs::File;
 use std::io::{stdout, BufRead, BufReader, Write};
 use std::net::ToSocketAddrs;
 use std::str::FromStr;
 use structopt::StructOpt;
 use subprocess::Exec;
+use tokio::fs::File;
+use tokio::io::AsyncWriteExt;
 
 use crate::config::Config;
 use crate::host_country_metadata::HostCountryMetadata;
@@ -234,14 +235,14 @@ impl ParseOpts {
                             .collect();
                         let results = template
                             .replace("PUTLISTOFCOUNTRIESANDATTEMPTSHERE", &results.join(","));
-                        let home_dir =
-                            var("HOME").map_err(|e| format_err!("No HOME directory {}", e))?;
-                        let outfname = format!(
-                            "{}/public_html/{}_intrusion_attempts_{}.html",
-                            home_dir, service, server_prefix
-                        );
-                        let mut output = File::create(&outfname)?;
-                        write!(output, "{}", results)?;
+
+                        if let Some(export_dir) = config.export_dir.as_ref() {
+                            let outfname =
+                                format!("{}_intrusion_attempts_{}.html", service, server_prefix);
+                            let outpath = export_dir.join(&outfname);
+                            let mut output = File::create(&outpath).await?;
+                            output.write(results.as_bytes()).await?;
+                        }
                     }
                 }
                 Ok(())
