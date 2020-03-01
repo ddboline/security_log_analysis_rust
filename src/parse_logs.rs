@@ -3,12 +3,16 @@ use chrono::{DateTime, Datelike, FixedOffset, Local, TimeZone, Utc};
 use flate2::read::GzDecoder;
 use glob::glob;
 use log::debug;
-use std::collections::HashSet;
-use std::fs::File;
-use std::io::{BufRead, BufReader, Read};
+use std::{
+    collections::HashSet,
+    fs::File,
+    io::{BufRead, BufReader, Read},
+};
 
-use crate::host_country_metadata::HostCountryMetadata;
-use crate::models::{get_intrusion_log_max_datetime, IntrusionLogInsert};
+use crate::{
+    host_country_metadata::HostCountryMetadata,
+    models::{get_intrusion_log_max_datetime, IntrusionLogInsert},
+};
 
 #[derive(Debug, PartialEq, Eq, Hash)]
 pub struct LogLineSSH {
@@ -150,15 +154,19 @@ pub fn parse_log_line_apache(_: i32, line: &str) -> Result<Option<LogLineSSH>, E
 #[cfg(test)]
 mod tests {
     use chrono::Timelike;
-    use std::fs::File;
-    use std::io::{stdout, Write};
-
-    use crate::config::Config;
-    use crate::host_country_metadata::HostCountryMetadata;
-    use crate::parse_logs::{
-        parse_all_log_files, parse_log_file, parse_log_line_apache, parse_log_line_ssh,
+    use std::{
+        fs::File,
+        io::{stdout, Write},
     };
-    use crate::pgpool::PgPool;
+
+    use crate::{
+        config::Config,
+        host_country_metadata::HostCountryMetadata,
+        parse_logs::{
+            parse_all_log_files, parse_log_file, parse_log_line_apache, parse_log_line_ssh,
+        },
+        pgpool::PgPool,
+    };
 
     #[test]
     #[ignore]

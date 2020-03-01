@@ -4,26 +4,29 @@ use futures::future::try_join_all;
 use log::debug;
 use rayon::iter::{IntoParallelIterator, ParallelIterator};
 use serde::{Deserialize, Serialize};
-use std::collections::HashSet;
-use std::env::var;
-use std::io::{stdout, BufRead, BufReader, Write};
-use std::net::ToSocketAddrs;
-use std::str::FromStr;
+use std::{
+    collections::HashSet,
+    env::var,
+    io::{stdout, BufRead, BufReader, Write},
+    net::ToSocketAddrs,
+    str::FromStr,
+};
 use structopt::StructOpt;
 use subprocess::Exec;
-use tokio::fs::File;
-use tokio::io::AsyncWriteExt;
+use tokio::{fs::File, io::AsyncWriteExt};
 
-use crate::config::Config;
-use crate::host_country_metadata::HostCountryMetadata;
-use crate::models::{
-    get_intrusion_log_filtered, get_intrusion_log_max_datetime, insert_intrusion_log,
-    IntrusionLogInsert,
+use crate::{
+    config::Config,
+    host_country_metadata::HostCountryMetadata,
+    models::{
+        get_intrusion_log_filtered, get_intrusion_log_max_datetime, insert_intrusion_log,
+        IntrusionLogInsert,
+    },
+    parse_logs::{parse_all_log_files, parse_log_line_apache, parse_log_line_ssh},
+    pgpool::PgPool,
+    pgpool_pg::PgPoolPg,
+    reports::get_country_count_recent,
 };
-use crate::parse_logs::{parse_all_log_files, parse_log_line_apache, parse_log_line_ssh};
-use crate::pgpool::PgPool;
-use crate::pgpool_pg::PgPoolPg;
-use crate::reports::get_country_count_recent;
 
 #[derive(Debug)]
 pub enum ParseActions {

@@ -1,8 +1,10 @@
 use anyhow::{format_err, Error};
-use std::env::{var, var_os};
-use std::ops::Deref;
-use std::path::{Path, PathBuf};
-use std::sync::Arc;
+use std::{
+    env::{var, var_os},
+    ops::Deref,
+    path::{Path, PathBuf},
+    sync::Arc,
+};
 
 #[derive(Default, Debug)]
 pub struct ConfigInner {

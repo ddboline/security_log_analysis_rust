@@ -3,9 +3,11 @@ use chrono::{DateTime, Utc};
 use diesel::{Connection, ExpressionMethods, QueryDsl, RunQueryDsl};
 use serde::{Deserialize, Serialize};
 
-use crate::iso_8601_datetime;
-use crate::pgpool::PgPool;
-use crate::schema::{country_code, host_country, intrusion_log};
+use crate::{
+    iso_8601_datetime,
+    pgpool::PgPool,
+    schema::{country_code, host_country, intrusion_log},
+};
 
 #[derive(Queryable, Clone, Debug, Insertable)]
 #[table_name = "country_code"]
@@ -126,9 +128,11 @@ mod tests {
     use diesel::{QueryDsl, RunQueryDsl};
     use std::io::{stdout, Write};
 
-    use crate::config::Config;
-    use crate::models::{CountryCode, HostCountry, IntrusionLog};
-    use crate::pgpool::PgPool;
+    use crate::{
+        config::Config,
+        models::{CountryCode, HostCountry, IntrusionLog},
+        pgpool::PgPool,
+    };
 
     #[test]
     #[ignore]
