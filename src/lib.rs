@@ -26,7 +26,10 @@ pub mod schema;
 
 use anyhow::{format_err, Error};
 use log::error;
-use retry::{delay::jitter, delay::Exponential, retry};
+use retry::{
+    delay::{jitter, Exponential},
+    retry,
+};
 
 pub fn exponential_retry<T, U>(closure: T) -> Result<U, Error>
 where

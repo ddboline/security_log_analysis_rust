@@ -2,21 +2,24 @@ use anyhow::{format_err, Error};
 use diesel::connection::SimpleConnection;
 use log::{debug, error};
 use parking_lot::RwLock;
-use reqwest::Client;
-use reqwest::Url;
+use reqwest::{Client, Url};
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
-use std::io::{BufRead, BufReader};
-use std::net::ToSocketAddrs;
-use std::sync::Arc;
+use std::{
+    collections::HashMap,
+    io::{BufRead, BufReader},
+    net::ToSocketAddrs,
+    sync::Arc,
+};
 use subprocess::{Exec, Redirection};
 use whois_rust::{WhoIs, WhoIsError, WhoIsLookupOptions};
 
-use crate::exponential_retry;
-use crate::models::{
-    get_country_code_list, get_host_country, insert_host_country, CountryCode, HostCountry,
+use crate::{
+    exponential_retry,
+    models::{
+        get_country_code_list, get_host_country, insert_host_country, CountryCode, HostCountry,
+    },
+    pgpool::PgPool,
 };
-use crate::pgpool::PgPool;
 
 #[derive(Clone, Debug)]
 pub struct HostCountryMetadata {
@@ -275,8 +278,10 @@ fn process_line(line: &str) -> LineResult {
 #[cfg(test)]
 mod test {
     use anyhow::Error;
-    use std::io::{stdout, Write};
-    use std::net::ToSocketAddrs;
+    use std::{
+        io::{stdout, Write},
+        net::ToSocketAddrs,
+    };
 
     use crate::host_country_metadata::HostCountryMetadata;
 
