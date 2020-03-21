@@ -5,7 +5,8 @@ use std::{env::set_var, fmt, sync::Arc};
 use tokio_postgres::{error::Error as PgError, Config as PgConfig, NoTls};
 
 /// Wrapper around `r2d2::Pool`
-/// The only way to use `PgPoolPg` is through the get method, which returns a `PooledConnection` object
+/// The only way to use `PgPoolPg` is through the get method, which returns a
+/// `PooledConnection` object
 #[derive(Clone, Default)]
 pub struct PgPoolPg {
     pgurl: Arc<String>,
