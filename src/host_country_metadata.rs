@@ -72,7 +72,7 @@ impl HostCountryMetadata {
     pub fn insert_host_code(&self, host: &str, code: &str) -> Result<String, Error> {
         let ccmap = self.country_code_map.read();
         if (*ccmap).contains_key(code) {
-            let ipaddr = (host, 22).to_socket_addrs()?.nth(0).and_then(|s| {
+            let ipaddr = (host, 22).to_socket_addrs()?.next().and_then(|s| {
                 let ip = s.ip();
                 if ip.is_ipv4() {
                     Some(ip.to_string())
@@ -143,7 +143,7 @@ impl HostCountryMetadata {
 
         let ipaddr = (host, 22)
             .to_socket_addrs()?
-            .nth(0)
+            .next()
             .and_then(|s| {
                 let ip = s.ip();
                 if ip.is_ipv4() {

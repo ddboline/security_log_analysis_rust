@@ -42,7 +42,7 @@ pub fn parse_log_line_ssh(year: i32, line: &str) -> Result<Option<LogLineSSH>, E
         .get(1)
         .ok_or_else(|| format_err!("No host"))?
         .split("port")
-        .nth(0)
+        .next()
         .ok_or_else(|| format_err!("No host"))?
         .trim();
     let host = if host.len() > 60 { &host[0..60] } else { host };
