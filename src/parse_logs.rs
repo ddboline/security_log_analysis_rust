@@ -154,10 +154,8 @@ pub fn parse_log_line_apache(_: i32, line: &str) -> Result<Option<LogLineSSH>, E
 #[cfg(test)]
 mod tests {
     use chrono::Timelike;
-    use std::{
-        fs::File,
-        io::{stdout, Write},
-    };
+    use log::debug;
+    use std::fs::File;
 
     use crate::{
         config::Config,
@@ -174,7 +172,7 @@ mod tests {
         let test_line = "Jun 24 00:07:25 dilepton-tower sshd[15932]: Invalid user test from \
                          36.110.50.217 port 28898\n";
         let result = parse_log_line_ssh(2019, test_line).unwrap().unwrap();
-        writeln!(stdout(), "{:?}", result).unwrap();
+        debug!("{:?}", result);
         assert_eq!(result.user, Some("test".to_string()));
         assert_eq!(result.host, "36.110.50.217".to_string());
         assert_eq!(result.timestamp.hour(), 4);

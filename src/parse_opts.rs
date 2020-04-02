@@ -26,6 +26,7 @@ use crate::{
     pgpool::PgPool,
     pgpool_pg::PgPoolPg,
     reports::get_country_count_recent,
+    stdout_channel::StdoutChannel,
 };
 
 #[derive(Debug)]
@@ -99,6 +100,9 @@ impl ParseOpts {
     pub async fn process_args() -> Result<(), Error> {
         let opts = Self::from_args();
 
+        let stdout = StdoutChannel::new();
+        let task = stdout.spawn_stdout_task();
+
         match opts.action {
             ParseActions::Parse => {
                 let config = Config::init_config()?;
@@ -121,7 +125,7 @@ impl ParseOpts {
                     &parse_log_line_apache,
                     "/var/log/apache2/access.log",
                 )?);
-                writeln!(stdout().lock(), "new lines {}", inserts.len())?;
+                stdout.send(format!("new lines {}", inserts.len()))?;
                 let new_hosts: HashSet<_> =
                     inserts.iter().map(|item| item.host.to_string()).collect();
                 let futures: Vec<_> = new_hosts
@@ -133,8 +137,6 @@ impl ParseOpts {
                     .collect();
                 try_join_all(futures).await?;
                 insert_intrusion_log(&pool, &inserts)?;
-
-                Ok(())
             }
             ParseActions::Serialize => {
                 let config = Config::init_config()?;
@@ -149,10 +151,9 @@ impl ParseOpts {
                 for service in &["ssh", "apache"] {
                     let results = get_intrusion_log_filtered(&pool, service, &server.0, datetime)?;
                     for result in results {
-                        writeln!(stdout().lock(), "{}", serde_json::to_string(&result)?)?;
+                        stdout.send(serde_json::to_string(&result)?)?;
                     }
                 }
-                Ok(())
             }
             ParseActions::Sync => {
                 let config = Config::init_config()?;
@@ -220,9 +221,7 @@ impl ParseOpts {
                     .collect();
                 try_join_all(futures).await?;
                 insert_intrusion_log(&pool, &inserts)?;
-
-                writeln!(stdout().lock(), "inserts {}", inserts.len())?;
-                Ok(())
+                stdout.send(format!("inserts {}", inserts.len()))?;
             }
             ParseActions::CountryPlot => {
                 let config = Config::init_config()?;
@@ -248,7 +247,6 @@ impl ParseOpts {
                         }
                     }
                 }
-                Ok(())
             }
             ParseActions::AddHost => {
                 let config = Config::init_config()?;
@@ -266,8 +264,9 @@ impl ParseOpts {
                         _ => continue,
                     }
                 }
-                Ok(())
             }
         }
+        stdout.close().await?;
+        task.await?
     }
 }

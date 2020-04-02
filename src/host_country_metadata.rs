@@ -278,10 +278,8 @@ fn process_line(line: &str) -> LineResult {
 #[cfg(test)]
 mod test {
     use anyhow::Error;
-    use std::{
-        io::{stdout, Write},
-        net::ToSocketAddrs,
-    };
+    use log::debug;
+    use std::net::ToSocketAddrs;
 
     use crate::host_country_metadata::HostCountryMetadata;
 
@@ -365,6 +363,6 @@ mod test {
             .unwrap();
         let ipaddr = sockaddr.ip();
         assert!(ipaddr.is_ipv4());
-        writeln!(stdout(), "{}", ipaddr).unwrap();
+        debug!("{}", ipaddr);
     }
 }

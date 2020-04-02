@@ -126,7 +126,7 @@ pub fn insert_intrusion_log(pool: &PgPool, il: &[IntrusionLogInsert]) -> Result<
 #[cfg(test)]
 mod tests {
     use diesel::{QueryDsl, RunQueryDsl};
-    use std::io::{stdout, Write};
+    use log::debug;
 
     use crate::{
         config::Config,
@@ -146,7 +146,7 @@ mod tests {
         let country_code_list: Vec<CountryCode> = country_code.load(&conn).unwrap();
 
         for entry in &country_code_list {
-            writeln!(stdout(), "{:?}", entry).unwrap();
+            debug!("{:?}", entry);
         }
         assert_eq!(country_code_list.len(), 252);
     }
@@ -163,7 +163,7 @@ mod tests {
         let host_country_list: Vec<HostCountry> = host_country.limit(10).load(&conn).unwrap();
 
         for entry in &host_country_list {
-            writeln!(stdout(), "{:?}", entry).unwrap();
+            debug!("{:?}", entry);
         }
         assert_eq!(host_country_list.len(), 10);
     }
@@ -180,7 +180,7 @@ mod tests {
         let intrusion_log_list: Vec<IntrusionLog> = intrusion_log.limit(10).load(&conn).unwrap();
 
         for entry in &intrusion_log_list {
-            writeln!(stdout(), "{:?}", entry).unwrap();
+            debug!("{:?}", entry);
         }
         assert_eq!(intrusion_log_list.len(), 10);
     }
