@@ -59,16 +59,17 @@ where
     T: Read,
     U: Fn(i32, &str) -> Result<Option<LogLineSSH>, Error> + Send + Sync,
 {
-    let b = BufReader::new(infile);
-    let lines: Result<Vec<_>, Error> = b
-        .lines()
-        .filter_map(|l| {
-            l.map_err(Into::into)
-                .and_then(|line| parse_func(year, &line))
-                .transpose()
-        })
-        .collect();
-    let lines = lines?;
+    let mut b = BufReader::new(infile);
+    let mut line = String::new();
+    let mut lines = Vec::new();
+    loop {
+        if b.read_line(&mut line)? == 0 {
+            break;
+        }
+        if let Some(logline) = parse_func(year, &line)? {
+            lines.push(logline);
+        }
+    }
     debug!("results {}", lines.len());
     Ok(lines)
 }
@@ -153,7 +154,7 @@ pub fn parse_log_line_apache(_: i32, line: &str) -> Result<Option<LogLineSSH>, E
 
 #[cfg(test)]
 mod tests {
-    use chrono::Timelike;
+    use chrono::{Utc, Timelike, Datelike};
     use log::debug;
     use std::fs::File;
 
@@ -192,10 +193,11 @@ mod tests {
     #[test]
     #[ignore]
     fn test_parse_log_file_ssh() {
-        let fname = "/var/log/auth.log";
+        let fname = "tests/data/test_auth.log";
         let infile = File::open(fname).unwrap();
-        let results = parse_log_file(2019, infile, &parse_log_line_ssh).unwrap();
-        assert!(results.len() > 0);
+        let year = Utc::now().year();
+        let results = parse_log_file(year, infile, &parse_log_line_ssh).unwrap();
+        assert!(results.len() == 992);
     }
 
     #[test]

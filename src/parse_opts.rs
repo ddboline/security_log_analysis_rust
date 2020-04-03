@@ -200,16 +200,14 @@ impl ParseOpts {
                 );
                 debug!("{}", command);
                 let stream = Exec::shell(command).stream_stdout()?;
-                let reader = BufReader::new(stream);
-                let inserts: Result<Vec<_>, Error> = reader
-                    .lines()
-                    .map(|line| {
-                        let l = line?;
-                        let val: IntrusionLogInsert = serde_json::from_str(&l)?;
-                        Ok(val)
-                    })
-                    .collect();
-                let inserts = inserts?;
+                let mut reader = BufReader::new(stream);
+                let mut line = String::new();
+                let mut inserts = Vec::new();
+                loop {
+                    if reader.read_line(&mut line)? == 0 {break;}
+                    let val: IntrusionLogInsert = serde_json::from_str(&line)?;
+                    inserts.push(val);
+                }
                 let new_hosts: HashSet<_> =
                     inserts.iter().map(|item| item.host.to_string()).collect();
                 let futures: Vec<_> = new_hosts

@@ -166,33 +166,39 @@ impl HostCountryMetadata {
             let exit_status = process.wait()?;
             if exit_status.success() {
                 if let Some(f) = process.stdout.as_ref() {
-                    let reader = BufReader::new(f);
-                    for line in reader.lines() {
-                        let l = match line {
-                            Ok(l) => l.trim().to_uppercase(),
+                    let mut reader = BufReader::new(f);
+                    let mut line = String::new();
+                    loop {
+                        match reader.read_line(&mut line) {
+                            Ok(0) => break,
                             Err(e) => {
                                 error!("{:?}", e);
                                 continue;
-                            }
-                        };
-                        if l.contains("QUERY RATE") {
-                            error!("Retry {} : {}", host, l.trim());
-                            break;
-                        } else if l.contains("KOREA") {
-                            return Ok("KR".to_string());
-                        } else if l.ends_with(".BR") {
-                            return Ok("BR".to_string());
-                        } else if l.contains("COMCAST CABLE") {
-                            return Ok("US".to_string());
-                        } else if l.contains("HINET-NET") {
-                            return Ok("TW".to_string());
-                        } else if l.contains(".JP") {
-                            return Ok("JP".to_string());
-                        }
-                        let tokens: Vec<_> = l.split_whitespace().collect();
-                        if tokens.len() >= 2 && tokens[0] == "COUNTRY:" {
-                            let code = tokens[1].to_string();
-                            return Ok(code);
+                            },
+                            Ok(_) => {
+                                let l_upper_case = line.trim().to_uppercase();
+                                if l_upper_case.contains("QUERY RATE") {
+                                    error!("Retry {} : {}", host, l_upper_case.trim());
+                                    break;
+                                } else if l_upper_case.contains("KOREA") {
+                                    return Ok("KR".to_string());
+                                } else if l_upper_case.ends_with(".BR") {
+                                    return Ok("BR".to_string());
+                                } else if l_upper_case.contains("COMCAST CABLE") {
+                                    return Ok("US".to_string());
+                                } else if l_upper_case.contains("HINET-NET") {
+                                    return Ok("TW".to_string());
+                                } else if l_upper_case.contains(".JP") {
+                                    return Ok("JP".to_string());
+                                }
+                                let mut items = l_upper_case.split_whitespace();
+                                if let Some(key) = items.next() {
+                                    if key != "COUNTRY:" {break;}
+                                    if let Some(code) = items.next() {
+                                        return Ok(code.to_string());
+                                    }
+                                }
+                            },
                         }
                     }
                 } else if !command.contains(" -B ") {
