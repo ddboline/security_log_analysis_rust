@@ -310,6 +310,7 @@ mod test {
     }
 
     #[test]
+    #[ignore]
     fn test_get_whois_country_info_cmd() -> Result<(), Error> {
         assert_eq!(
             HostCountryMetadata::get_whois_country_info_cmd("36.110.50.217")?,
