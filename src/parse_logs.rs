@@ -212,9 +212,10 @@ mod tests {
             "ssh",
             "home.ddboline.net",
             &parse_log_line_ssh,
-            "/var/log/auth.log",
+            "tests/data/test_auth.log",
         )
         .unwrap();
-        assert!(results.len() > 0);
+        println!("{}", results.len());
+        assert!(results.len() == 1);
     }
 }
