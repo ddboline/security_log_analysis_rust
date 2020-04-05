@@ -174,7 +174,7 @@ impl HostCountryMetadata {
                             Err(e) => {
                                 error!("{:?}", e);
                                 continue;
-                            },
+                            }
                             Ok(_) => {
                                 let l_upper_case = line.trim().to_uppercase();
                                 if l_upper_case.contains("QUERY RATE") {
@@ -193,13 +193,16 @@ impl HostCountryMetadata {
                                 }
                                 let mut items = l_upper_case.split_whitespace();
                                 if let Some(key) = items.next() {
-                                    if key != "COUNTRY:" {break;}
+                                    if key != "COUNTRY:" {
+                                        break;
+                                    }
                                     if let Some(code) = items.next() {
                                         return Ok(code.to_string());
                                     }
                                 }
-                            },
+                            }
                         }
+                        line.clear();
                     }
                 } else if !command.contains(" -B ") {
                     let new_command = format!("whois -B {}", host);

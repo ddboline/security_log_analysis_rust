@@ -13,7 +13,7 @@ use std::{
 };
 use structopt::StructOpt;
 use subprocess::Exec;
-use tokio::{fs::File, io::AsyncWriteExt};
+use tokio::{fs::File, io::AsyncWriteExt, task::spawn_blocking};
 
 use crate::{
     config::Config,
@@ -53,7 +53,7 @@ impl FromStr for ParseActions {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct HostName(pub String);
 
 impl FromStr for HostName {
@@ -111,20 +111,34 @@ impl ParseOpts {
                 let server = opts
                     .server
                     .ok_or_else(|| format_err!("Must specify server for parse action"))?;
-                let mut inserts = parse_all_log_files(
-                    &metadata,
-                    "ssh",
-                    &server.0,
-                    &parse_log_line_ssh,
-                    "/var/log/auth.log",
-                )?;
-                inserts.extend(parse_all_log_files(
-                    &metadata,
-                    "apache",
-                    &server.0,
-                    &parse_log_line_apache,
-                    "/var/log/apache2/access.log",
-                )?);
+                debug!("got here {}", line!());
+                let mut inserts = {
+                    let metadata = metadata.clone();
+                    let server = server.clone();
+                    spawn_blocking(move || {
+                        parse_all_log_files(
+                            &metadata,
+                            "ssh",
+                            &server.0,
+                            &parse_log_line_ssh,
+                            "/var/log/auth.log",
+                        )
+                    })
+                    .await?
+                }?;
+                inserts.extend({
+                    let metadata = metadata.clone();
+                    spawn_blocking(move || {
+                        parse_all_log_files(
+                            &metadata,
+                            "apache",
+                            &server.0,
+                            &parse_log_line_apache,
+                            "/var/log/apache2/access.log",
+                        )
+                    })
+                    .await?
+                }?);
                 stdout.send(format!("new lines {}", inserts.len()))?;
                 let new_hosts: HashSet<_> =
                     inserts.iter().map(|item| item.host.to_string()).collect();
@@ -136,7 +150,7 @@ impl ParseOpts {
                     })
                     .collect();
                 try_join_all(futures).await?;
-                insert_intrusion_log(&pool, &inserts)?;
+                spawn_blocking(move || insert_intrusion_log(&pool, &inserts)).await??;
             }
             ParseActions::Serialize => {
                 let config = Config::init_config()?;
@@ -149,7 +163,14 @@ impl ParseOpts {
                     .server
                     .ok_or_else(|| format_err!("Must specify server for ser action"))?;
                 for service in &["ssh", "apache"] {
-                    let results = get_intrusion_log_filtered(&pool, service, &server.0, datetime)?;
+                    let results = {
+                        let pool = pool.clone();
+                        let server = server.clone();
+                        spawn_blocking(move || {
+                            get_intrusion_log_filtered(&pool, service, &server.0, datetime)
+                        })
+                        .await?
+                    }?;
                     for result in results {
                         stdout.send(serde_json::to_string(&result)?)?;
                     }
@@ -174,22 +195,34 @@ impl ParseOpts {
                     return Err(format_err!("{} failed", command));
                 }
 
-                let max_datetime = get_intrusion_log_max_datetime(&pool, "ssh", &server.0)?
-                    .as_ref()
-                    .and_then(|dt| {
-                        if let Ok(Some(dt2)) =
-                            get_intrusion_log_max_datetime(&pool, "apache", &server.0)
-                        {
-                            if *dt > dt2 {
-                                Some(*dt)
+                fn get_max_datetime(
+                    pool: &PgPool,
+                    server: &HostName,
+                ) -> Result<DateTime<Utc>, Error> {
+                    let result = get_intrusion_log_max_datetime(&pool, "ssh", &server.0)?
+                        .as_ref()
+                        .and_then(|dt| {
+                            if let Ok(Some(dt2)) =
+                                get_intrusion_log_max_datetime(&pool, "apache", &server.0)
+                            {
+                                if *dt > dt2 {
+                                    Some(*dt)
+                                } else {
+                                    Some(dt2)
+                                }
                             } else {
-                                Some(dt2)
+                                Some(*dt)
                             }
-                        } else {
-                            Some(*dt)
-                        }
-                    })
-                    .unwrap_or_else(Utc::now);
+                        })
+                        .unwrap_or_else(Utc::now);
+                    Ok(result)
+                }
+
+                let max_datetime = {
+                    let pool = pool.clone();
+                    let server = server.clone();
+                    spawn_blocking(move || get_max_datetime(&pool, &server)).await?
+                }?;
                 debug!("{:?}", max_datetime);
                 let command = format!(
                     r#"ssh {}@{} "security-log-parse-rust ser -s {} -d {}""#,
@@ -204,9 +237,12 @@ impl ParseOpts {
                 let mut line = String::new();
                 let mut inserts = Vec::new();
                 loop {
-                    if reader.read_line(&mut line)? == 0 {break;}
+                    if reader.read_line(&mut line)? == 0 {
+                        break;
+                    }
                     let val: IntrusionLogInsert = serde_json::from_str(&line)?;
                     inserts.push(val);
+                    line.clear();
                 }
                 let new_hosts: HashSet<_> =
                     inserts.iter().map(|item| item.host.to_string()).collect();

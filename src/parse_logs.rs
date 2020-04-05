@@ -69,6 +69,7 @@ where
         if let Some(logline) = parse_func(year, &line)? {
             lines.push(logline);
         }
+        line.clear();
     }
     debug!("results {}", lines.len());
     Ok(lines)
@@ -154,7 +155,7 @@ pub fn parse_log_line_apache(_: i32, line: &str) -> Result<Option<LogLineSSH>, E
 
 #[cfg(test)]
 mod tests {
-    use chrono::{Utc, Timelike, Datelike};
+    use chrono::{Datelike, Timelike, Utc};
     use log::debug;
     use std::fs::File;
 
