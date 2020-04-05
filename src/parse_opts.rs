@@ -177,24 +177,6 @@ impl ParseOpts {
                 }
             }
             ParseActions::Sync => {
-                let config = Config::init_config()?;
-                let pool = PgPool::new(&config.database_url);
-                let metadata = HostCountryMetadata::from_pool(&pool)?;
-                debug!("{:?}", opts);
-                let server = opts
-                    .server
-                    .ok_or_else(|| format_err!("Must specify server for sync action"))?;
-                let username = opts.username.as_ref().unwrap_or_else(|| &config.username);
-                let command = format!(
-                    r#"ssh {}@{} "security-log-parse-rust parse -s {}""#,
-                    username, server.0, server.0,
-                );
-                debug!("{}", command);
-                let status = Exec::shell(&command).join()?.success();
-                if !status {
-                    return Err(format_err!("{} failed", command));
-                }
-
                 fn get_max_datetime(
                     pool: &PgPool,
                     server: &HostName,
@@ -216,6 +198,24 @@ impl ParseOpts {
                         })
                         .unwrap_or_else(Utc::now);
                     Ok(result)
+                }
+
+                let config = Config::init_config()?;
+                let pool = PgPool::new(&config.database_url);
+                let metadata = HostCountryMetadata::from_pool(&pool)?;
+                debug!("{:?}", opts);
+                let server = opts
+                    .server
+                    .ok_or_else(|| format_err!("Must specify server for sync action"))?;
+                let username = opts.username.as_ref().unwrap_or_else(|| &config.username);
+                let command = format!(
+                    r#"ssh {}@{} "security-log-parse-rust parse -s {}""#,
+                    username, server.0, server.0,
+                );
+                debug!("{}", command);
+                let status = Exec::shell(&command).join()?.success();
+                if !status {
+                    return Err(format_err!("{} failed", command));
                 }
 
                 let max_datetime = {
