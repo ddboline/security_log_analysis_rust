@@ -198,7 +198,8 @@ mod tests {
         let infile = File::open(fname).unwrap();
         let year = Utc::now().year();
         let results = parse_log_file(year, infile, &parse_log_line_ssh).unwrap();
-        assert!(results.len() == 992);
+        debug!("{}", results.len());
+        assert!(results.len() == 92);
     }
 
     #[test]
@@ -216,7 +217,7 @@ mod tests {
             "tests/data/test_auth.log",
         )
         .unwrap();
-        println!("{}", results.len());
-        assert!(results.len() == 1);
+        debug!("{}", results.len());
+        assert!(results.len() == 92);
     }
 }

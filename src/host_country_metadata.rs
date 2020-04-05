@@ -169,6 +169,7 @@ impl HostCountryMetadata {
                     let mut reader = BufReader::new(f);
                     let mut line = String::new();
                     loop {
+                        line.clear();
                         match reader.read_line(&mut line) {
                             Ok(0) => break,
                             Err(e) => {
@@ -194,7 +195,7 @@ impl HostCountryMetadata {
                                 let mut items = l_upper_case.split_whitespace();
                                 if let Some(key) = items.next() {
                                     if key != "COUNTRY:" {
-                                        break;
+                                        continue;
                                     }
                                     if let Some(code) = items.next() {
                                         return Ok(code.to_string());
@@ -202,7 +203,6 @@ impl HostCountryMetadata {
                                 }
                             }
                         }
-                        line.clear();
                     }
                 } else if !command.contains(" -B ") {
                     let new_command = format!("whois -B {}", host);
