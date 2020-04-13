@@ -6,10 +6,12 @@ use std::{
     sync::Arc,
 };
 
+use crate::stack_string::StackString;
+
 #[derive(Default, Debug)]
 pub struct ConfigInner {
-    pub database_url: String,
-    pub username: String,
+    pub database_url: StackString,
+    pub username: StackString,
     pub export_dir: Option<PathBuf>,
 }
 
@@ -42,8 +44,11 @@ impl Config {
 
         let conf = ConfigInner {
             database_url: var("DATABASE_URL")
-                .map_err(|e| format_err!("DATABASE_URL must be set {}", e))?,
-            username: var("USER").map_err(|e| format_err!("USER must be set {}", e))?,
+                .map_err(|e| format_err!("DATABASE_URL must be set {}", e))?
+                .into(),
+            username: var("USER")
+                .map_err(|e| format_err!("USER must be set {}", e))?
+                .into(),
             export_dir: var_os("EXPORT_DIR").map(|s| s.into()),
         };
 

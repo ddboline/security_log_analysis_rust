@@ -4,12 +4,14 @@ use deadpool_postgres::{ClientWrapper, Config, Pool};
 use std::{env::set_var, fmt, sync::Arc};
 use tokio_postgres::{error::Error as PgError, Config as PgConfig, NoTls};
 
+use crate::stack_string::StackString;
+
 /// Wrapper around `r2d2::Pool`
 /// The only way to use `PgPoolPg` is through the get method, which returns a
 /// `PooledConnection` object
 #[derive(Clone, Default)]
 pub struct PgPoolPg {
-    pgurl: Arc<String>,
+    pgurl: Arc<StackString>,
     pool: Option<Pool>,
 }
 
@@ -41,7 +43,7 @@ impl PgPoolPg {
         }
 
         Self {
-            pgurl: Arc::new(pgurl.to_string()),
+            pgurl: Arc::new(pgurl.into()),
             pool: Some(
                 config
                     .create_pool(NoTls)

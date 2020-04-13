@@ -23,6 +23,7 @@ pub mod pgpool;
 pub mod pgpool_pg;
 pub mod reports;
 pub mod schema;
+pub mod stack_string;
 pub mod stdout_channel;
 
 use anyhow::{format_err, Error};

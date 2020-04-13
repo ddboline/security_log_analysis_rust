@@ -19,13 +19,14 @@ use crate::{
         get_country_code_list, get_host_country, insert_host_country, CountryCode, HostCountry,
     },
     pgpool::PgPool,
+    stack_string::StackString,
 };
 
 #[derive(Clone, Debug)]
 pub struct HostCountryMetadata {
     pub pool: Option<PgPool>,
-    pub country_code_map: Arc<RwLock<HashMap<String, CountryCode>>>,
-    pub host_country_map: Arc<RwLock<HashMap<String, HostCountry>>>,
+    pub country_code_map: Arc<RwLock<HashMap<StackString, CountryCode>>>,
+    pub host_country_map: Arc<RwLock<HashMap<StackString, HostCountry>>>,
     pub whois: Arc<WhoIs>,
     pub client: Client,
 }
@@ -55,13 +56,13 @@ impl HostCountryMetadata {
             country_code_map: Arc::new(RwLock::new(
                 get_country_code_list(&pool)?
                     .into_iter()
-                    .map(|item| (item.code.to_string(), item))
+                    .map(|item| (item.code.clone(), item))
                     .collect(),
             )),
             host_country_map: Arc::new(RwLock::new(
                 get_host_country(&pool)?
                     .into_iter()
-                    .map(|item| (item.host.to_string(), item))
+                    .map(|item| (item.host.clone(), item))
                     .collect(),
             )),
             ..Self::default()
@@ -75,14 +76,14 @@ impl HostCountryMetadata {
             let ipaddr = (host, 22).to_socket_addrs()?.next().and_then(|s| {
                 let ip = s.ip();
                 if ip.is_ipv4() {
-                    Some(ip.to_string())
+                    Some(ip.to_string().into())
                 } else {
                     None
                 }
             });
             let host_country = HostCountry {
-                host: host.to_string(),
-                code: code.to_string(),
+                host: host.into(),
+                code: code.into(),
                 ipaddr,
             };
             let host_exists = { (*self.host_country_map.read()).contains_key(host) };
@@ -92,7 +93,7 @@ impl HostCountryMetadata {
                     if let Some(pool) = self.pool.as_ref() {
                         insert_host_country(pool, &host_country)?;
                     }
-                    (*lock).insert(host.to_string(), host_country);
+                    (*lock).insert(host.into(), host_country);
                 }
             }
             return Ok(code.to_string());
@@ -105,7 +106,7 @@ impl HostCountryMetadata {
             return Ok(entry.code.to_string());
         }
         let whois_code = self.get_whois_country_info(host).await?;
-        self.insert_host_code(host, &whois_code)
+        self.insert_host_code(host, whois_code.as_str())
     }
 
     async fn run_lookup(&self, host: &str) -> Result<String, WhoIsError> {
@@ -113,7 +114,7 @@ impl HostCountryMetadata {
         self.whois.lookup(opts).await
     }
 
-    pub async fn get_whois_country_info(&self, host: &str) -> Result<String, Error> {
+    pub async fn get_whois_country_info(&self, host: &str) -> Result<StackString, Error> {
         if let Ok(country) = self.get_whois_country_info_ipwhois(&host).await {
             return Ok(country);
         }
@@ -135,10 +136,10 @@ impl HostCountryMetadata {
         Self::get_whois_country_info_cmd(host)
     }
 
-    pub async fn get_whois_country_info_ipwhois(&self, host: &str) -> Result<String, Error> {
+    pub async fn get_whois_country_info_ipwhois(&self, host: &str) -> Result<StackString, Error> {
         #[derive(Serialize, Deserialize)]
         struct IpWhoIsOutput {
-            country_code: String,
+            country_code: StackString,
         }
 
         let ipaddr = (host, 22)
@@ -160,8 +161,8 @@ impl HostCountryMetadata {
         Ok(output.country_code)
     }
 
-    pub fn get_whois_country_info_cmd(host: &str) -> Result<String, Error> {
-        fn _get_whois_country_info(command: &str, host: &str) -> Result<String, Error> {
+    pub fn get_whois_country_info_cmd(host: &str) -> Result<StackString, Error> {
+        fn _get_whois_country_info(command: &str, host: &str) -> Result<StackString, Error> {
             let mut process = Exec::shell(command).stdout(Redirection::Pipe).popen()?;
             let exit_status = process.wait()?;
             if exit_status.success() {
@@ -182,15 +183,15 @@ impl HostCountryMetadata {
                                     error!("Retry {} : {}", host, l_upper_case.trim());
                                     break;
                                 } else if l_upper_case.contains("KOREA") {
-                                    return Ok("KR".to_string());
+                                    return Ok("KR".into());
                                 } else if l_upper_case.ends_with(".BR") {
-                                    return Ok("BR".to_string());
+                                    return Ok("BR".into());
                                 } else if l_upper_case.contains("COMCAST CABLE") {
-                                    return Ok("US".to_string());
+                                    return Ok("US".into());
                                 } else if l_upper_case.contains("HINET-NET") {
-                                    return Ok("TW".to_string());
+                                    return Ok("TW".into());
                                 } else if l_upper_case.contains(".JP") {
-                                    return Ok("JP".to_string());
+                                    return Ok("JP".into());
                                 }
                                 let mut items = l_upper_case.split_whitespace();
                                 if let Some(key) = items.next() {
@@ -198,7 +199,7 @@ impl HostCountryMetadata {
                                         continue;
                                     }
                                     if let Some(code) = items.next() {
-                                        return Ok(code.to_string());
+                                        return Ok(code.into());
                                     }
                                 }
                             }
@@ -255,7 +256,7 @@ impl HostCountryMetadata {
 }
 
 enum LineResult {
-    Country(String),
+    Country(StackString),
     Break,
     Continue,
 }
@@ -264,19 +265,19 @@ fn process_line(line: &str) -> LineResult {
     if line.contains("QUERY RATE") {
         LineResult::Break
     } else if line.contains("KOREA") {
-        LineResult::Country("KR".to_string())
+        LineResult::Country("KR".into())
     } else if line.ends_with(".BR") {
-        LineResult::Country("BR".to_string())
+        LineResult::Country("BR".into())
     } else if line.contains("COMCAST CABLE") {
-        LineResult::Country("US".to_string())
+        LineResult::Country("US".into())
     } else if line.contains("HINET-NET") {
-        LineResult::Country("TW".to_string())
+        LineResult::Country("TW".into())
     } else if line.contains(".JP") {
-        LineResult::Country("JP".to_string())
+        LineResult::Country("JP".into())
     } else {
         let tokens: Vec<_> = line.split_whitespace().collect();
         if tokens.len() >= 2 && tokens[0] == "COUNTRY:" {
-            let code = tokens[1].to_string();
+            let code = tokens[1].into();
             LineResult::Country(code)
         } else {
             LineResult::Continue
@@ -297,18 +298,21 @@ mod test {
         let hm = HostCountryMetadata::new();
         assert_eq!(
             hm.get_whois_country_info("36.110.50.217").await?,
-            "CN".to_string()
+            "CN".into()
         );
-        assert_eq!(
-            hm.get_whois_country_info("82.73.86.33").await?,
-            "NL".to_string()
-        );
+        assert_eq!(hm.get_whois_country_info("82.73.86.33").await?, "NL".into());
         assert_eq!(
             hm.get_whois_country_info("217.29.210.13").await?,
-            "ZA".to_string()
+            "ZA".into()
         );
-        assert_eq!(hm.get_whois_country_info("31.162.240.19").await?, "RU");
-        assert_eq!(hm.get_whois_country_info("174.61.53.116").await?, "US");
+        assert_eq!(
+            hm.get_whois_country_info("31.162.240.19").await?,
+            "RU".into()
+        );
+        assert_eq!(
+            hm.get_whois_country_info("174.61.53.116").await?,
+            "US".into()
+        );
         Ok(())
     }
 
@@ -317,23 +321,23 @@ mod test {
     fn test_get_whois_country_info_cmd() -> Result<(), Error> {
         assert_eq!(
             HostCountryMetadata::get_whois_country_info_cmd("36.110.50.217")?,
-            "CN".to_string()
+            "CN".into()
         );
         assert_eq!(
             HostCountryMetadata::get_whois_country_info_cmd("82.73.86.33")?,
-            "NL".to_string()
+            "NL".into()
         );
         assert_eq!(
             HostCountryMetadata::get_whois_country_info_cmd("217.29.210.13")?,
-            "EU".to_string()
+            "EU".into()
         );
         assert_eq!(
             HostCountryMetadata::get_whois_country_info_cmd("31.162.240.19")?,
-            "RU"
+            "RU".into()
         );
         assert_eq!(
             HostCountryMetadata::get_whois_country_info_cmd("174.61.53.116")?,
-            "US"
+            "US".into()
         );
         Ok(())
     }
@@ -343,23 +347,23 @@ mod test {
         let hm = HostCountryMetadata::new();
         assert_eq!(
             hm.get_whois_country_info_ipwhois("36.110.50.217").await?,
-            "CN".to_string()
+            "CN".into()
         );
         assert_eq!(
             hm.get_whois_country_info_ipwhois("82.73.86.33").await?,
-            "NL".to_string()
+            "NL".into()
         );
         assert_eq!(
             hm.get_whois_country_info_ipwhois("217.29.210.13").await?,
-            "ZA".to_string()
+            "ZA".into()
         );
         assert_eq!(
             hm.get_whois_country_info_ipwhois("31.162.240.19").await?,
-            "RU"
+            "RU".into()
         );
         assert_eq!(
             hm.get_whois_country_info_ipwhois("174.61.53.116").await?,
-            "US"
+            "US".into()
         );
         Ok(())
     }

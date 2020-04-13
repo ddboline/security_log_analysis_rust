@@ -12,12 +12,13 @@ use std::{
 use crate::{
     host_country_metadata::HostCountryMetadata,
     models::{get_intrusion_log_max_datetime, IntrusionLogInsert},
+    stack_string::StackString,
 };
 
 #[derive(Debug, PartialEq, Eq, Hash)]
 pub struct LogLineSSH {
-    pub host: String,
-    pub user: Option<String>,
+    pub host: StackString,
+    pub user: Option<StackString>,
     pub timestamp: DateTime<Utc>,
 }
 
@@ -47,8 +48,8 @@ pub fn parse_log_line_ssh(year: i32, line: &str) -> Result<Option<LogLineSSH>, E
         .trim();
     let host = if host.len() > 60 { &host[0..60] } else { host };
     let result = LogLineSSH {
-        host: host.to_string(),
-        user: Some(user.to_string()),
+        host: host.into(),
+        user: Some(user.into()),
         timestamp: timestamp.with_timezone(&Utc),
     };
     Ok(Some(result))
@@ -119,8 +120,8 @@ where
             };
             if cond {
                 Some(IntrusionLogInsert {
-                    service: service.to_string(),
-                    server: server.to_string(),
+                    service: service.into(),
+                    server: server.into(),
                     datetime: log_line.timestamp,
                     host: log_line.host,
                     username: log_line.user,
@@ -146,7 +147,7 @@ pub fn parse_log_line_apache(_: i32, line: &str) -> Result<Option<LogLineSSH>, E
     let timestr = tokens[3..5].join("").replace("[", "").replace("]", "");
     let timestamp = offset.datetime_from_str(&timestr, "%e/%B/%Y:%H:%M:%S%z")?;
     let result = LogLineSSH {
-        host: host.to_string(),
+        host: host.into(),
         user: None,
         timestamp: timestamp.with_timezone(&Utc),
     };
@@ -175,8 +176,8 @@ mod tests {
                          36.110.50.217 port 28898\n";
         let result = parse_log_line_ssh(2019, test_line).unwrap().unwrap();
         debug!("{:?}", result);
-        assert_eq!(result.user, Some("test".to_string()));
-        assert_eq!(result.host, "36.110.50.217".to_string());
+        assert_eq!(result.user, Some("test".into()));
+        assert_eq!(result.host, "36.110.50.217".into());
         assert_eq!(result.timestamp.hour(), 4);
     }
 
@@ -187,7 +188,7 @@ mod tests {
         "#;
         let result = parse_log_line_apache(2019, test_line).unwrap().unwrap();
         assert_eq!(result.user, None);
-        assert_eq!(result.host, "82.73.86.33".to_string());
+        assert_eq!(result.host, "82.73.86.33".into());
         assert_eq!(result.timestamp.hour(), 22);
     }
 
@@ -206,7 +207,7 @@ mod tests {
     #[ignore]
     fn test_parse_all_log_files_ssh() {
         let config = Config::init_config().unwrap();
-        let pool = PgPool::new(&config.database_url);
+        let pool = PgPool::new(config.database_url.as_str());
         let mut hc = HostCountryMetadata::from_pool(&pool).unwrap();
         hc.pool = None;
         let results = parse_all_log_files(

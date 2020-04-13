@@ -7,43 +7,44 @@ use crate::{
     iso_8601_datetime,
     pgpool::PgPool,
     schema::{country_code, host_country, intrusion_log},
+    stack_string::StackString,
 };
 
 #[derive(Queryable, Clone, Debug, Insertable)]
 #[table_name = "country_code"]
 pub struct CountryCode {
-    pub code: String,
-    pub country: String,
+    pub code: StackString,
+    pub country: StackString,
 }
 
 #[derive(Queryable, Clone, Debug, Insertable)]
 #[table_name = "host_country"]
 pub struct HostCountry {
-    pub host: String,
-    pub code: String,
-    pub ipaddr: Option<String>,
+    pub host: StackString,
+    pub code: StackString,
+    pub ipaddr: Option<StackString>,
 }
 
 #[derive(Queryable, Clone, Debug, Serialize, Deserialize)]
 pub struct IntrusionLog {
     pub id: i32,
-    pub service: String,
-    pub server: String,
+    pub service: StackString,
+    pub server: StackString,
     #[serde(with = "iso_8601_datetime")]
     pub datetime: DateTime<Utc>,
-    pub host: String,
-    pub username: Option<String>,
+    pub host: StackString,
+    pub username: Option<StackString>,
 }
 
 #[derive(Insertable, Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[table_name = "intrusion_log"]
 pub struct IntrusionLogInsert {
-    pub service: String,
-    pub server: String,
+    pub service: StackString,
+    pub server: StackString,
     #[serde(with = "iso_8601_datetime")]
     pub datetime: DateTime<Utc>,
-    pub host: String,
-    pub username: Option<String>,
+    pub host: StackString,
+    pub username: Option<StackString>,
 }
 
 pub fn get_country_code_list(pool: &PgPool) -> Result<Vec<CountryCode>, Error> {
@@ -140,7 +141,7 @@ mod tests {
         use crate::schema::country_code::dsl::country_code;
         let config = Config::init_config().unwrap();
 
-        let pool = PgPool::new(&config.database_url);
+        let pool = PgPool::new(config.database_url.as_str());
         let conn = pool.get().unwrap();
 
         let country_code_list: Vec<CountryCode> = country_code.load(&conn).unwrap();
@@ -157,7 +158,7 @@ mod tests {
         use crate::schema::host_country::dsl::host_country;
         let config = Config::init_config().unwrap();
 
-        let pool = PgPool::new(&config.database_url);
+        let pool = PgPool::new(config.database_url.as_str());
         let conn = pool.get().unwrap();
 
         let host_country_list: Vec<HostCountry> = host_country.limit(10).load(&conn).unwrap();
@@ -174,7 +175,7 @@ mod tests {
         use crate::schema::intrusion_log::dsl::intrusion_log;
         let config = Config::init_config().unwrap();
 
-        let pool = PgPool::new(&config.database_url);
+        let pool = PgPool::new(config.database_url.as_str());
         let conn = pool.get().unwrap();
 
         let intrusion_log_list: Vec<IntrusionLog> = intrusion_log.limit(10).load(&conn).unwrap();
