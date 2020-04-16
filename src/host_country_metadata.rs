@@ -291,8 +291,10 @@ mod test {
     use log::debug;
     use std::net::ToSocketAddrs;
 
-    use crate::host_country_metadata::HostCountryMetadata;
-    use crate::stack_string::{StackString, StringExt};
+    use crate::{
+        host_country_metadata::HostCountryMetadata,
+        stack_string::{StackString, StringExt},
+    };
 
     #[tokio::test]
     async fn test_get_whois_country_info() -> Result<(), Error> {
@@ -301,7 +303,10 @@ mod test {
             hm.get_whois_country_info("36.110.50.217").await?.as_str(),
             "CN"
         );
-        assert_eq!(hm.get_whois_country_info("82.73.86.33").await?.as_str(), "NL");
+        assert_eq!(
+            hm.get_whois_country_info("82.73.86.33").await?.as_str(),
+            "NL"
+        );
         assert_eq!(
             hm.get_whois_country_info("217.29.210.13").await?.as_str(),
             "ZA"
@@ -347,23 +352,33 @@ mod test {
     async fn test_get_whois_country_info_ipwhois() -> Result<(), Error> {
         let hm = HostCountryMetadata::new();
         assert_eq!(
-            hm.get_whois_country_info_ipwhois("36.110.50.217").await?.as_str(),
+            hm.get_whois_country_info_ipwhois("36.110.50.217")
+                .await?
+                .as_str(),
             "CN"
         );
         assert_eq!(
-            hm.get_whois_country_info_ipwhois("82.73.86.33").await?.as_str(),
+            hm.get_whois_country_info_ipwhois("82.73.86.33")
+                .await?
+                .as_str(),
             "NL"
         );
         assert_eq!(
-            hm.get_whois_country_info_ipwhois("217.29.210.13").await?.as_str(),
+            hm.get_whois_country_info_ipwhois("217.29.210.13")
+                .await?
+                .as_str(),
             "ZA"
         );
         assert_eq!(
-            hm.get_whois_country_info_ipwhois("31.162.240.19").await?.as_str(),
+            hm.get_whois_country_info_ipwhois("31.162.240.19")
+                .await?
+                .as_str(),
             "RU"
         );
         assert_eq!(
-            hm.get_whois_country_info_ipwhois("174.61.53.116").await?.as_str(),
+            hm.get_whois_country_info_ipwhois("174.61.53.116")
+                .await?
+                .as_str(),
             "US"
         );
         Ok(())

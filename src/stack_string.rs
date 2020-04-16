@@ -8,14 +8,16 @@ use diesel::{
     sql_types::Text,
 };
 use inlinable_string::InlinableString;
-use serde::{Deserialize, Serialize};
-use std::{borrow::Borrow, io::Write, str::FromStr};
-use tokio_postgres::types::{FromSql, IsNull, ToSql, Type};
-use std::ops::{Deref, DerefMut};
-use std::borrow::Cow;
 pub use inlinable_string::StringExt;
-use std::string::{FromUtf16Error, FromUtf8Error};
-
+use serde::{Deserialize, Serialize};
+use std::{
+    borrow::{Borrow, Cow},
+    io::Write,
+    ops::{Deref, DerefMut},
+    str::FromStr,
+    string::{FromUtf16Error, FromUtf8Error},
+};
+use tokio_postgres::types::{FromSql, IsNull, ToSql, Type};
 
 #[derive(
     Serialize,
