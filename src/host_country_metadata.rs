@@ -106,7 +106,7 @@ impl HostCountryMetadata {
             return Ok(entry.code.to_string());
         }
         let whois_code = self.get_whois_country_info(host).await?;
-        self.insert_host_code(host, whois_code.as_str())
+        self.insert_host_code(host, &whois_code)
     }
 
     async fn run_lookup(&self, host: &str) -> Result<String, WhoIsError> {
@@ -292,26 +292,27 @@ mod test {
     use std::net::ToSocketAddrs;
 
     use crate::host_country_metadata::HostCountryMetadata;
+    use crate::stack_string::{StackString, StringExt};
 
     #[tokio::test]
     async fn test_get_whois_country_info() -> Result<(), Error> {
         let hm = HostCountryMetadata::new();
         assert_eq!(
-            hm.get_whois_country_info("36.110.50.217").await?,
-            "CN".into()
+            hm.get_whois_country_info("36.110.50.217").await?.as_str(),
+            "CN"
         );
-        assert_eq!(hm.get_whois_country_info("82.73.86.33").await?, "NL".into());
+        assert_eq!(hm.get_whois_country_info("82.73.86.33").await?.as_str(), "NL");
         assert_eq!(
-            hm.get_whois_country_info("217.29.210.13").await?,
-            "ZA".into()
-        );
-        assert_eq!(
-            hm.get_whois_country_info("31.162.240.19").await?,
-            "RU".into()
+            hm.get_whois_country_info("217.29.210.13").await?.as_str(),
+            "ZA"
         );
         assert_eq!(
-            hm.get_whois_country_info("174.61.53.116").await?,
-            "US".into()
+            hm.get_whois_country_info("31.162.240.19").await?.as_str(),
+            "RU"
+        );
+        assert_eq!(
+            hm.get_whois_country_info("174.61.53.116").await?.as_str(),
+            "US"
         );
         Ok(())
     }
@@ -320,24 +321,24 @@ mod test {
     #[ignore]
     fn test_get_whois_country_info_cmd() -> Result<(), Error> {
         assert_eq!(
-            HostCountryMetadata::get_whois_country_info_cmd("36.110.50.217")?,
-            "CN".into()
+            HostCountryMetadata::get_whois_country_info_cmd("36.110.50.217")?.as_str(),
+            "CN"
         );
         assert_eq!(
-            HostCountryMetadata::get_whois_country_info_cmd("82.73.86.33")?,
-            "NL".into()
+            HostCountryMetadata::get_whois_country_info_cmd("82.73.86.33")?.as_str(),
+            "NL"
         );
         assert_eq!(
-            HostCountryMetadata::get_whois_country_info_cmd("217.29.210.13")?,
-            "EU".into()
+            HostCountryMetadata::get_whois_country_info_cmd("217.29.210.13")?.as_str(),
+            "EU"
         );
         assert_eq!(
-            HostCountryMetadata::get_whois_country_info_cmd("31.162.240.19")?,
-            "RU".into()
+            HostCountryMetadata::get_whois_country_info_cmd("31.162.240.19")?.as_str(),
+            "RU"
         );
         assert_eq!(
-            HostCountryMetadata::get_whois_country_info_cmd("174.61.53.116")?,
-            "US".into()
+            HostCountryMetadata::get_whois_country_info_cmd("174.61.53.116")?.as_str(),
+            "US"
         );
         Ok(())
     }
@@ -346,24 +347,24 @@ mod test {
     async fn test_get_whois_country_info_ipwhois() -> Result<(), Error> {
         let hm = HostCountryMetadata::new();
         assert_eq!(
-            hm.get_whois_country_info_ipwhois("36.110.50.217").await?,
-            "CN".into()
+            hm.get_whois_country_info_ipwhois("36.110.50.217").await?.as_str(),
+            "CN"
         );
         assert_eq!(
-            hm.get_whois_country_info_ipwhois("82.73.86.33").await?,
-            "NL".into()
+            hm.get_whois_country_info_ipwhois("82.73.86.33").await?.as_str(),
+            "NL"
         );
         assert_eq!(
-            hm.get_whois_country_info_ipwhois("217.29.210.13").await?,
-            "ZA".into()
+            hm.get_whois_country_info_ipwhois("217.29.210.13").await?.as_str(),
+            "ZA"
         );
         assert_eq!(
-            hm.get_whois_country_info_ipwhois("31.162.240.19").await?,
-            "RU".into()
+            hm.get_whois_country_info_ipwhois("31.162.240.19").await?.as_str(),
+            "RU"
         );
         assert_eq!(
-            hm.get_whois_country_info_ipwhois("174.61.53.116").await?,
-            "US".into()
+            hm.get_whois_country_info_ipwhois("174.61.53.116").await?.as_str(),
+            "US"
         );
         Ok(())
     }

@@ -141,7 +141,7 @@ mod tests {
         use crate::schema::country_code::dsl::country_code;
         let config = Config::init_config().unwrap();
 
-        let pool = PgPool::new(config.database_url.as_str());
+        let pool = PgPool::new(&config.database_url);
         let conn = pool.get().unwrap();
 
         let country_code_list: Vec<CountryCode> = country_code.load(&conn).unwrap();
@@ -158,7 +158,7 @@ mod tests {
         use crate::schema::host_country::dsl::host_country;
         let config = Config::init_config().unwrap();
 
-        let pool = PgPool::new(config.database_url.as_str());
+        let pool = PgPool::new(&config.database_url);
         let conn = pool.get().unwrap();
 
         let host_country_list: Vec<HostCountry> = host_country.limit(10).load(&conn).unwrap();
@@ -175,7 +175,7 @@ mod tests {
         use crate::schema::intrusion_log::dsl::intrusion_log;
         let config = Config::init_config().unwrap();
 
-        let pool = PgPool::new(config.database_url.as_str());
+        let pool = PgPool::new(&config.database_url);
         let conn = pool.get().unwrap();
 
         let intrusion_log_list: Vec<IntrusionLog> = intrusion_log.limit(10).load(&conn).unwrap();

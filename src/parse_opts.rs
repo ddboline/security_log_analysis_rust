@@ -107,7 +107,7 @@ impl ParseOpts {
         match opts.action {
             ParseActions::Parse => {
                 let config = Config::init_config()?;
-                let pool = PgPool::new(config.database_url.as_str());
+                let pool = PgPool::new(&config.database_url);
                 let metadata = HostCountryMetadata::from_pool(&pool)?;
                 let server = opts
                     .server
@@ -120,7 +120,7 @@ impl ParseOpts {
                         parse_all_log_files(
                             &metadata,
                             "ssh",
-                            server.0.as_str(),
+                            &server.0,
                             &parse_log_line_ssh,
                             "/var/log/auth.log",
                         )
@@ -133,7 +133,7 @@ impl ParseOpts {
                         parse_all_log_files(
                             &metadata,
                             "apache",
-                            server.0.as_str(),
+                            &server.0,
                             &parse_log_line_apache,
                             "/var/log/apache2/access.log",
                         )
@@ -155,7 +155,7 @@ impl ParseOpts {
             }
             ParseActions::Serialize => {
                 let config = Config::init_config()?;
-                let pool = PgPool::new(config.database_url.as_str());
+                let pool = PgPool::new(&config.database_url);
                 let datetime = match opts.datetime {
                     Some(d) => d.0,
                     None => Utc::now(),
@@ -168,7 +168,7 @@ impl ParseOpts {
                         let pool = pool.clone();
                         let server = server.clone();
                         spawn_blocking(move || {
-                            get_intrusion_log_filtered(&pool, service, server.0.as_str(), datetime)
+                            get_intrusion_log_filtered(&pool, service, &server.0, datetime)
                         })
                         .await?
                     }?;
@@ -182,11 +182,11 @@ impl ParseOpts {
                     pool: &PgPool,
                     server: &HostName,
                 ) -> Result<DateTime<Utc>, Error> {
-                    let result = get_intrusion_log_max_datetime(&pool, "ssh", server.0.as_str())?
+                    let result = get_intrusion_log_max_datetime(&pool, "ssh", &server.0)?
                         .as_ref()
                         .and_then(|dt| {
                             if let Ok(Some(dt2)) =
-                                get_intrusion_log_max_datetime(&pool, "apache", server.0.as_str())
+                                get_intrusion_log_max_datetime(&pool, "apache", &server.0)
                             {
                                 if *dt > dt2 {
                                     Some(*dt)
@@ -202,7 +202,7 @@ impl ParseOpts {
                 }
 
                 let config = Config::init_config()?;
-                let pool = PgPool::new(config.database_url.as_str());
+                let pool = PgPool::new(&config.database_url);
                 let metadata = HostCountryMetadata::from_pool(&pool)?;
                 debug!("{:?}", opts);
                 let server = opts
@@ -263,7 +263,7 @@ impl ParseOpts {
             }
             ParseActions::CountryPlot => {
                 let config = Config::init_config()?;
-                let pool = PgPoolPg::new(config.database_url.as_str());
+                let pool = PgPoolPg::new(&config.database_url);
                 let template = include_str!("../templates/COUNTRY_TEMPLATE.html");
                 for service in &["ssh", "apache"] {
                     for server_prefix in &["home", "cloud"] {
@@ -288,10 +288,10 @@ impl ParseOpts {
             }
             ParseActions::AddHost => {
                 let config = Config::init_config()?;
-                let pool = PgPool::new(config.database_url.as_str());
+                let pool = PgPool::new(&config.database_url);
                 let metadata = HostCountryMetadata::from_pool(&pool)?;
                 for host_country in &opts.host_codes {
-                    let vals: Vec<_> = host_country.as_str().split(':').collect();
+                    let vals: Vec<_> = host_country.split(':').collect();
                     if vals.len() < 2 {
                         continue;
                     }

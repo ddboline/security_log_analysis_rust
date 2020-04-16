@@ -167,6 +167,7 @@ mod tests {
             parse_all_log_files, parse_log_file, parse_log_line_apache, parse_log_line_ssh,
         },
         pgpool::PgPool,
+        stack_string::StackString,
     };
 
     #[test]
@@ -177,7 +178,7 @@ mod tests {
         let result = parse_log_line_ssh(2019, test_line).unwrap().unwrap();
         debug!("{:?}", result);
         assert_eq!(result.user, Some("test".into()));
-        assert_eq!(result.host, "36.110.50.217".into());
+        assert_eq!(result.host, "36.110.50.217");
         assert_eq!(result.timestamp.hour(), 4);
     }
 
@@ -188,7 +189,7 @@ mod tests {
         "#;
         let result = parse_log_line_apache(2019, test_line).unwrap().unwrap();
         assert_eq!(result.user, None);
-        assert_eq!(result.host, "82.73.86.33".into());
+        assert_eq!(result.host, "82.73.86.33");
         assert_eq!(result.timestamp.hour(), 22);
     }
 
@@ -207,7 +208,7 @@ mod tests {
     #[ignore]
     fn test_parse_all_log_files_ssh() {
         let config = Config::init_config().unwrap();
-        let pool = PgPool::new(config.database_url.as_str());
+        let pool = PgPool::new(&config.database_url);
         let mut hc = HostCountryMetadata::from_pool(&pool).unwrap();
         hc.pool = None;
         let results = parse_all_log_files(
