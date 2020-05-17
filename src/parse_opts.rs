@@ -95,6 +95,8 @@ pub struct ParseOpts {
     #[structopt(long)]
     /// List of <host>:<country code> combinations i.e. 8.8.8.8:US
     pub host_codes: Vec<StackString>,
+    #[structopt(short, long)]
+    pub number_of_entries: Option<usize>,
 }
 
 impl ParseOpts {
@@ -156,6 +158,7 @@ impl ParseOpts {
             ParseActions::Serialize => {
                 let config = Config::init_config()?;
                 let pool = PgPool::new(&config.database_url);
+                let number_of_entries = opts.number_of_entries;
                 let datetime = match opts.datetime {
                     Some(d) => d.0,
                     None => Utc::now(),
@@ -168,7 +171,13 @@ impl ParseOpts {
                         let pool = pool.clone();
                         let server = server.clone();
                         spawn_blocking(move || {
-                            get_intrusion_log_filtered(&pool, service, &server.0, datetime)
+                            get_intrusion_log_filtered(
+                                &pool,
+                                service,
+                                &server.0,
+                                datetime,
+                                number_of_entries,
+                            )
                         })
                         .await?
                     }?;
@@ -188,7 +197,7 @@ impl ParseOpts {
                             if let Ok(Some(dt2)) =
                                 get_intrusion_log_max_datetime(&pool, "apache", &server.0)
                             {
-                                if *dt > dt2 {
+                                if *dt < dt2 {
                                     Some(*dt)
                                 } else {
                                     Some(dt2)
@@ -239,13 +248,13 @@ impl ParseOpts {
                 let stream = Exec::shell(command).stream_stdout()?;
                 let mut reader = BufReader::new(stream);
                 let mut line = String::new();
-                let mut inserts = Vec::new();
+                let mut inserts = HashSet::new();
                 loop {
                     if reader.read_line(&mut line)? == 0 {
                         break;
                     }
                     let val: IntrusionLogInsert = serde_json::from_str(&line)?;
-                    inserts.push(val);
+                    inserts.insert(val);
                     line.clear();
                 }
                 let new_hosts: HashSet<_> =
@@ -258,6 +267,36 @@ impl ParseOpts {
                     })
                     .collect();
                 try_join_all(futures).await?;
+                let mut existing_entries = {
+                    let pool = pool.clone();
+                    let server = server.clone();
+                    spawn_blocking(move || {
+                        get_intrusion_log_filtered(
+                            &pool,
+                            "ssh",
+                            &server.0,
+                            max_datetime,
+                            None,
+                        )
+                    })
+                    .await?
+                }?;
+                existing_entries.extend_from_slice(&{
+                    let pool = pool.clone();
+                    let server = server.clone();
+                    spawn_blocking(move || {
+                        get_intrusion_log_filtered(
+                            &pool,
+                            "apache",
+                            &server.0,
+                            max_datetime,
+                            None,
+                        )
+                    })
+                    .await?
+                }?);
+                let existing_entries: HashSet<IntrusionLogInsert> = existing_entries.into_iter().map(Into::into).collect();
+                let inserts: Vec<_> = inserts.difference(&existing_entries).cloned().collect();
                 insert_intrusion_log(&pool, &inserts)?;
                 stdout.send(format!("inserts {}", inserts.len()).into())?;
             }
