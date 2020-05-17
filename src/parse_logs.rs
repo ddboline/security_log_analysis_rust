@@ -191,6 +191,14 @@ mod tests {
         assert_eq!(result.user, None);
         assert_eq!(result.host, "82.73.86.33");
         assert_eq!(result.timestamp.hour(), 22);
+
+        let test_line = r#"
+        67.250.95.88 - - [17/May/2020:01:49:57 +0000] "GET /garmin/fitbit/heartrate_plots HTTP/1.1" 200 7457 "https://cloud.ddboline.net/garmin" "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/81.0.4044.138 Safari/537.36"
+        "#;
+        let result = parse_log_line_apache(2020, test_line).unwrap().unwrap();
+        assert_eq!(result.user, None);
+        assert_eq!(result.host, "67.250.95.88");
+        assert_eq!(result.timestamp.hour(), 1);
     }
 
     #[test]
