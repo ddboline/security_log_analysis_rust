@@ -47,6 +47,18 @@ pub struct IntrusionLogInsert {
     pub username: Option<StackString>,
 }
 
+impl From<IntrusionLog> for IntrusionLogInsert {
+    fn from(item: IntrusionLog) -> Self {
+        Self {
+            service: item.service,
+            server: item.server,
+            datetime: item.datetime,
+            host: item.host,
+            username: item.username,
+        }
+    }
+}
+
 pub fn get_country_code_list(pool: &PgPool) -> Result<Vec<CountryCode>, Error> {
     use crate::schema::country_code::dsl::country_code;
 
@@ -86,16 +98,25 @@ pub fn get_intrusion_log_filtered(
     service_val: &str,
     server_val: &str,
     max_datetime: DateTime<Utc>,
+    max_entries: Option<usize>,
 ) -> Result<Vec<IntrusionLog>, Error> {
     use crate::schema::intrusion_log::dsl::{datetime, intrusion_log, server, service};
     let conn = pool.get()?;
 
-    intrusion_log
+    let query = intrusion_log
         .filter(service.eq(service_val))
         .filter(server.eq(server_val))
         .filter(datetime.gt(max_datetime))
-        .load(&conn)
-        .map_err(Into::into)
+        .order_by(datetime);
+
+    if let Some(max_entries) = max_entries {
+        query
+            .limit(max_entries as i64)
+            .load(&conn)
+            .map_err(Into::into)
+    } else {
+        query.load(&conn).map_err(Into::into)
+    }
 }
 
 pub fn insert_host_country(pool: &PgPool, hc: &HostCountry) -> Result<(), Error> {
