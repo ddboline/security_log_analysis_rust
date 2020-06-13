@@ -271,13 +271,7 @@ impl ParseOpts {
                     let pool = pool.clone();
                     let server = server.clone();
                     spawn_blocking(move || {
-                        get_intrusion_log_filtered(
-                            &pool,
-                            "ssh",
-                            &server.0,
-                            max_datetime,
-                            None,
-                        )
+                        get_intrusion_log_filtered(&pool, "ssh", &server.0, max_datetime, None)
                     })
                     .await?
                 }?;
@@ -285,17 +279,12 @@ impl ParseOpts {
                     let pool = pool.clone();
                     let server = server.clone();
                     spawn_blocking(move || {
-                        get_intrusion_log_filtered(
-                            &pool,
-                            "apache",
-                            &server.0,
-                            max_datetime,
-                            None,
-                        )
+                        get_intrusion_log_filtered(&pool, "apache", &server.0, max_datetime, None)
                     })
                     .await?
                 }?);
-                let existing_entries: HashSet<IntrusionLogInsert> = existing_entries.into_iter().map(Into::into).collect();
+                let existing_entries: HashSet<IntrusionLogInsert> =
+                    existing_entries.into_iter().map(Into::into).collect();
                 let inserts: Vec<_> = inserts.difference(&existing_entries).cloned().collect();
                 insert_intrusion_log(&pool, &inserts)?;
                 stdout.send(format!("inserts {}", inserts.len()).into())?;
