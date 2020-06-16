@@ -1,19 +1,24 @@
 use anyhow::{format_err, Error};
+use serde::Deserialize;
 use std::{
     env::{var, var_os},
     ops::Deref,
     path::{Path, PathBuf},
     sync::Arc,
 };
-use serde::Deserialize;
 
 use crate::stack_string::StackString;
 
 #[derive(Default, Debug, Deserialize)]
 pub struct ConfigInner {
     pub database_url: StackString,
+    #[serde(default = "default_username")]
     pub username: StackString,
     pub export_dir: Option<PathBuf>,
+}
+
+fn default_username() -> StackString {
+    std::env::var("USER").expect("USER must be set").into()
 }
 
 #[derive(Default, Debug, Clone)]

@@ -181,7 +181,8 @@ mod tests {
         assert_eq!(result.host, "36.110.50.217");
         assert_eq!(result.timestamp.hour(), 4);
 
-        let test_line = "May 17 03:10:32 ip-172-31-78-8 sshd[1205097]: Invalid user admin from 106.54.145.68 port 52542";
+        let test_line = "May 17 03:10:32 ip-172-31-78-8 sshd[1205097]: Invalid user admin from \
+                         106.54.145.68 port 52542";
         let result = parse_log_line_ssh(2020, test_line).unwrap().unwrap();
         debug!("{:?}", result);
         assert_eq!(result.user, Some("admin".into()));
