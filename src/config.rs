@@ -5,10 +5,11 @@ use std::{
     path::{Path, PathBuf},
     sync::Arc,
 };
+use serde::Deserialize;
 
 use crate::stack_string::StackString;
 
-#[derive(Default, Debug)]
+#[derive(Default, Debug, Deserialize)]
 pub struct ConfigInner {
     pub database_url: StackString,
     pub username: StackString,
@@ -42,15 +43,7 @@ impl Config {
             dotenv::from_path(env_file).ok();
         }
 
-        let conf = ConfigInner {
-            database_url: var("DATABASE_URL")
-                .map_err(|e| format_err!("DATABASE_URL must be set {}", e))?
-                .into(),
-            username: var("USER")
-                .map_err(|e| format_err!("USER must be set {}", e))?
-                .into(),
-            export_dir: var_os("EXPORT_DIR").map(|s| s.into()),
-        };
+        let conf: ConfigInner = envy::from_env()?;
 
         Ok(Self(Arc::new(conf)))
     }
