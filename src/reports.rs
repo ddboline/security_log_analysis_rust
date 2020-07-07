@@ -1,13 +1,14 @@
 use anyhow::Error;
 
 use crate::pgpool_pg::PgPoolPg;
+use crate::stack_string::StackString;
 
 pub async fn get_country_count_recent(
     pool: &PgPoolPg,
     service: &str,
     server: &str,
     ndays: i32,
-) -> Result<Vec<(String, i64)>, Error> {
+) -> Result<Vec<(StackString, i64)>, Error> {
     let query = postgres_query::query_dyn!(
         &format!(
             r#"
@@ -32,7 +33,7 @@ pub async fn get_country_count_recent(
         .await?
         .iter()
         .map(|row| {
-            let country: String = row.try_get("country")?;
+            let country: StackString = row.try_get("country")?;
             let count: i64 = row.try_get("count")?;
             Ok((country, count))
         })

@@ -70,7 +70,7 @@ impl HostCountryMetadata {
         Ok(result)
     }
 
-    pub fn insert_host_code(&self, host: &str, code: &str) -> Result<String, Error> {
+    pub fn insert_host_code(&self, host: &str, code: &str) -> Result<StackString, Error> {
         let ccmap = self.country_code_map.read();
         if (*ccmap).contains_key(code) {
             let ipaddr = (host, 22).to_socket_addrs()?.next().and_then(|s| {
@@ -96,22 +96,22 @@ impl HostCountryMetadata {
                     (*lock).insert(host.into(), host_country);
                 }
             }
-            return Ok(code.to_string());
+            return Ok(code.into());
         }
         Err(format_err!("Failed to insert {}", code))
     }
 
-    pub async fn get_country_info(&self, host: &str) -> Result<String, Error> {
+    pub async fn get_country_info(&self, host: &str) -> Result<StackString, Error> {
         if let Some(entry) = (*self.host_country_map.read()).get(host) {
-            return Ok(entry.code.to_string());
+            return Ok(entry.code.clone());
         }
         let whois_code = self.get_whois_country_info(host).await?;
         self.insert_host_code(host, &whois_code)
     }
 
-    async fn run_lookup(&self, host: &str) -> Result<String, WhoIsError> {
+    async fn run_lookup(&self, host: &str) -> Result<StackString, WhoIsError> {
         let opts = WhoIsLookupOptions::from_string(host)?;
-        self.whois.lookup(opts).await
+        self.whois.lookup(opts).await.map(Into::into)
     }
 
     pub async fn get_whois_country_info(&self, host: &str) -> Result<StackString, Error> {
@@ -293,7 +293,6 @@ mod test {
 
     use crate::{
         host_country_metadata::HostCountryMetadata,
-        stack_string::{StackString, StringExt},
     };
 
     #[tokio::test]
