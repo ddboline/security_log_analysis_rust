@@ -2,12 +2,12 @@ use anyhow::Error;
 use chrono::{DateTime, Utc};
 use diesel::{Connection, ExpressionMethods, QueryDsl, RunQueryDsl};
 use serde::{Deserialize, Serialize};
+use stack_string::StackString;
 
 use crate::{
     iso_8601_datetime,
     pgpool::PgPool,
     schema::{country_code, host_country, intrusion_log},
-    stack_string::StackString,
 };
 
 #[derive(Queryable, Clone, Debug, Insertable)]

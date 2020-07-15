@@ -14,6 +14,7 @@ use std::{
 use structopt::StructOpt;
 use subprocess::Exec;
 use tokio::{fs::File, io::AsyncWriteExt, task::spawn_blocking};
+use stack_string::StackString;
 
 use crate::{
     config::Config,
@@ -26,7 +27,6 @@ use crate::{
     pgpool::PgPool,
     pgpool_pg::PgPoolPg,
     reports::get_country_count_recent,
-    stack_string::StackString,
     stdout_channel::StdoutChannel,
 };
 

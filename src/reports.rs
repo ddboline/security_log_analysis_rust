@@ -1,7 +1,7 @@
 use anyhow::Error;
+use stack_string::StackString;
 
 use crate::pgpool_pg::PgPoolPg;
-use crate::stack_string::StackString;
 
 pub async fn get_country_count_recent(
     pool: &PgPoolPg,

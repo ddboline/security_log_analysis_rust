@@ -8,11 +8,11 @@ use std::{
     fs::File,
     io::{BufRead, BufReader, Read},
 };
+use stack_string::StackString;
 
 use crate::{
     host_country_metadata::HostCountryMetadata,
     models::{get_intrusion_log_max_datetime, IntrusionLogInsert},
-    stack_string::StackString,
 };
 
 #[derive(Debug, PartialEq, Eq, Hash)]
@@ -159,6 +159,7 @@ mod tests {
     use chrono::{Datelike, Timelike, Utc};
     use log::debug;
     use std::fs::File;
+    use stack_string::StackString;
 
     use crate::{
         config::Config,
@@ -167,7 +168,6 @@ mod tests {
             parse_all_log_files, parse_log_file, parse_log_line_apache, parse_log_line_ssh,
         },
         pgpool::PgPool,
-        stack_string::StackString,
     };
 
     #[test]

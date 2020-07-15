@@ -36,6 +36,7 @@ derive_more = "0.99"
 smartstring = "0.2"
 bytes = "0.5"
 envy = "0.4"
+stack-string = { git = "https://github.com/ddboline/stack-string-rs.git", branch="master", features=["postgres_types", "diesel_types"] }
 
 [[bin]]
 name = "security-log-parse-rust"

@@ -12,6 +12,7 @@ use std::{
 };
 use subprocess::{Exec, Redirection};
 use whois_rust::{WhoIs, WhoIsError, WhoIsLookupOptions};
+use stack_string::StackString;
 
 use crate::{
     exponential_retry,
@@ -19,7 +20,6 @@ use crate::{
         get_country_code_list, get_host_country, insert_host_country, CountryCode, HostCountry,
     },
     pgpool::PgPool,
-    stack_string::StackString,
 };
 
 #[derive(Clone, Debug)]

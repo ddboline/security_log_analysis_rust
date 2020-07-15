@@ -6,9 +6,7 @@ use std::{
     path::{Path, PathBuf},
     sync::Arc,
 };
-
-use crate::stack_string::StackString;
-
+use stack_string::StackString;
 #[derive(Default, Debug, Deserialize)]
 pub struct ConfigInner {
     pub database_url: StackString,
