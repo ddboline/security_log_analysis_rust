@@ -1,12 +1,12 @@
 use anyhow::{format_err, Error};
 use serde::Deserialize;
+use stack_string::StackString;
 use std::{
     env::{var, var_os},
     ops::Deref,
     path::{Path, PathBuf},
     sync::Arc,
 };
-use stack_string::StackString;
 #[derive(Default, Debug, Deserialize)]
 pub struct ConfigInner {
     pub database_url: StackString,

@@ -4,6 +4,7 @@ use futures::future::try_join_all;
 use log::debug;
 use rayon::iter::{IntoParallelIterator, ParallelIterator};
 use serde::{Deserialize, Serialize};
+use stack_string::StackString;
 use std::{
     collections::HashSet,
     env::var,
@@ -14,7 +15,6 @@ use std::{
 use structopt::StructOpt;
 use subprocess::Exec;
 use tokio::{fs::File, io::AsyncWriteExt, task::spawn_blocking};
-use stack_string::StackString;
 
 use crate::{
     config::Config,

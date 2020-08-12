@@ -1,9 +1,9 @@
 use anyhow::{format_err, Error};
 use deadpool::managed::Object;
 use deadpool_postgres::{ClientWrapper, Config, Pool};
+use stack_string::StackString;
 use std::{env::set_var, fmt, sync::Arc};
 use tokio_postgres::{error::Error as PgError, Config as PgConfig, NoTls};
-use stack_string::StackString;
 
 /// Wrapper around `r2d2::Pool`
 /// The only way to use `PgPoolPg` is through the get method, which returns a

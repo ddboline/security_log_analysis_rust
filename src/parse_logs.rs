@@ -3,12 +3,12 @@ use chrono::{DateTime, Datelike, FixedOffset, Local, TimeZone, Utc};
 use flate2::read::GzDecoder;
 use glob::glob;
 use log::debug;
+use stack_string::StackString;
 use std::{
     collections::HashSet,
     fs::File,
     io::{BufRead, BufReader, Read},
 };
-use stack_string::StackString;
 
 use crate::{
     host_country_metadata::HostCountryMetadata,
@@ -158,8 +158,8 @@ pub fn parse_log_line_apache(_: i32, line: &str) -> Result<Option<LogLineSSH>, E
 mod tests {
     use chrono::{Datelike, Timelike, Utc};
     use log::debug;
-    use std::fs::File;
     use stack_string::StackString;
+    use std::fs::File;
 
     use crate::{
         config::Config,

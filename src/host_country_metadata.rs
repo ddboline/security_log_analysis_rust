@@ -4,6 +4,8 @@ use log::{debug, error};
 use parking_lot::RwLock;
 use reqwest::{Client, Url};
 use serde::{Deserialize, Serialize};
+use smallvec::SmallVec;
+use stack_string::StackString;
 use std::{
     collections::HashMap,
     io::{BufRead, BufReader},
@@ -12,7 +14,6 @@ use std::{
 };
 use subprocess::{Exec, Redirection};
 use whois_rust::{WhoIs, WhoIsError, WhoIsLookupOptions};
-use stack_string::StackString;
 
 use crate::{
     exponential_retry,
@@ -193,13 +194,14 @@ impl HostCountryMetadata {
                                 } else if l_upper_case.contains(".JP") {
                                     return Ok("JP".into());
                                 }
-                                let mut items = l_upper_case.split_whitespace();
-                                if let Some(key) = items.next() {
-                                    if key != "COUNTRY:" {
+                                let items: SmallVec<[&str; 2]> =
+                                    l_upper_case.split_whitespace().take(2).collect();
+                                if let Some(key) = items.get(0) {
+                                    if *key != "COUNTRY:" {
                                         continue;
                                     }
-                                    if let Some(code) = items.next() {
-                                        return Ok(code.into());
+                                    if let Some(code) = items.get(1) {
+                                        return Ok((*code).into());
                                     }
                                 }
                             }
@@ -291,9 +293,7 @@ mod test {
     use log::debug;
     use std::net::ToSocketAddrs;
 
-    use crate::{
-        host_country_metadata::HostCountryMetadata,
-    };
+    use crate::host_country_metadata::HostCountryMetadata;
 
     #[tokio::test]
     async fn test_get_whois_country_info() -> Result<(), Error> {

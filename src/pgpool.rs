@@ -1,8 +1,8 @@
 use anyhow::Error;
 use diesel::{pg::PgConnection, r2d2::ConnectionManager};
 use r2d2::{Pool, PooledConnection};
-use std::{fmt, sync::Arc};
 use stack_string::StackString;
+use std::{fmt, sync::Arc};
 
 #[derive(Clone)]
 pub struct PgPool {
