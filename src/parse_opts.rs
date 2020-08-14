@@ -193,7 +193,7 @@ impl ParseOpts {
                 ) -> Result<DateTime<Utc>, Error> {
                     let result = get_intrusion_log_max_datetime(&pool, "ssh", &server.0)?
                         .as_ref()
-                        .map(|dt| {
+                        .map_or_else(Utc::now, |dt| {
                             if let Ok(Some(dt2)) =
                                 get_intrusion_log_max_datetime(&pool, "apache", &server.0)
                             {
@@ -205,8 +205,7 @@ impl ParseOpts {
                             } else {
                                 *dt
                             }
-                        })
-                        .unwrap_or_else(Utc::now);
+                        });
                     Ok(result)
                 }
 
