@@ -3,6 +3,7 @@ use chrono::{DateTime, Utc};
 use diesel::{Connection, ExpressionMethods, QueryDsl, RunQueryDsl};
 use serde::{Deserialize, Serialize};
 use stack_string::StackString;
+use log::debug;
 
 use crate::{
     iso_8601_datetime,
@@ -138,11 +139,13 @@ pub fn insert_intrusion_log(pool: &PgPool, il: &[IntrusionLogInsert]) -> Result<
     use crate::schema::intrusion_log::dsl::intrusion_log;
     let conn = pool.get()?;
 
-    diesel::insert_into(intrusion_log)
-        .values(il)
+    for i in il.chunks(10000) {
+        diesel::insert_into(intrusion_log)
+        .values(i)
         .execute(&conn)
-        .map(|_| ())
-        .map_err(Into::into)
+        .map(|_| ())?;
+    }
+    Ok(())
 }
 
 #[cfg(test)]
