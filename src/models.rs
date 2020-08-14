@@ -1,9 +1,9 @@
 use anyhow::Error;
 use chrono::{DateTime, Utc};
 use diesel::{Connection, ExpressionMethods, QueryDsl, RunQueryDsl};
+use log::debug;
 use serde::{Deserialize, Serialize};
 use stack_string::StackString;
-use log::debug;
 
 use crate::{
     iso_8601_datetime,
@@ -141,9 +141,9 @@ pub fn insert_intrusion_log(pool: &PgPool, il: &[IntrusionLogInsert]) -> Result<
 
     for i in il.chunks(10000) {
         diesel::insert_into(intrusion_log)
-        .values(i)
-        .execute(&conn)
-        .map(|_| ())?;
+            .values(i)
+            .execute(&conn)
+            .map(|_| ())?;
     }
     Ok(())
 }
