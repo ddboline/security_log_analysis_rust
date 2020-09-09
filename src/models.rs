@@ -6,15 +6,13 @@ use futures::future::try_join_all;
 use log::debug;
 use serde::{Deserialize, Serialize};
 use stack_string::StackString;
-use std::fs::File;
-use std::path::Path;
-use tokio::fs::create_dir_all;
-use tokio::task::spawn_blocking;
+use std::{fs::File, path::Path};
+use tokio::{fs::create_dir_all, task::spawn_blocking};
 
-use crate::pgpool_pg::PgPoolPg;
 use crate::{
     iso_8601_datetime,
     pgpool::{PgPool, PgPoolConnection},
+    pgpool_pg::PgPoolPg,
     schema::{country_code, host_country, intrusion_log},
 };
 
@@ -236,8 +234,8 @@ impl IntrusionLogInsert {
 
 pub async fn get_year_months(
     pool: &PgPoolPg,
-    // service_val: &str,
-    // server_val: &str,
+    /* service_val: &str,
+     * server_val: &str, */
 ) -> Result<Vec<(u16, u16)>, Error> {
     let query = postgres_query::query!(
         "
@@ -262,8 +260,8 @@ pub async fn get_year_months(
 pub async fn export_to_avro(
     pool: &PgPool,
     pgpool: &PgPoolPg,
-    // service_val: &str,
-    // server_val: &str,
+    /* service_val: &str,
+     * server_val: &str, */
 ) -> Result<(), Error> {
     let futures = get_year_months(pgpool) //, service_val, server_val)
         .await?
@@ -316,11 +314,9 @@ pub async fn export_to_avro(
                 println!("{}", logs.len());
 
                 let home_dir = dirs::home_dir().expect("No HOME directory");
-                let output_filename = home_dir
-                    .join("tmp")
-                    .join("security_log");
-                    // .join(service_val)
-                    // .join(server_val);
+                let output_filename = home_dir.join("tmp").join("security_log");
+                // .join(service_val)
+                // .join(server_val);
 
                 create_dir_all(&output_filename).await?;
 

@@ -351,9 +351,10 @@ impl ParseOpts {
 
                 export_to_avro(&pool, &pgpool).await?;
                 // for service_val in &["ssh", "apache"] {
-                //     for server_val in &["home.ddboline.net", "cloud.ddboline.net"] {
-                //         export_to_avro(&pool, &pgpool, service_val, server_val).await?;
-                //     }
+                //     for server_val in &["home.ddboline.net",
+                // "cloud.ddboline.net"] {
+                //         export_to_avro(&pool, &pgpool, service_val,
+                // server_val).await?;     }
                 // }
             }
         }
