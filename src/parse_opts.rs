@@ -19,10 +19,7 @@ use tokio::{fs::File, io::AsyncWriteExt, task::spawn_blocking};
 use crate::{
     config::Config,
     host_country_metadata::HostCountryMetadata,
-    models::{
-        get_intrusion_log_filtered, get_intrusion_log_max_datetime, insert_intrusion_log,
-        IntrusionLogInsert,
-    },
+    models::{export_to_avro, IntrusionLog, IntrusionLogInsert},
     parse_logs::{parse_all_log_files, parse_log_line_apache, parse_log_line_ssh},
     pgpool::PgPool,
     pgpool_pg::PgPoolPg,
@@ -37,6 +34,7 @@ pub enum ParseActions {
     Sync,
     CountryPlot,
     AddHost,
+    Export,
 }
 
 impl FromStr for ParseActions {
@@ -49,6 +47,7 @@ impl FromStr for ParseActions {
             "sync" => Ok(Self::Sync),
             "plot" | "country_plot" => Ok(Self::CountryPlot),
             "add_host" | "add" => Ok(Self::AddHost),
+            "export" => Ok(Self::Export),
             _ => Err(format_err!("Invalid Action")),
         }
     }
@@ -104,7 +103,6 @@ impl ParseOpts {
         let opts = Self::from_args();
 
         let stdout = StdoutChannel::new();
-        let task = stdout.spawn_stdout_task();
 
         match opts.action {
             ParseActions::Parse => {
@@ -142,7 +140,7 @@ impl ParseOpts {
                     })
                     .await?
                 }?);
-                stdout.send(format!("new lines {}", inserts.len()).into())?;
+                stdout.send(format!("new lines {}", inserts.len()));
                 let new_hosts: HashSet<_> =
                     inserts.iter().map(|item| item.host.to_string()).collect();
                 let futures: Vec<_> = new_hosts
@@ -153,7 +151,7 @@ impl ParseOpts {
                     })
                     .collect();
                 try_join_all(futures).await?;
-                spawn_blocking(move || insert_intrusion_log(&pool, &inserts)).await??;
+                spawn_blocking(move || IntrusionLogInsert::insert(&pool, &inserts)).await??;
             }
             ParseActions::Serialize => {
                 let config = Config::init_config()?;
@@ -171,18 +169,19 @@ impl ParseOpts {
                         let pool = pool.clone();
                         let server = server.clone();
                         spawn_blocking(move || {
-                            get_intrusion_log_filtered(
+                            IntrusionLog::get_intrusion_log_filtered(
                                 &pool,
                                 service,
                                 &server.0,
-                                datetime,
+                                Some(datetime),
+                                None,
                                 number_of_entries,
                             )
                         })
                         .await?
                     }?;
                     for result in results {
-                        stdout.send(serde_json::to_string(&result)?.into())?;
+                        stdout.send(serde_json::to_string(&result)?);
                     }
                 }
             }
@@ -191,11 +190,11 @@ impl ParseOpts {
                     pool: &PgPool,
                     server: &HostName,
                 ) -> Result<DateTime<Utc>, Error> {
-                    let result = get_intrusion_log_max_datetime(&pool, "ssh", &server.0)?
+                    let result = IntrusionLog::get_max_datetime(&pool, "ssh", &server.0)?
                         .as_ref()
                         .and_then(|dt| {
                             if let Ok(Some(dt2)) =
-                                get_intrusion_log_max_datetime(&pool, "apache", &server.0)
+                                IntrusionLog::get_max_datetime(&pool, "apache", &server.0)
                             {
                                 if *dt < dt2 {
                                     Some(*dt)
@@ -271,7 +270,14 @@ impl ParseOpts {
                     let pool = pool.clone();
                     let server = server.clone();
                     spawn_blocking(move || {
-                        get_intrusion_log_filtered(&pool, "ssh", &server.0, max_datetime, None)
+                        IntrusionLog::get_intrusion_log_filtered(
+                            &pool,
+                            "ssh",
+                            &server.0,
+                            Some(max_datetime),
+                            None,
+                            None,
+                        )
                     })
                     .await?
                 }?;
@@ -279,15 +285,22 @@ impl ParseOpts {
                     let pool = pool.clone();
                     let server = server.clone();
                     spawn_blocking(move || {
-                        get_intrusion_log_filtered(&pool, "apache", &server.0, max_datetime, None)
+                        IntrusionLog::get_intrusion_log_filtered(
+                            &pool,
+                            "apache",
+                            &server.0,
+                            Some(max_datetime),
+                            None,
+                            None,
+                        )
                     })
                     .await?
                 }?);
                 let existing_entries: HashSet<IntrusionLogInsert> =
                     existing_entries.into_iter().map(Into::into).collect();
                 let inserts: Vec<_> = inserts.difference(&existing_entries).cloned().collect();
-                insert_intrusion_log(&pool, &inserts)?;
-                stdout.send(format!("inserts {}", inserts.len()).into())?;
+                IntrusionLogInsert::insert(&pool, &inserts)?;
+                stdout.send(format!("inserts {}", inserts.len()));
             }
             ParseActions::CountryPlot => {
                 let config = Config::init_config()?;
@@ -331,8 +344,19 @@ impl ParseOpts {
                     }
                 }
             }
+            ParseActions::Export => {
+                let config = Config::init_config()?;
+                let pool = PgPool::new(&config.database_url);
+                let pgpool = PgPoolPg::new(&config.database_url);
+
+                export_to_avro(&pool, &pgpool).await?;
+                // for service_val in &["ssh", "apache"] {
+                //     for server_val in &["home.ddboline.net", "cloud.ddboline.net"] {
+                //         export_to_avro(&pool, &pgpool, service_val, server_val).await?;
+                //     }
+                // }
+            }
         }
-        stdout.close().await?;
-        task.await?
+        stdout.close().await
     }
 }

@@ -12,7 +12,7 @@ use std::{
 
 use crate::{
     host_country_metadata::HostCountryMetadata,
-    models::{get_intrusion_log_max_datetime, IntrusionLogInsert},
+    models::{IntrusionLog, IntrusionLogInsert},
 };
 
 #[derive(Debug, PartialEq, Eq, Hash)]
@@ -107,7 +107,7 @@ where
     }
 
     let max_datetime: Option<DateTime<Utc>> = match hc.pool.as_ref() {
-        Some(pool) => get_intrusion_log_max_datetime(pool, service, server)?,
+        Some(pool) => IntrusionLog::get_max_datetime(pool, service, server)?,
         None => None,
     };
 

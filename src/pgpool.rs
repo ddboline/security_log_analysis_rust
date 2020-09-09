@@ -4,6 +4,8 @@ use r2d2::{Pool, PooledConnection};
 use stack_string::StackString;
 use std::{fmt, sync::Arc};
 
+pub type PgPoolConnection = PooledConnection<ConnectionManager<PgConnection>>;
+
 #[derive(Clone)]
 pub struct PgPool {
     pgurl: Arc<StackString>,
@@ -25,7 +27,7 @@ impl PgPool {
         }
     }
 
-    pub fn get(&self) -> Result<PooledConnection<ConnectionManager<PgConnection>>, Error> {
+    pub fn get(&self) -> Result<PgPoolConnection, Error> {
         self.pool.get().map_err(Into::into)
     }
 }

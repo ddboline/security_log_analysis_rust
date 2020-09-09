@@ -17,9 +17,7 @@ use whois_rust::{WhoIs, WhoIsError, WhoIsLookupOptions};
 
 use crate::{
     exponential_retry,
-    models::{
-        get_country_code_list, get_host_country, insert_host_country, CountryCode, HostCountry,
-    },
+    models::{CountryCode, HostCountry},
     pgpool::PgPool,
 };
 
@@ -55,13 +53,13 @@ impl HostCountryMetadata {
         let result = Self {
             pool: Some(pool.clone()),
             country_code_map: Arc::new(RwLock::new(
-                get_country_code_list(&pool)?
+                CountryCode::get_country_code_list(&pool)?
                     .into_iter()
                     .map(|item| (item.code.clone(), item))
                     .collect(),
             )),
             host_country_map: Arc::new(RwLock::new(
-                get_host_country(&pool)?
+                HostCountry::get_host_country(&pool)?
                     .into_iter()
                     .map(|item| (item.host.clone(), item))
                     .collect(),
@@ -92,7 +90,7 @@ impl HostCountryMetadata {
                 let mut lock = self.host_country_map.write();
                 if !(*lock).contains_key(host) {
                     if let Some(pool) = self.pool.as_ref() {
-                        insert_host_country(pool, &host_country)?;
+                        host_country.insert_host_country(pool)?;
                     }
                     (*lock).insert(host.into(), host_country);
                 }
