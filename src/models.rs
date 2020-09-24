@@ -150,9 +150,9 @@ impl IntrusionLog {
         let min_datetime = match min_datetime {
             Some(d) => d,
             None => Self::_get_min_datetime(&conn, service_val, server_val)?
-                .unwrap_or_else(|| Utc::now()),
+                .unwrap_or_else(Utc::now),
         };
-        let max_datetime = max_datetime.unwrap_or_else(|| Utc::now());
+        let max_datetime = max_datetime.unwrap_or_else(Utc::now);
 
         let query = intrusion_log
             .filter(service.eq(service_val))
@@ -282,14 +282,14 @@ pub async fn export_to_avro(
                 );
                 let min_datetime: DateTime<Utc> = DateTime::from_utc(
                     NaiveDateTime::new(
-                        NaiveDate::from_ymd(year as i32, month as u32, 1),
+                        NaiveDate::from_ymd(i32::from(year), u32::from(month), 1),
                         NaiveTime::from_hms(0, 0, 0),
                     ),
                     Utc,
                 );
                 let max_datetime: DateTime<Utc> = DateTime::from_utc(
                     NaiveDateTime::new(
-                        NaiveDate::from_ymd(next_year as i32, next_month as u32, 1),
+                        NaiveDate::from_ymd(i32::from(next_year), u32::from(next_month), 1),
                         NaiveTime::from_hms(0, 0, 0),
                     ),
                     Utc,
