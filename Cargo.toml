@@ -1,6 +1,6 @@
 [package]
 name = "security_log_analysis_rust"
-version = "0.3.14"
+version = "0.3.15"
 authors = ["Daniel Boline <ddboline@gmail.com>"]
 edition = "2018"
 
@@ -37,6 +37,7 @@ envy = "0.4"
 smallvec = "1.4"
 avro-rs = {version = "0.11", features = ["snappy"]}
 deadqueue = "0.1"
+itertools = "0.9"
 whois-rust = { git="https://github.com/ddboline/whois-rust", branch="tokio-0.2" }
 stack-string = { git = "https://github.com/ddboline/stack-string-rs.git", tag="0.1.6", features=["postgres_types", "diesel_types"] }
 

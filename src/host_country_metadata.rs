@@ -275,7 +275,7 @@ fn process_line(line: &str) -> LineResult {
     } else if line.contains(".JP") {
         LineResult::Country("JP".into())
     } else {
-        let tokens: Vec<_> = line.split_whitespace().collect();
+        let tokens: SmallVec<[&str; 2]> = line.split_whitespace().take(2).collect();
         if tokens.len() >= 2 && tokens[0] == "COUNTRY:" {
             let code = tokens[1].into();
             LineResult::Country(code)

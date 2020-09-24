@@ -2,7 +2,9 @@ use anyhow::{format_err, Error};
 use chrono::{DateTime, Datelike, FixedOffset, Local, TimeZone, Utc};
 use flate2::read::GzDecoder;
 use glob::glob;
+use itertools::Itertools;
 use log::debug;
+use smallvec::SmallVec;
 use stack_string::StackString;
 use std::{
     collections::HashSet,
@@ -26,7 +28,7 @@ pub fn parse_log_line_ssh(year: i32, line: &str) -> Result<Option<LogLineSSH>, E
     if !line.contains("sshd") || !line.contains("Invalid user") {
         return Ok(None);
     }
-    let tokens: Vec<_> = line.split_whitespace().collect();
+    let tokens: SmallVec<[&str; 10]> = line.split_whitespace().take(10).collect();
     if tokens.len() < 10 {
         return Ok(None);
     }
@@ -36,7 +38,7 @@ pub fn parse_log_line_ssh(year: i32, line: &str) -> Result<Option<LogLineSSH>, E
         Some(x) => x,
         None => return Ok(None),
     };
-    let remaining: Vec<_> = user.split(" from ").collect();
+    let remaining: SmallVec<[&str; 2]> = user.split(" from ").take(2).collect();
     let user = remaining.get(0).ok_or_else(|| format_err!("No user"))?;
     let user = if user.len() > 15 { &user[0..15] } else { user };
     let host = remaining
@@ -111,7 +113,7 @@ where
         None => None,
     };
 
-    let inserts: HashSet<_> = results
+    let inserts = results
         .into_iter()
         .filter_map(|log_line| {
             let cond = match max_datetime.as_ref() {
@@ -130,13 +132,14 @@ where
                 None
             }
         })
+        .sorted()
+        .dedup()
         .collect();
-    let inserts: Vec<_> = inserts.into_iter().collect();
     Ok(inserts)
 }
 
 pub fn parse_log_line_apache(_: i32, line: &str) -> Result<Option<LogLineSSH>, Error> {
-    let tokens: Vec<_> = line.split_whitespace().collect();
+    let tokens: SmallVec<[&str; 5]> = line.split_whitespace().take(5).collect();
     if tokens.len() < 5 {
         return Ok(None);
     }

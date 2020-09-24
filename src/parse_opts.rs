@@ -1,9 +1,11 @@
 use anyhow::{format_err, Error};
 use chrono::{DateTime, Utc};
 use futures::future::try_join_all;
+use itertools::Itertools;
 use log::debug;
 use rayon::iter::{IntoParallelIterator, ParallelIterator};
 use serde::{Deserialize, Serialize};
+use smallvec::SmallVec;
 use stack_string::StackString;
 use std::{
     collections::HashSet,
@@ -143,13 +145,10 @@ impl ParseOpts {
                 stdout.send(format!("new lines {}", inserts.len()));
                 let new_hosts: HashSet<_> =
                     inserts.iter().map(|item| item.host.to_string()).collect();
-                let futures: Vec<_> = new_hosts
-                    .into_iter()
-                    .map(|host| {
-                        let metadata = metadata.clone();
-                        async move { metadata.get_country_info(&host).await }
-                    })
-                    .collect();
+                let futures = new_hosts.into_iter().map(|host| {
+                    let metadata = metadata.clone();
+                    async move { metadata.get_country_info(&host).await }
+                });
                 try_join_all(futures).await?;
                 spawn_blocking(move || IntrusionLogInsert::insert(&pool, &inserts)).await??;
             }
@@ -257,13 +256,10 @@ impl ParseOpts {
                 }
                 let new_hosts: HashSet<_> =
                     inserts.iter().map(|item| item.host.to_string()).collect();
-                let futures: Vec<_> = new_hosts
-                    .into_iter()
-                    .map(|host| {
-                        let metadata = metadata.clone();
-                        async move { metadata.get_country_info(&host).await }
-                    })
-                    .collect();
+                let futures = new_hosts.into_iter().map(|host| {
+                    let metadata = metadata.clone();
+                    async move { metadata.get_country_info(&host).await }
+                });
                 try_join_all(futures).await?;
                 let mut existing_entries = {
                     let pool = pool.clone();
@@ -308,13 +304,13 @@ impl ParseOpts {
                 for service in &["ssh", "apache"] {
                     for server_prefix in &["home", "cloud"] {
                         let server = format!("{}.ddboline.net", server_prefix);
-                        let results: Vec<_> = get_country_count_recent(&pool, service, &server, 30)
+                        let results = get_country_count_recent(&pool, service, &server, 30)
                             .await?
                             .into_iter()
                             .map(|(x, y)| format!(r#"["{}", {}]"#, x, y))
-                            .collect();
-                        let results = template
-                            .replace("PUTLISTOFCOUNTRIESANDATTEMPTSHERE", &results.join(","));
+                            .join(",");
+                        let results =
+                            template.replace("PUTLISTOFCOUNTRIESANDATTEMPTSHERE", &results);
 
                         if let Some(export_dir) = config.export_dir.as_ref() {
                             let outfname =
@@ -331,7 +327,7 @@ impl ParseOpts {
                 let pool = PgPool::new(&config.database_url);
                 let metadata = HostCountryMetadata::from_pool(&pool)?;
                 for host_country in &opts.host_codes {
-                    let vals: Vec<_> = host_country.split(':').collect();
+                    let vals: SmallVec<[&str; 2]> = host_country.split(':').take(2).collect();
                     if vals.len() < 2 {
                         continue;
                     }

@@ -172,7 +172,7 @@ impl IntrusionLog {
     }
 }
 
-#[derive(Insertable, Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Insertable, Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize, PartialOrd, Ord)]
 #[table_name = "intrusion_log"]
 pub struct IntrusionLogInsert {
     pub service: StackString,
@@ -315,8 +315,6 @@ pub async fn export_to_avro(
 
                 let home_dir = dirs::home_dir().expect("No HOME directory");
                 let output_filename = home_dir.join("tmp").join("security_log");
-                // .join(service_val)
-                // .join(server_val);
 
                 create_dir_all(&output_filename).await?;
 
