@@ -1,6 +1,6 @@
 [package]
 name = "security_log_analysis_rust"
-version = "0.3.15"
+version = "0.3.16"
 authors = ["Daniel Boline <ddboline@gmail.com>"]
 edition = "2018"
 
@@ -10,7 +10,7 @@ deadpool = "0.5"
 deadpool-postgres = "0.5"
 diesel = {version="1.4", features=["postgres", "r2d2", "chrono"]}
 chrono = "0.4"
-rayon = "1.4"
+rayon = "1.5"
 serde = { version="1.0", features=["derive"]}
 serde_json = "1.0"
 subprocess = "0.2"
@@ -22,7 +22,7 @@ parking_lot = "0.11"
 tokio-postgres = "0.5"
 rand = "0.7"
 log = "0.4"
-env_logger = "0.7"
+env_logger = "0.8"
 retry = "1.1"
 anyhow = "1.0"
 postgres_query = "0.3"
@@ -39,7 +39,7 @@ avro-rs = {version = "0.11", features = ["snappy"]}
 deadqueue = "0.1"
 itertools = "0.9"
 whois-rust = { git="https://github.com/ddboline/whois-rust", branch="tokio-0.2" }
-stack-string = { git = "https://github.com/ddboline/stack-string-rs.git", tag="0.1.6", features=["postgres_types", "diesel_types"] }
+stack-string = { git = "https://github.com/ddboline/stack-string-rs.git", tag="0.1.9", features=["postgres_types", "diesel_types"] }
 
 [[bin]]
 name = "security-log-parse-rust"
