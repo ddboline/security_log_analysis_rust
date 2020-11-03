@@ -149,8 +149,9 @@ impl IntrusionLog {
 
         let min_datetime = match min_datetime {
             Some(d) => d,
-            None => Self::_get_min_datetime(&conn, service_val, server_val)?
-                .unwrap_or_else(Utc::now),
+            None => {
+                Self::_get_min_datetime(&conn, service_val, server_val)?.unwrap_or_else(Utc::now)
+            }
         };
         let max_datetime = max_datetime.unwrap_or_else(Utc::now);
 
@@ -161,14 +162,15 @@ impl IntrusionLog {
             .filter(datetime.lt(max_datetime))
             .order_by(datetime);
 
-        if let Some(max_entries) = max_entries {
-            query
-                .limit(max_entries as i64)
-                .load(&conn)
-                .map_err(Into::into)
-        } else {
-            query.load(&conn).map_err(Into::into)
-        }
+        max_entries.map_or_else(
+            || query.load(&conn).map_err(Into::into),
+            |max_entries| {
+                query
+                    .limit(max_entries as i64)
+                    .load(&conn)
+                    .map_err(Into::into)
+            },
+        )
     }
 }
 
