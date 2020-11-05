@@ -5,6 +5,7 @@ authors = ["Daniel Boline <ddboline@gmail.com>"]
 edition = "2018"
 
 [dependencies]
+actix-web = "3.2"
 r2d2 = "0.8"
 deadpool = "0.5"
 deadpool-postgres = "0.5"
@@ -25,6 +26,7 @@ log = "0.4"
 env_logger = "0.8"
 retry = "1.1"
 anyhow = "1.0"
+thiserror = "1.0"
 postgres_query = "0.3"
 dirs = "3.0"
 reqwest = {version="0.10", features=["json"]}
@@ -44,4 +46,9 @@ stack-string = { git = "https://github.com/ddboline/stack-string-rs.git", tag="0
 [[bin]]
 name = "security-log-parse-rust"
 path = "src/main.rs"
+doc = false
+
+[[bin]]
+name = "security-log-http"
+path = "src/security_log_http.rs"
 doc = false
