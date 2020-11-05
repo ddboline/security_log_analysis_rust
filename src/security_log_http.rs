@@ -1,6 +1,6 @@
 use actix_web::{
     error::ResponseError,
-    web::{self, Data, Path},
+    web::{self, Data, Path, Query},
     App, HttpResponse, HttpServer,
 };
 use anyhow::Error as AnyhowError;
@@ -51,10 +51,16 @@ struct ServiceLocation {
     location: StackString,
 }
 
-async fn intrusion_attempts(path: Path<ServiceLocation>, data: Data<AppState>) -> HttpResult {
+#[derive(Serialize, Deserialize)]
+struct AttemptsQuery {
+    ndays: Option<i32>,
+}
+
+async fn intrusion_attempts(path: Path<ServiceLocation>, query: Query<AttemptsQuery>, data: Data<AppState>) -> HttpResult {
     let template = include_str!("../templates/COUNTRY_TEMPLATE.html");
     let server = format!("{}.ddboline.net", path.location);
-    let results = get_country_count_recent(&data.db, &path.service, &server, 30)
+    let ndays = query.ndays.unwrap_or(30);
+    let results = get_country_count_recent(&data.db, &path.service, &server, ndays)
         .await?
         .into_iter()
         .map(|(x, y)| format!(r#"["{}", {}]"#, x, y))
