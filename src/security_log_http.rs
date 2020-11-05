@@ -56,7 +56,11 @@ struct AttemptsQuery {
     ndays: Option<i32>,
 }
 
-async fn intrusion_attempts(path: Path<ServiceLocation>, query: Query<AttemptsQuery>, data: Data<AppState>) -> HttpResult {
+async fn intrusion_attempts(
+    path: Path<ServiceLocation>,
+    query: Query<AttemptsQuery>,
+    data: Data<AppState>,
+) -> HttpResult {
     let template = include_str!("../templates/COUNTRY_TEMPLATE.html");
     let server = format!("{}.ddboline.net", path.location);
     let ndays = query.ndays.unwrap_or(30);

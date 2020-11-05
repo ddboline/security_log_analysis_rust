@@ -6,14 +6,12 @@ use reqwest::{Client, Url};
 use serde::{Deserialize, Serialize};
 use smallvec::SmallVec;
 use stack_string::StackString;
-use std::{
-    collections::HashMap,
-    io::{BufRead, BufReader},
-    net::ToSocketAddrs,
-    sync::Arc,
+use std::{collections::HashMap, net::ToSocketAddrs, process::Stdio, sync::Arc};
+use tokio::{
+    io::{AsyncBufReadExt, BufReader},
+    process::Command,
 };
-use subprocess::{Exec, Redirection};
-use whois_rust::{WhoIs, WhoIsError, WhoIsLookupOptions};
+use tokio_compat_02::FutureExt;
 
 use crate::{
     exponential_retry,
@@ -26,7 +24,6 @@ pub struct HostCountryMetadata {
     pub pool: Option<PgPool>,
     pub country_code_map: Arc<RwLock<HashMap<StackString, CountryCode>>>,
     pub host_country_map: Arc<RwLock<HashMap<StackString, HostCountry>>>,
-    pub whois: Arc<WhoIs>,
     pub client: Client,
 }
 
@@ -42,9 +39,6 @@ impl HostCountryMetadata {
             pool: None,
             country_code_map: Arc::new(RwLock::new(HashMap::new())),
             host_country_map: Arc::new(RwLock::new(HashMap::new())),
-            whois: Arc::new(
-                WhoIs::from_string(include_str!("servers.json")).expect("No server json"),
-            ),
             client: Client::new(),
         }
     }
@@ -108,31 +102,11 @@ impl HostCountryMetadata {
         self.insert_host_code(host, &whois_code)
     }
 
-    async fn run_lookup(&self, host: &str) -> Result<StackString, WhoIsError> {
-        let opts = WhoIsLookupOptions::from_string(host)?;
-        self.whois.lookup(opts).await.map(Into::into)
-    }
-
     pub async fn get_whois_country_info(&self, host: &str) -> Result<StackString, Error> {
         if let Ok(country) = self.get_whois_country_info_ipwhois(&host).await {
             return Ok(country);
         }
-        let lookup_str = match self.run_lookup(host).await {
-            Ok(s) => s,
-            Err(WhoIsError::MapError(e)) => panic!("Unrecoverable error {}", e),
-            Err(e) => return Err(e.into()),
-        };
-        for line in lookup_str.split('\n') {
-            match process_line(&line.to_uppercase()) {
-                LineResult::Country(country) => return Ok(country),
-                LineResult::Break => {
-                    error!("Retry {} : {}", host, line.trim());
-                    break;
-                }
-                LineResult::Continue => {}
-            }
-        }
-        Self::get_whois_country_info_cmd(host)
+        Self::get_whois_country_info_cmd(host).await
     }
 
     pub async fn get_whois_country_info_ipwhois(&self, host: &str) -> Result<StackString, Error> {
@@ -155,74 +129,43 @@ impl HostCountryMetadata {
             .ok_or_else(|| format_err!("Failed to extract IP address from {}", host))?;
         let url = Url::parse("http://free.ipwhois.io/json/")?.join(&ipaddr)?;
         debug!("{}", url);
-        let resp = self.client.get(url).send().await?.error_for_status()?;
+        let resp = self
+            .client
+            .get(url)
+            .send()
+            .compat()
+            .await?
+            .error_for_status()?;
         let output: IpWhoIsOutput = resp.json().await?;
         Ok(output.country_code)
     }
 
-    pub fn get_whois_country_info_cmd(host: &str) -> Result<StackString, Error> {
-        fn _get_whois_country_info(command: &str, host: &str) -> Result<StackString, Error> {
-            let mut process = Exec::shell(command).stdout(Redirection::Pipe).popen()?;
-            let exit_status = process.wait()?;
-            if exit_status.success() {
-                if let Some(f) = process.stdout.as_ref() {
-                    let mut reader = BufReader::new(f);
-                    let mut line = String::new();
-                    loop {
-                        line.clear();
-                        match reader.read_line(&mut line) {
-                            Ok(0) => break,
-                            Err(e) => {
-                                error!("{:?}", e);
-                                continue;
-                            }
-                            Ok(_) => {
-                                let l_upper_case = line.trim().to_uppercase();
-                                if l_upper_case.contains("QUERY RATE") {
-                                    error!("Retry {} : {}", host, l_upper_case.trim());
-                                    break;
-                                } else if l_upper_case.contains("KOREA") {
-                                    return Ok("KR".into());
-                                } else if l_upper_case.ends_with(".BR") {
-                                    return Ok("BR".into());
-                                } else if l_upper_case.contains("COMCAST CABLE") {
-                                    return Ok("US".into());
-                                } else if l_upper_case.contains("HINET-NET") {
-                                    return Ok("TW".into());
-                                } else if l_upper_case.contains(".JP") {
-                                    return Ok("JP".into());
-                                }
-                                let items: SmallVec<[&str; 2]> =
-                                    l_upper_case.split_whitespace().take(2).collect();
-                                if let Some(key) = items.get(0) {
-                                    if *key != "COUNTRY:" {
-                                        continue;
-                                    }
-                                    if let Some(code) = items.get(1) {
-                                        return Ok((*code).into());
-                                    }
-                                }
-                            }
-                        }
+    pub async fn get_whois_country_info_cmd(host: &str) -> Result<StackString, Error> {
+        async fn _get_whois_country_info(args: &[&str]) -> Result<StackString, Error> {
+            let output = Command::new("whois").args(args).output().await?;
+            if output.status.success() {
+                let buf = String::from_utf8_lossy(&output.stdout);
+                for line in buf.split('\n') {
+                    let line = line.to_uppercase();
+                    if let LineResult::Country(code) = process_line(&line) {
+                        return Ok(code);
                     }
-                } else if !command.contains(" -B ") {
-                    let new_command = format!("whois -B {}", host);
-                    debug!("command {}", new_command);
-                    return exponential_retry(|| _get_whois_country_info(&new_command, host));
                 }
-                Err(format_err!("No country found {}", host))
-            } else if command.contains(" -r ") {
-                Err(format_err!("Failed with exit status {:?}", exit_status))
-            } else {
-                let new_command = format!("whois -r {}", host);
-                debug!("command {}", new_command);
-                exponential_retry(|| _get_whois_country_info(&new_command, host))
             }
+            Err(format_err!("No Country Code Found"))
         }
 
-        let command = format!("whois {}", host);
-        debug!("command {}", command);
-        exponential_retry(|| _get_whois_country_info(&command, host))
+        if let Ok(code) =
+            exponential_retry(|| async move { _get_whois_country_info(&[host]).await }).await
+        {
+            Ok(code)
+        } else if let Ok(code) =
+            exponential_retry(|| async move { _get_whois_country_info(&["-B", host]).await }).await
+        {
+            Ok(code)
+        } else {
+            exponential_retry(|| async move { _get_whois_country_info(&["-r", host]).await }).await
+        }
     }
 
     pub fn cleanup_intrusion_log(&self) -> Result<(), Error> {
@@ -319,27 +262,37 @@ mod test {
         Ok(())
     }
 
-    #[test]
+    #[tokio::test]
     #[ignore]
-    fn test_get_whois_country_info_cmd() -> Result<(), Error> {
+    async fn test_get_whois_country_info_cmd() -> Result<(), Error> {
         assert_eq!(
-            HostCountryMetadata::get_whois_country_info_cmd("36.110.50.217")?.as_str(),
+            HostCountryMetadata::get_whois_country_info_cmd("36.110.50.217")
+                .await?
+                .as_str(),
             "CN"
         );
         assert_eq!(
-            HostCountryMetadata::get_whois_country_info_cmd("82.73.86.33")?.as_str(),
+            HostCountryMetadata::get_whois_country_info_cmd("82.73.86.33")
+                .await?
+                .as_str(),
             "NL"
         );
         assert_eq!(
-            HostCountryMetadata::get_whois_country_info_cmd("217.29.210.13")?.as_str(),
+            HostCountryMetadata::get_whois_country_info_cmd("217.29.210.13")
+                .await?
+                .as_str(),
             "EU"
         );
         assert_eq!(
-            HostCountryMetadata::get_whois_country_info_cmd("31.162.240.19")?.as_str(),
+            HostCountryMetadata::get_whois_country_info_cmd("31.162.240.19")
+                .await?
+                .as_str(),
             "RU"
         );
         assert_eq!(
-            HostCountryMetadata::get_whois_country_info_cmd("174.61.53.116")?.as_str(),
+            HostCountryMetadata::get_whois_country_info_cmd("174.61.53.116")
+                .await?
+                .as_str(),
             "US"
         );
         Ok(())

@@ -7,16 +7,14 @@ use rayon::iter::{IntoParallelIterator, ParallelIterator};
 use serde::{Deserialize, Serialize};
 use smallvec::SmallVec;
 use stack_string::StackString;
-use std::{
-    collections::HashSet,
-    env::var,
-    io::{stdout, BufRead, BufReader, Write},
-    net::ToSocketAddrs,
-    str::FromStr,
-};
+use std::{collections::HashSet, env::var, net::ToSocketAddrs, process::Stdio, str::FromStr};
 use structopt::StructOpt;
-use subprocess::Exec;
-use tokio::{fs::File, io::AsyncWriteExt, task::spawn_blocking};
+use tokio::{
+    fs::File,
+    io::{AsyncBufReadExt, AsyncWriteExt, BufReader},
+    process::Command,
+    task::spawn_blocking,
+};
 
 use crate::{
     config::Config,
@@ -218,13 +216,14 @@ impl ParseOpts {
                     .username
                     .as_ref()
                     .map_or_else(|| config.username.as_str(), StackString::as_str);
-                let command = format!(
-                    r#"ssh {}@{} "security-log-parse-rust parse -s {}""#,
-                    username, server.0, server.0,
-                );
+                let user_host = format!("{}@{}", username, server.0);
+                let command = format!("security-log-parse-rust parse -s {}", server.0);
                 debug!("{}", command);
-                let status = Exec::shell(&command).join()?.success();
-                if !status {
+                let status = Command::new("ssh")
+                    .args(&[&user_host, &command])
+                    .status()
+                    .await?;
+                if !status.success() {
                     return Err(format_err!("{} failed", command));
                 }
 
@@ -234,33 +233,44 @@ impl ParseOpts {
                     spawn_blocking(move || get_max_datetime(&pool, &server)).await?
                 }?;
                 debug!("{:?}", max_datetime);
+
+                let user_host = format!("{}@{}", username, server.0);
                 let command = format!(
-                    r#"ssh {}@{} "security-log-parse-rust ser -s {} -d {}""#,
-                    username,
-                    server.0,
+                    "security-log-parse-rust ser -s {} -d {}",
                     server.0,
                     max_datetime.to_rfc3339(),
                 );
                 debug!("{}", command);
-                let stream = Exec::shell(command).stream_stdout()?;
-                let mut reader = BufReader::new(stream);
-                let mut line = String::new();
+                let mut process = Command::new("ssh")
+                    .args(&[&user_host, &command])
+                    .stdout(Stdio::piped())
+                    .spawn()?;
+
                 let mut inserts = HashSet::new();
-                loop {
-                    if reader.read_line(&mut line)? == 0 {
-                        break;
+                if let Some(stdout) = process.stdout.take() {
+                    let mut reader = BufReader::new(stdout);
+                    let mut line = String::new();
+                    loop {
+                        if reader.read_line(&mut line).await? == 0 {
+                            break;
+                        }
+                        let val: IntrusionLogInsert = serde_json::from_str(&line)?;
+                        inserts.insert(val);
+                        line.clear();
                     }
-                    let val: IntrusionLogInsert = serde_json::from_str(&line)?;
-                    inserts.insert(val);
-                    line.clear();
                 }
+
+                process.wait().await?;
+
                 let new_hosts: HashSet<_> =
                     inserts.iter().map(|item| item.host.to_string()).collect();
+
                 let futures = new_hosts.into_iter().map(|host| {
                     let metadata = metadata.clone();
                     async move { metadata.get_country_info(&host).await }
                 });
                 try_join_all(futures).await?;
+
                 let mut existing_entries = {
                     let pool = pool.clone();
                     let server = server.clone();
