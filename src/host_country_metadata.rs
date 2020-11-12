@@ -11,7 +11,6 @@ use tokio::{
     io::{AsyncBufReadExt, BufReader},
     process::Command,
 };
-use tokio_compat_02::FutureExt;
 
 use crate::{
     exponential_retry,
@@ -133,7 +132,6 @@ impl HostCountryMetadata {
             .client
             .get(url)
             .send()
-            .compat()
             .await?
             .error_for_status()?;
         let output: IpWhoIsOutput = resp.json().await?;

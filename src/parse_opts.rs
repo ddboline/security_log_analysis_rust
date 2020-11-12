@@ -260,7 +260,7 @@ impl ParseOpts {
                     }
                 }
 
-                process.wait().await?;
+                process.await?;
 
                 let new_hosts: HashSet<_> =
                     inserts.iter().map(|item| item.host.to_string()).collect();

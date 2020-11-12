@@ -37,7 +37,7 @@ use rand::{
     thread_rng,
 };
 use std::{future::Future, time::Duration};
-use tokio::time::sleep;
+use tokio::time::delay_for as sleep;
 
 pub async fn exponential_retry<T, U, F>(closure: T) -> Result<U, Error>
 where
