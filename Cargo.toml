@@ -1,6 +1,6 @@
 [package]
 name = "security_log_analysis_rust"
-version = "0.3.19"
+version = "0.3.20"
 authors = ["Daniel Boline <ddboline@gmail.com>"]
 edition = "2018"
 
@@ -34,7 +34,7 @@ derive_more = "0.99"
 smartstring = "0.2"
 bytes = "0.5"
 envy = "0.4"
-smallvec = "1.4"
+smallvec = "1.5"
 avro-rs = {version = "0.11", features = ["snappy"]}
 deadqueue = "0.1"
 itertools = "0.9"
