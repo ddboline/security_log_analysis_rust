@@ -4,6 +4,9 @@ version = "0.3.20"
 authors = ["Daniel Boline <ddboline@gmail.com>"]
 edition = "2018"
 
+[package.metadata.deb]
+name = "security-log-analysis-rust"
+
 [dependencies]
 actix-web = "3.2"
 r2d2 = "0.8"
