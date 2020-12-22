@@ -1,14 +1,19 @@
 [package]
 name = "security_log_analysis_rust"
-version = "0.3.20"
+version = "0.3.21"
 authors = ["Daniel Boline <ddboline@gmail.com>"]
 edition = "2018"
 
 [package.metadata.deb]
 name = "security-log-analysis-rust"
+priority = "optional"
+section = "rust"
+provides = "security-log-analysis-rust"
+extended-description = """\
+Analyze Auth Logs."""
 
 [dependencies]
-actix-web = "3.2"
+actix-web = "3.3"
 r2d2 = "0.8"
 deadpool = "0.5"
 deadpool-postgres = "0.5"
@@ -23,10 +28,10 @@ flate2 = "1.0"
 structopt = "0.3"
 parking_lot = "0.11"
 tokio-postgres = "0.5"
-rand = "0.7"
+rand = "0.8"
 log = "0.4"
 env_logger = "0.8"
-retry = "1.1"
+retry = "1.2"
 anyhow = "1.0"
 thiserror = "1.0"
 dirs = "3.0"
@@ -38,11 +43,11 @@ smartstring = "0.2"
 bytes = "0.5"
 envy = "0.4"
 smallvec = "1.5"
-avro-rs = {version = "0.11", features = ["snappy"]}
+avro-rs = {version = "0.12", features = ["snappy"]}
 deadqueue = "0.1"
 itertools = "0.9"
 postgres_query = "0.3"
-stack-string = { git = "https://github.com/ddboline/stack-string-rs.git", tag="0.1.9", features=["postgres_types", "diesel_types"] }
+stack-string = { git = "https://github.com/ddboline/stack-string-rs.git", tag="0.1.10", features=["postgres_types", "diesel_types"] }
 
 [[bin]]
 name = "security-log-parse-rust"
