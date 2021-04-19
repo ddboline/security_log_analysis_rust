@@ -132,10 +132,10 @@ impl ParseOpts {
                     spawn_blocking(move || {
                         parse_all_log_files(
                             &metadata,
-                            "apache",
+                            "nginx",
                             &server.0,
                             &parse_log_line_apache,
-                            "/var/log/apache2/access.log",
+                            "/var/log/nginx/access.log",
                         )
                     })
                     .await?

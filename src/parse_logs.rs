@@ -184,6 +184,14 @@ mod tests {
         assert_eq!(result.host, "36.110.50.217");
         assert_eq!(result.timestamp.hour(), 4);
 
+        let test_line = "Apr 19 07:40:45 dilepton-tower sshd[72399]: Invalid user admin1 from 196.189.241.98 port 40113\n";
+        let result = parse_log_line_ssh(2021, test_line).unwrap().unwrap();
+        debug!("{:?}", result);
+        assert_eq!(result.user, Some("admin1".into()));
+        assert_eq!(result.host, "196.189.241.98");
+        assert_eq!(result.timestamp.hour(), 11);
+
+
         let test_line = "May 17 03:10:32 ip-172-31-78-8 sshd[1205097]: Invalid user admin from \
                          106.54.145.68 port 52542";
         let result = parse_log_line_ssh(2020, test_line).unwrap().unwrap();
@@ -219,8 +227,8 @@ mod tests {
         let infile = File::open(fname).unwrap();
         let year = Utc::now().year();
         let results = parse_log_file(year, infile, &parse_log_line_ssh).unwrap();
-        debug!("{}", results.len());
-        assert!(results.len() == 92);
+        println!("{}", results.len());
+        assert!(results.len() == 20);
     }
 
     #[test]
@@ -238,7 +246,7 @@ mod tests {
             "tests/data/test_auth.log",
         )
         .unwrap();
-        debug!("{}", results.len());
-        assert!(results.len() == 92);
+        println!("{}", results.len());
+        assert!(results.len() == 18);
     }
 }
