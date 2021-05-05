@@ -8,6 +8,7 @@ use serde::{Deserialize, Serialize};
 use smallvec::SmallVec;
 use stack_string::StackString;
 use std::{collections::HashSet, env::var, net::ToSocketAddrs, process::Stdio, str::FromStr};
+use stdout_channel::StdoutChannel;
 use structopt::StructOpt;
 use tokio::{
     fs::File,
@@ -20,11 +21,12 @@ use crate::{
     config::Config,
     host_country_metadata::HostCountryMetadata,
     models::{export_to_avro, IntrusionLog, IntrusionLogInsert},
-    parse_logs::{parse_all_log_files, parse_log_line_apache, parse_log_line_ssh},
+    parse_logs::{
+        parse_all_log_files, parse_log_line_apache, parse_log_line_ssh, parse_systemd_logs_sshd_all,
+    },
     pgpool::PgPool,
     pgpool_pg::PgPoolPg,
     reports::get_country_count_recent,
-    stdout_channel::StdoutChannel,
 };
 
 #[derive(Debug)]
@@ -102,7 +104,7 @@ impl ParseOpts {
     pub async fn process_args() -> Result<(), Error> {
         let opts = Self::from_args();
 
-        let stdout = StdoutChannel::new();
+        let stdout = StdoutChannel::<StackString>::new();
 
         match opts.action {
             ParseActions::Parse => {
@@ -116,17 +118,9 @@ impl ParseOpts {
                 let mut inserts = {
                     let metadata = metadata.clone();
                     let server = server.clone();
-                    spawn_blocking(move || {
-                        parse_all_log_files(
-                            &metadata,
-                            "ssh",
-                            &server.0,
-                            &parse_log_line_ssh,
-                            "/var/log/auth.log",
-                        )
-                    })
-                    .await?
-                }?;
+                    parse_systemd_logs_sshd_all(&metadata, &server.0).await?
+                };
+                stdout.send(format!("new lines ssh {}", inserts.len()));
                 inserts.extend({
                     let metadata = metadata.clone();
                     spawn_blocking(move || {

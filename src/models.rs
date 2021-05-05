@@ -174,7 +174,9 @@ impl IntrusionLog {
     }
 }
 
-#[derive(Insertable, Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize, PartialOrd, Ord)]
+#[derive(
+    Insertable, Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize, PartialOrd, Ord,
+)]
 #[table_name = "intrusion_log"]
 pub struct IntrusionLogInsert {
     pub service: StackString,
