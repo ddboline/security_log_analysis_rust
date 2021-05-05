@@ -239,10 +239,7 @@ struct ServiceLogLine<'a> {
 impl TryFrom<ServiceLogLine<'_>> for LogLineSSH {
     type Error = Error;
     fn try_from(line: ServiceLogLine) -> Result<Self, Self::Error> {
-        let timestamp: i64 = line.timestamp.parse().map_err(|e| {
-            println!("{}", line.timestamp);
-            e
-        })?;
+        let timestamp: i64 = line.timestamp.parse()?;
         let timestamp = NaiveDateTime::from_timestamp((timestamp / 1_000_000) as i64, 0);
         let timestamp = DateTime::from_utc(timestamp, Utc);
         let (host, user) = parse_log_message(&line.message)?
@@ -370,7 +367,6 @@ mod tests {
         let logs = parse_systemd_logs_sshd("home.ddboline.net").await?;
         println!("{:?}", logs[0]);
         assert!(logs.len() > 0);
-        assert!(false);
         Ok(())
     }
 }
