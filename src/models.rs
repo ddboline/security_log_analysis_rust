@@ -174,7 +174,9 @@ impl IntrusionLog {
     }
 }
 
-#[derive(Insertable, Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize, PartialOrd, Ord)]
+#[derive(
+    Insertable, Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize, PartialOrd, Ord,
+)]
 #[table_name = "intrusion_log"]
 pub struct IntrusionLogInsert {
     pub service: StackString,
@@ -224,11 +226,14 @@ impl IntrusionLogInsert {
         use crate::schema::intrusion_log::dsl::intrusion_log;
         let conn = pool.get()?;
 
-        for i in il.chunks(10000) {
-            diesel::insert_into(intrusion_log)
-                .values(i)
-                .execute(&conn)
-                .map(|_| ())?;
+        for i in il.chunks(1000) {
+            match diesel::insert_into(intrusion_log).values(i).execute(&conn) {
+                Ok(_) => (),
+                Err(e) => {
+                    println!("{}", e);
+                    continue;
+                }
+            }
         }
         Ok(())
     }

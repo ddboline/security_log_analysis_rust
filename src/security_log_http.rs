@@ -1,14 +1,12 @@
 use anyhow::Error as AnyhowError;
-use std::convert::Infallible;
+use http::StatusCode;
 use itertools::Itertools;
 use log::error;
 use serde::{Deserialize, Serialize};
 use stack_string::StackString;
-use std::env::var;
+use std::{convert::Infallible, env::var, net::SocketAddr};
 use thiserror::Error;
-use warp::{Reply, reject::Reject, Rejection, Filter};
-use http::{StatusCode};
-use std::net::SocketAddr;
+use warp::{reject::Reject, Filter, Rejection, Reply};
 
 use security_log_analysis_rust::{
     config::Config, pgpool_pg::PgPoolPg, reports::get_country_count_recent,
@@ -74,7 +72,8 @@ async fn intrusion_attempts(
     let server = format!("{}.ddboline.net", location);
     let ndays = query.ndays.unwrap_or(30);
     let results = get_country_count_recent(&data.db, &service, &server, ndays)
-        .await.map_err(Into::<ServiceError>::into)?
+        .await
+        .map_err(Into::<ServiceError>::into)?
         .into_iter()
         .map(|(x, y)| format!(r#"["{}", {}]"#, x, y))
         .join(",");
@@ -99,14 +98,15 @@ async fn start_app() -> Result<(), AnyhowError> {
     let data = AppState { db: pool.clone() };
     let data = warp::any().map(move || data.clone());
 
-    let intrusion_attemps_path = warp::path!("security_log" / "intrusion_attempts" / StackString / StackString)
-        .and(warp::path::end())
-        .and(warp::get())
-        .and(warp::query())
-        .and(data.clone())
-        .and_then(intrusion_attempts);
+    let intrusion_attemps_path =
+        warp::path!("security_log" / "intrusion_attempts" / StackString / StackString)
+            .and(warp::path::end())
+            .and(warp::get())
+            .and(warp::query())
+            .and(data.clone())
+            .and_then(intrusion_attempts);
 
-        let cors = warp::cors()
+    let cors = warp::cors()
         .allow_methods(vec!["GET"])
         .allow_header("content-type")
         .allow_any_origin()
