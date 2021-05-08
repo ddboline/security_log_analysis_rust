@@ -226,11 +226,11 @@ impl IntrusionLogInsert {
         use crate::schema::intrusion_log::dsl::intrusion_log;
         let conn = pool.get()?;
 
-        for i in il.chunks(1000) {
+        for i in il.chunks(100) {
             match diesel::insert_into(intrusion_log).values(i).execute(&conn) {
                 Ok(_) => (),
                 Err(e) => {
-                    println!("{}", e);
+                    println!("chunk failed {}", e);
                     continue;
                 }
             }
