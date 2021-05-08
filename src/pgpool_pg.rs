@@ -21,6 +21,7 @@ impl fmt::Debug for PgPoolPg {
 }
 
 impl PgPoolPg {
+    #[allow(clippy::missing_panics_doc)]
     pub fn new(pgurl: &str) -> Self {
         let pgconf: PgConfig = pgurl.parse().expect("Failed to parse Url");
 

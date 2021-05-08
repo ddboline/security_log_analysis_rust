@@ -367,7 +367,7 @@ mod tests {
         for entry in &country_code_list {
             debug!("{:?}", entry);
         }
-        assert_eq!(country_code_list.len(), 252);
+        assert_eq!(country_code_list.len(), 253);
     }
 
     #[test]

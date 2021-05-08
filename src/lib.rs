@@ -10,6 +10,8 @@
 #![allow(clippy::shadow_unrelated)]
 #![allow(clippy::missing_errors_doc)]
 #![allow(clippy::used_underscore_binding)]
+#![allow(clippy::upper_case_acronyms)]
+#![allow(clippy::missing_errors_doc)]
 
 #[macro_use]
 extern crate diesel;
@@ -24,7 +26,6 @@ pub mod pgpool;
 pub mod pgpool_pg;
 pub mod reports;
 pub mod schema;
-pub mod stdout_channel;
 
 use anyhow::{format_err, Error};
 use log::error;

@@ -1,6 +1,6 @@
 [package]
 name = "security_log_analysis_rust"
-version = "0.5.0"
+version = "0.5.2"
 authors = ["Daniel Boline <ddboline@gmail.com>"]
 edition = "2018"
 
@@ -47,8 +47,9 @@ smallvec = "1.6"
 avro-rs = {version = "0.13", features = ["snappy"]}
 deadqueue = "0.2"
 itertools = "0.10"
+stdout-channel = "0.4"
 postgres_query = {git = "https://github.com/ddboline/rust-postgres-query", branch="master"}
-stack-string = { git = "https://github.com/ddboline/stack-string-rs.git", tag="0.2.0", features=["postgres_types", "diesel_types"] }
+stack-string = { version="0.2", features=["postgres_types", "diesel_types"] }
 
 [[bin]]
 name = "security-log-parse-rust"
