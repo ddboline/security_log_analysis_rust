@@ -35,7 +35,7 @@ pub fn parse_log_message(line: &str) -> Result<Option<(&str, &str)>, Error> {
     };
     let remaining: SmallVec<[&str; 2]> = user.split(" from ").take(2).collect();
     let user = remaining.get(0).ok_or_else(|| format_err!("No user"))?;
-    let user = if user.len() == 0 {
+    let user = if user.is_empty() {
         ""
     } else if user.len() > 15 {
         &user[0..15]
@@ -240,7 +240,10 @@ impl TryFrom<ServiceLogLine<'_>> for LogLineSSH {
     type Error = Error;
     fn try_from(line: ServiceLogLine) -> Result<Self, Self::Error> {
         let timestamp: i64 = line.timestamp.parse()?;
-        let timestamp = NaiveDateTime::from_timestamp((timestamp / 1_000_000) as i64, (timestamp % 1_000_000 * 1000) as u32);
+        let timestamp = NaiveDateTime::from_timestamp(
+            (timestamp / 1_000_000) as i64,
+            (timestamp % 1_000_000 * 1000) as u32,
+        );
         let timestamp = DateTime::from_utc(timestamp, Utc);
         let (host, user) = parse_log_message(&line.message)?
             .ok_or_else(|| format_err!("Failed to parse {}", line.message))?;

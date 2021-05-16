@@ -1,6 +1,6 @@
 [package]
 name = "security_log_analysis_rust"
-version = "0.5.4"
+version = "0.5.5"
 authors = ["Daniel Boline <ddboline@gmail.com>"]
 edition = "2018"
 
@@ -13,7 +13,7 @@ extended-description = """\
 Analyze Auth Logs."""
 
 [dependencies]
-warp = "0.3"
+rweb = {version="0.12", features=["openapi"]}
 http = "0.2"
 r2d2 = "0.8"
 deadpool = "0.7"
@@ -49,7 +49,7 @@ deadqueue = "0.2"
 itertools = "0.10"
 stdout-channel = "0.4"
 postgres_query = {git = "https://github.com/ddboline/rust-postgres-query", branch="master"}
-stack-string = { version="0.2", features=["postgres_types", "diesel_types"] }
+stack-string = { version="0.2", features=["postgres_types", "diesel_types", "rweb-openapi"] }
 
 [[bin]]
 name = "security-log-parse-rust"
