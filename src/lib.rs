@@ -11,9 +11,7 @@
 #![allow(clippy::missing_errors_doc)]
 #![allow(clippy::used_underscore_binding)]
 #![allow(clippy::upper_case_acronyms)]
-#![allow(clippy::missing_errors_doc)]
 #![allow(clippy::case_sensitive_file_extension_comparisons)]
-#![allow(clippy::missing_errors_doc)]
 #![allow(clippy::default_trait_access)]
 
 #[macro_use]
