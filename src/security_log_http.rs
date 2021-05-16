@@ -2,11 +2,11 @@ use anyhow::Error as AnyhowError;
 use http::StatusCode;
 use itertools::Itertools;
 use log::error;
+use rweb::{get, reject::Reject, Filter, Query, Rejection, Reply, Schema};
 use serde::{Deserialize, Serialize};
 use stack_string::StackString;
 use std::{convert::Infallible, env::var, net::SocketAddr};
 use thiserror::Error;
-use warp::{reject::Reject, Filter, Rejection, Reply};
 
 use security_log_analysis_rust::{
     config::Config, pgpool_pg::PgPoolPg, reports::get_country_count_recent,
@@ -39,7 +39,7 @@ pub async fn error_response(err: Rejection) -> Result<Box<dyn Reply>, Infallible
         error!("{:?}", service_error);
         code = StatusCode::INTERNAL_SERVER_ERROR;
         message = "Internal Server Error, Please try again later";
-    } else if err.find::<warp::reject::MethodNotAllowed>().is_some() {
+    } else if err.find::<rweb::reject::MethodNotAllowed>().is_some() {
         code = StatusCode::METHOD_NOT_ALLOWED;
         message = "METHOD NOT ALLOWED";
     } else {
@@ -48,29 +48,30 @@ pub async fn error_response(err: Rejection) -> Result<Box<dyn Reply>, Infallible
         message = "Internal Server Error, Please try again later";
     };
 
-    let reply = warp::reply::json(&ErrorMessage {
+    let reply = rweb::reply::json(&ErrorMessage {
         code: code.as_u16(),
         message: message.to_string(),
     });
-    let reply = warp::reply::with_status(reply, code);
+    let reply = rweb::reply::with_status(reply, code);
 
     Ok(Box::new(reply))
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Schema)]
 struct AttemptsQuery {
     ndays: Option<i32>,
 }
 
+#[get("/security_log/intrusion_attempts/{service}/{location}")]
 async fn intrusion_attempts(
     service: StackString,
     location: StackString,
-    query: AttemptsQuery,
-    data: AppState,
+    query: Query<AttemptsQuery>,
+    #[data] data: AppState,
 ) -> WarpResult<impl Reply> {
     let template = include_str!("../templates/COUNTRY_TEMPLATE.html");
     let server = format!("{}.ddboline.net", location);
-    let ndays = query.ndays.unwrap_or(30);
+    let ndays = query.into_inner().ndays.unwrap_or(30);
     let results = get_country_count_recent(&data.db, &service, &server, ndays)
         .await
         .map_err(Into::<ServiceError>::into)?
@@ -78,7 +79,7 @@ async fn intrusion_attempts(
         .map(|(x, y)| format!(r#"["{}", {}]"#, x, y))
         .join(",");
     let body = template.replace("PUTLISTOFCOUNTRIESANDATTEMPTSHERE", &results);
-    Ok(warp::reply::html(body))
+    Ok(rweb::reply::html(body))
 }
 
 #[derive(Clone)]
@@ -95,18 +96,11 @@ async fn start_app() -> Result<(), AnyhowError> {
         .and_then(|s| s.parse().ok())
         .unwrap_or(4086);
 
-    let data = AppState { db: pool.clone() };
-    let data = warp::any().map(move || data.clone());
+    let app = AppState { db: pool.clone() };
 
-    let intrusion_attemps_path =
-        warp::path!("security_log" / "intrusion_attempts" / StackString / StackString)
-            .and(warp::path::end())
-            .and(warp::get())
-            .and(warp::query())
-            .and(data.clone())
-            .and_then(intrusion_attempts);
+    let intrusion_attemps_path = intrusion_attempts(app.clone());
 
-    let cors = warp::cors()
+    let cors = rweb::cors()
         .allow_methods(vec!["GET"])
         .allow_header("content-type")
         .allow_any_origin()
@@ -114,7 +108,7 @@ async fn start_app() -> Result<(), AnyhowError> {
 
     let routes = intrusion_attemps_path.recover(error_response).with(cors);
     let addr: SocketAddr = format!("127.0.0.1:{}", port).parse()?;
-    warp::serve(routes).bind(addr).await;
+    rweb::serve(routes).bind(addr).await;
 
     Ok(())
 }
