@@ -13,6 +13,7 @@ pub struct ConfigInner {
     #[serde(default = "default_username")]
     pub username: StackString,
     pub export_dir: Option<PathBuf>,
+    pub server: StackString,
 }
 
 fn default_username() -> StackString {
