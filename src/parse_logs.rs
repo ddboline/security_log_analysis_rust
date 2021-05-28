@@ -13,12 +13,19 @@ use std::{
     fmt,
     fs::File,
     io::{BufRead, BufReader, Read},
+    process::Stdio,
 };
-use tokio::{process::Command, task::spawn_blocking};
+use tokio::{
+    io::{self, AsyncBufReadExt, AsyncRead, AsyncReadExt},
+    process::Command,
+    task::{spawn, spawn_blocking, JoinHandle},
+};
 
 use crate::{
+    config::Config,
     host_country_metadata::HostCountryMetadata,
     models::{IntrusionLog, IntrusionLogInsert},
+    pgpool::PgPool,
 };
 
 #[derive(Debug, PartialEq, Eq, Hash)]
@@ -216,7 +223,7 @@ pub async fn parse_systemd_logs_sshd(server: &str) -> Result<Vec<IntrusionLogIns
         .filter(|line| line.contains("_SOURCE_REALTIME_TIMESTAMP") && line.contains("Invalid user"))
         .map(|line| {
             let log: ServiceLogLine = serde_json::from_str(line)?;
-            let log_line: LogLineSSH = log.try_into()?;
+            let log_line: LogLineSSH = log.parse_sshd()?;
             Ok(IntrusionLogInsert {
                 service: "ssh".into(),
                 server: server.into(),
@@ -228,6 +235,74 @@ pub async fn parse_systemd_logs_sshd(server: &str) -> Result<Vec<IntrusionLogIns
         .collect()
 }
 
+pub async fn parse_systemd_logs_sshd_daemon(config: &Config, pool: &PgPool) -> Result<(), Error> {
+    let mut p = Command::new("journalctl")
+        .args(&[
+            "-o",
+            "json",
+            "--output-fields=MESSAGE,_SOURCE_REALTIME_TIMESTAMP",
+            "-f",
+        ])
+        .stdout(Stdio::piped())
+        .spawn()?;
+    let stdout = p.stdout.take().ok_or_else(|| format_err!("No Stdout"))?;
+    let reader = io::BufReader::new(stdout);
+    let stdout_task: JoinHandle<Result<(), Error>> = {
+        let config = config.clone();
+        let pool = pool.clone();
+        spawn(async move { process_systemd_sshd_output(reader, &config, &pool).await })
+    };
+    p.wait().await?;
+    stdout_task.await??;
+    Ok(())
+}
+
+async fn process_systemd_sshd_output(
+    mut reader: io::BufReader<impl AsyncRead + Unpin>,
+    config: &Config,
+    pool: &PgPool,
+) -> Result<(), Error> {
+    let mut buf = Vec::new();
+    while let Ok(bytes) = reader.read_until(b'\n', &mut buf).await {
+        if bytes > 0 {
+            let line = String::from_utf8_lossy(&buf);
+            if line.contains("_SOURCE_REALTIME_TIMESTAMP") && line.contains("Invalid user") {
+                let log: ServiceLogLine = serde_json::from_str(&line)?;
+                let log_line = log.parse_sshd()?;
+                let log_entry = IntrusionLogInsert {
+                    service: "ssh".into(),
+                    server: config.server.clone(),
+                    datetime: log_line.timestamp,
+                    host: log_line.host,
+                    username: log_line.user,
+                };
+                let pool = pool.clone();
+                println!("proc sshd {:?}", log_entry);
+                spawn_blocking(move || IntrusionLogInsert::insert(&pool, &[log_entry])).await??;
+            } else if line.contains("_SOURCE_REALTIME_TIMESTAMP") && line.contains("nginx") {
+                let log: ServiceLogLine = serde_json::from_str(&line)?;
+                if let Some(log_line) = log.parse_nginx()? {
+                    let log_entry = IntrusionLogInsert {
+                        service: "nginx".into(),
+                        server: config.server.clone(),
+                        datetime: log_line.timestamp,
+                        host: log_line.host,
+                        username: log_line.user,
+                    };
+                    let pool = pool.clone();
+                    println!("proc nginx {:?}", log_entry);
+                    spawn_blocking(move || IntrusionLogInsert::insert(&pool, &[log_entry]))
+                        .await??;
+                }
+            }
+        } else {
+            break;
+        }
+        buf.clear();
+    }
+    Ok(())
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct ServiceLogLine<'a> {
     #[serde(alias = "_SOURCE_REALTIME_TIMESTAMP")]
@@ -236,23 +311,43 @@ struct ServiceLogLine<'a> {
     message: StackString,
 }
 
-impl TryFrom<ServiceLogLine<'_>> for LogLineSSH {
-    type Error = Error;
-    fn try_from(line: ServiceLogLine) -> Result<Self, Self::Error> {
-        let timestamp: i64 = line.timestamp.parse()?;
+impl ServiceLogLine<'_> {
+    fn parse_sshd(self) -> Result<LogLineSSH, Error> {
+        let timestamp: i64 = self.timestamp.parse()?;
         let timestamp = NaiveDateTime::from_timestamp(
             (timestamp / 1_000_000) as i64,
             (timestamp % 1_000_000 * 1000) as u32,
         );
         let timestamp = DateTime::from_utc(timestamp, Utc);
-        let (host, user) = parse_log_message(&line.message)?
-            .ok_or_else(|| format_err!("Failed to parse {}", line.message))?;
+        let (host, user) = parse_log_message(&self.message)?
+            .ok_or_else(|| format_err!("Failed to parse {}", self.message))?;
 
-        Ok(Self {
+        Ok(LogLineSSH {
             timestamp,
             host: host.into(),
             user: Some(user.into()),
         })
+    }
+
+    fn parse_nginx(self) -> Result<Option<LogLineSSH>, Error> {
+        let timestamp: i64 = self.timestamp.parse()?;
+        let timestamp = NaiveDateTime::from_timestamp(
+            (timestamp / 1_000_000) as i64,
+            (timestamp % 1_000_000 * 1000) as u32,
+        );
+        let timestamp = DateTime::from_utc(timestamp, Utc);
+
+        let tokens: SmallVec<[&str; 5]> = self.message.split_whitespace().take(5).collect();
+        if tokens.len() < 5 {
+            return Ok(None);
+        }
+        let host = tokens[0];
+        let host = if host.len() > 60 { &host[0..60] } else { host };
+        Ok(Some(LogLineSSH {
+            host: host.into(),
+            user: None,
+            timestamp,
+        }))
     }
 }
 
