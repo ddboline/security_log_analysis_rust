@@ -1,6 +1,6 @@
 [package]
 name = "security_log_analysis_rust"
-version = "0.5.5"
+version = "0.5.6"
 authors = ["Daniel Boline <ddboline@gmail.com>"]
 edition = "2018"
 
@@ -38,7 +38,7 @@ thiserror = "1.0"
 dirs = "3.0"
 reqwest = {version="0.11", features=["json"]}
 futures = "0.3"
-tokio = {version="1.0", features=["full"]}
+tokio = {version="1.6", features=["full"]}
 derive_more = "0.99"
 smartstring = "0.2"
 bytes = "1.0"

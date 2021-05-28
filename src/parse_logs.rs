@@ -277,7 +277,7 @@ async fn process_systemd_sshd_output(
                     username: log_line.user,
                 };
                 let pool = pool.clone();
-                println!("proc sshd {:?}", log_entry);
+                debug!("proc sshd {:?}", log_entry);
                 spawn_blocking(move || IntrusionLogInsert::insert(&pool, &[log_entry])).await??;
             } else if line.contains("_SOURCE_REALTIME_TIMESTAMP") && line.contains("nginx") {
                 let log: ServiceLogLine = serde_json::from_str(&line)?;
@@ -290,7 +290,7 @@ async fn process_systemd_sshd_output(
                         username: log_line.user,
                     };
                     let pool = pool.clone();
-                    println!("proc nginx {:?}", log_entry);
+                    debug!("proc nginx {:?}", log_entry);
                     spawn_blocking(move || IntrusionLogInsert::insert(&pool, &[log_entry]))
                         .await??;
                 }
