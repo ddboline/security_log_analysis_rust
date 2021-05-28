@@ -21,11 +21,13 @@ use log::error;
 use rweb::{get, reject::Reject, Filter, Query, Rejection, Reply, Schema};
 use serde::{Deserialize, Serialize};
 use stack_string::StackString;
-use std::{convert::Infallible, env::var, net::SocketAddr};
+use std::{convert::Infallible, env::var, net::SocketAddr, time::Duration};
 use thiserror::Error;
+use tokio::{task::spawn, time::sleep};
 
 use security_log_analysis_rust::{
-    config::Config, pgpool_pg::PgPoolPg, reports::get_country_count_recent,
+    config::Config, parse_logs::parse_systemd_logs_sshd_daemon, pgpool::PgPool,
+    pgpool_pg::PgPoolPg, reports::get_country_count_recent,
 };
 
 type WarpResult<T> = Result<T, Rejection>;
@@ -103,8 +105,24 @@ struct AppState {
     db: PgPoolPg,
 }
 
+async fn _run_daemon(config: Config) {
+    loop {
+        let pool = PgPool::new(&config.database_url);
+        parse_systemd_logs_sshd_daemon(&config, &pool)
+            .await
+            .unwrap_or(());
+        sleep(Duration::from_secs(1)).await;
+    }
+}
+
 async fn start_app() -> Result<(), AnyhowError> {
     let config = Config::init_config()?;
+
+    let daemon_task = {
+        let config = config.clone();
+        spawn(async move { _run_daemon(config).await })
+    };
+
     let pool = PgPoolPg::new(&config.database_url);
 
     let port: u32 = var("PORT")
@@ -126,6 +144,7 @@ async fn start_app() -> Result<(), AnyhowError> {
     let addr: SocketAddr = format!("127.0.0.1:{}", port).parse()?;
     rweb::serve(routes).bind(addr).await;
 
+    daemon_task.await?;
     Ok(())
 }
 
