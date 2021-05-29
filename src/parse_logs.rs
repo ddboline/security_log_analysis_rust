@@ -294,7 +294,8 @@ async fn process_systemd_sshd_output(
                 };
                 let pool = pool.clone();
                 debug!("proc sshd {:?}", log_entry);
-                spawn_blocking(move || IntrusionLogInsert::insert_single(&pool, &log_entry)).await??;
+                spawn_blocking(move || IntrusionLogInsert::insert_single(&pool, &log_entry))
+                    .await??;
             } else if line.contains("_SOURCE_REALTIME_TIMESTAMP") && line.contains("nginx") {
                 let log: ServiceLogLine = serde_json::from_str(&line)?;
                 if let Some(log_line) = log.parse_nginx()? {
