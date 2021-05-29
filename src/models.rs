@@ -93,6 +93,16 @@ pub struct IntrusionLog {
 }
 
 impl IntrusionLog {
+    fn _get_by_datetime_service_server(
+        conn: &PgPoolConnection, datetime_val: DateTime<Utc>, service_val: &str, server_val: &str
+    ) -> Result<Vec<Self>, Error> {
+        use crate::schema::intrusion_log::dsl::{datetime, intrusion_log, server, service};
+        intrusion_log.filter(datetime.eq(datetime_val))
+            .filter(service.eq(service_val))
+            .filter(server.eq(server_val))
+            .load(conn).map_err(Into::into)
+    }
+
     pub fn get_max_datetime(
         pool: &PgPool,
         service_val: &str,
@@ -225,7 +235,10 @@ impl IntrusionLogInsert {
     pub fn insert_single(pool: &PgPool, il: &IntrusionLogInsert) -> Result<(), Error> {
         use crate::schema::intrusion_log::dsl::intrusion_log;
         let conn = pool.get()?;
-        diesel::insert_into(intrusion_log).values(il).execute(&conn)?;
+        let existing = IntrusionLog::_get_by_datetime_service_server(&conn, il.datetime, &il.service, &il.server)?;
+        if existing.is_empty() {
+            diesel::insert_into(intrusion_log).values(il).execute(&conn)?;
+        }
         Ok(())
     }
 
