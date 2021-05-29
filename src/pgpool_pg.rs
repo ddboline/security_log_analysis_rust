@@ -1,6 +1,6 @@
 use anyhow::{format_err, Error};
 use deadpool::managed::Object;
-use deadpool_postgres::{ClientWrapper, Config, Pool};
+use deadpool_postgres::{Client, Config, Pool};
 use stack_string::StackString;
 use std::{env::set_var, fmt, sync::Arc};
 use tokio_postgres::{error::Error as PgError, Config as PgConfig, NoTls};
@@ -11,7 +11,7 @@ use tokio_postgres::{error::Error as PgError, Config as PgConfig, NoTls};
 #[derive(Clone, Default)]
 pub struct PgPoolPg {
     pgurl: Arc<StackString>,
-    pool: Option<Pool>,
+    pool: Option<Pool<NoTls>>,
 }
 
 impl fmt::Debug for PgPoolPg {
@@ -52,7 +52,7 @@ impl PgPoolPg {
         }
     }
 
-    pub async fn get(&self) -> Result<Object<ClientWrapper, PgError>, Error> {
+    pub async fn get(&self) -> Result<Client<NoTls>, Error> {
         self.pool
             .as_ref()
             .ok_or_else(|| format_err!("No Pool Exists"))?

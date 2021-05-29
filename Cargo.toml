@@ -16,8 +16,8 @@ Analyze Auth Logs."""
 rweb = {version="0.12", features=["openapi"]}
 http = "0.2"
 r2d2 = "0.8"
-deadpool = "0.7"
-deadpool-postgres = "0.7"
+deadpool = "0.8"
+deadpool-postgres = "0.8"
 diesel = {version="1.4", features=["postgres", "r2d2", "chrono"]}
 chrono = "0.4"
 rayon = "1.5"
