@@ -336,12 +336,11 @@ impl ServiceLogLine<'_> {
             (timestamp % 1_000_000 * 1000) as u32,
         );
         let timestamp = DateTime::from_utc(timestamp, Utc);
-
-        let tokens: SmallVec<[&str; 5]> = self.message.split_whitespace().take(5).collect();
-        if tokens.len() < 5 {
+        let tokens: SmallVec<[&str; 3]> = self.message.split_whitespace().take(3).collect();
+        if tokens.len() < 3 {
             return Ok(None);
         }
-        let host = tokens[0];
+        let host = tokens[2];
         let host = if host.len() > 60 { &host[0..60] } else { host };
         Ok(Some(LogLineSSH {
             host: host.into(),
