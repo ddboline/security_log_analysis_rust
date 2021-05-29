@@ -209,8 +209,6 @@ pub async fn parse_systemd_logs_sshd_all(
 pub async fn parse_systemd_logs_sshd(server: &str) -> Result<Vec<IntrusionLogInsert>, Error> {
     let command = Command::new("journalctl")
         .args(&[
-            "-t",
-            "sshd",
             "-o",
             "json",
             "--output-fields=MESSAGE,_SOURCE_REALTIME_TIMESTAMP",
@@ -220,18 +218,36 @@ pub async fn parse_systemd_logs_sshd(server: &str) -> Result<Vec<IntrusionLogIns
     let stdout = String::from_utf8_lossy(&command.stdout);
     stdout
         .split('\n')
-        .filter(|line| line.contains("_SOURCE_REALTIME_TIMESTAMP") && line.contains("Invalid user"))
+        .filter(|line| line.contains("_SOURCE_REALTIME_TIMESTAMP"))
         .map(|line| {
-            let log: ServiceLogLine = serde_json::from_str(line)?;
-            let log_line: LogLineSSH = log.parse_sshd()?;
-            Ok(IntrusionLogInsert {
-                service: "ssh".into(),
-                server: server.into(),
-                datetime: log_line.timestamp,
-                host: log_line.host,
-                username: log_line.user,
-            })
+            if line.contains("Invalid user") {
+                let log: ServiceLogLine = serde_json::from_str(line)?;
+                let log_line: LogLineSSH = log.parse_sshd()?;
+                Ok(Some(IntrusionLogInsert {
+                    service: "ssh".into(),
+                    server: server.into(),
+                    datetime: log_line.timestamp,
+                    host: log_line.host,
+                    username: log_line.user,
+                }))
+            } else if line.contains("nginx") {
+                let log: ServiceLogLine = serde_json::from_str(&line)?;
+                if let Some(log_line) = log.parse_nginx()? {
+                    Ok(Some(IntrusionLogInsert {
+                        service: "nginx".into(),
+                        server: server.into(),
+                        datetime: log_line.timestamp,
+                        host: log_line.host,
+                        username: log_line.user,
+                    }))
+                } else {
+                    Ok(None)
+                }
+            } else {
+                Ok(None)
+            }
         })
+        .filter_map(|x| x.transpose())
         .collect()
 }
 
