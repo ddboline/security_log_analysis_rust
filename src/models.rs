@@ -222,6 +222,13 @@ impl IntrusionLogInsert {
             .map_err(Into::into)
     }
 
+    pub fn insert_single(pool: &PgPool, il: &IntrusionLogInsert) -> Result<(), Error> {
+        use crate::schema::intrusion_log::dsl::intrusion_log;
+        let conn = pool.get()?;
+        diesel::insert_into(intrusion_log).values(il).execute(&conn)?;
+        Ok(())
+    }
+
     pub fn insert(pool: &PgPool, il: &[IntrusionLogInsert]) -> Result<(), Error> {
         use crate::schema::intrusion_log::dsl::intrusion_log;
         let conn = pool.get()?;
