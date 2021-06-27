@@ -57,10 +57,10 @@ pub fn parse_log_message(line: &str) -> Result<Option<(&str, &str)>, Error> {
         .ok_or_else(|| format_err!("No host"))?
         .trim();
     let host = if host.len() > 60 { &host[0..60] } else { host };
-    if !host.contains('.') {
-        Ok(None)
-    } else {
+    if host.contains('.') {
         Ok(Some((host, user)))
+    } else {
+        Ok(None)
     }
 }
 
@@ -239,22 +239,18 @@ pub async fn parse_systemd_logs_sshd(server: &str) -> Result<Vec<IntrusionLogIns
                 }))
             } else if line.contains("nginx") {
                 let log: ServiceLogLine = serde_json::from_str(&line)?;
-                if let Some(log_line) = log.parse_nginx()? {
-                    Ok(Some(IntrusionLogInsert {
-                        service: "nginx".into(),
-                        server: server.into(),
-                        datetime: log_line.timestamp,
-                        host: log_line.host,
-                        username: log_line.user,
-                    }))
-                } else {
-                    Ok(None)
-                }
+                Ok(log.parse_nginx()?.map(|log_line| IntrusionLogInsert {
+                    service: "nginx".into(),
+                    server: server.into(),
+                    datetime: log_line.timestamp,
+                    host: log_line.host,
+                    username: log_line.user,
+                }))
             } else {
                 Ok(None)
             }
         })
-        .filter_map(|x| x.transpose())
+        .filter_map(Result::transpose)
         .collect()
 }
 
