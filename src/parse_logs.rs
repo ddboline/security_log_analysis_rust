@@ -57,7 +57,11 @@ pub fn parse_log_message(line: &str) -> Result<Option<(&str, &str)>, Error> {
         .ok_or_else(|| format_err!("No host"))?
         .trim();
     let host = if host.len() > 60 { &host[0..60] } else { host };
-    Ok(Some((host, user)))
+    if !host.contains('.') {
+        Ok(None)
+    } else {
+        Ok(Some((host, user)))
+    }
 }
 
 pub fn parse_log_line_ssh(year: i32, line: &str) -> Result<Option<LogLineSSH>, Error> {
@@ -170,6 +174,9 @@ pub fn parse_log_line_apache(_: i32, line: &str) -> Result<Option<LogLineSSH>, E
     }
     let host = tokens[0];
     let host = if host.len() > 60 { &host[0..60] } else { host };
+    if !host.contains('.') {
+        return Ok(None);
+    }
     let offset: i32 = tokens[4].replace("]", "").parse()?;
     let offset = FixedOffset::east((offset / 100) * 60 * 60 + (offset % 100) * 60);
     let timestr = tokens[3..5].join("").replace("[", "").replace("]", "");
@@ -359,6 +366,9 @@ impl ServiceLogLine<'_> {
         }
         let host = tokens[2];
         let host = if host.len() > 60 { &host[0..60] } else { host };
+        if !host.contains('.') {
+            return Ok(None);
+        }
         Ok(Some(LogLineSSH {
             host: host.into(),
             user: None,
