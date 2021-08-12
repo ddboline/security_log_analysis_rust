@@ -1,6 +1,6 @@
 [package]
 name = "security_log_analysis_rust"
-version = "0.5.10"
+version = "0.5.11"
 authors = ["Daniel Boline <ddboline@gmail.com>"]
 edition = "2018"
 
@@ -13,7 +13,7 @@ extended-description = """\
 Analyze Auth Logs."""
 
 [dependencies]
-rweb = {version="0.12", features=["openapi"]}
+rweb = {version="0.13", features=["openapi"]}
 http = "0.2"
 r2d2 = "0.8"
 deadpool = "0.8"
@@ -31,7 +31,7 @@ parking_lot = "0.11"
 tokio-postgres = "0.7"
 rand = "0.8"
 log = "0.4"
-env_logger = "0.8"
+env_logger = "0.9"
 retry = "1.2"
 anyhow = "1.0"
 thiserror = "1.0"

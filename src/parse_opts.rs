@@ -186,7 +186,7 @@ impl ParseOpts {
                         .as_ref()
                         .map_or_else(Utc::now, |dt| {
                             if let Ok(Some(dt2)) =
-                                IntrusionLog::get_max_datetime(&pool, "apache", &server.0)
+                                IntrusionLog::get_max_datetime(&pool, "nginx", &server.0)
                             {
                                 if *dt < dt2 {
                                     *dt
