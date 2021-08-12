@@ -49,7 +49,7 @@ deadqueue = "0.2"
 itertools = "0.10"
 stdout-channel = "0.4"
 postgres_query = {git = "https://github.com/ddboline/rust-postgres-query", tag = "0.3.3-2", features=["deadpool"]}
-stack-string = { version="0.2", features=["postgres_types", "diesel_types", "rweb-openapi"] }
+stack-string = { version="0.3", features=["postgres_types", "diesel_types", "rweb-openapi"] }
 
 [[bin]]
 name = "security-log-parse-rust"
