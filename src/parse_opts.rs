@@ -306,7 +306,7 @@ impl ParseOpts {
                 let config = Config::init_config()?;
                 let pool = PgPoolPg::new(&config.database_url);
                 let template = include_str!("../templates/COUNTRY_TEMPLATE.html");
-                for service in &["ssh", "apache"] {
+                for service in &["ssh", "apache", "nginx"] {
                     for server_prefix in &["home", "cloud"] {
                         let server = format!("{}.ddboline.net", server_prefix);
                         let results = get_country_count_recent(&pool, service, &server, 30)
