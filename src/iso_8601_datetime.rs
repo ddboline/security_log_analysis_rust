@@ -11,7 +11,7 @@ pub fn convert_datetime_to_str(datetime: DateTime<Utc>) -> String {
 }
 
 pub fn convert_str_to_datetime(s: &str) -> Result<DateTime<Utc>, Error> {
-    DateTime::parse_from_rfc3339(&s)
+    DateTime::parse_from_rfc3339(s)
         .map(|x| x.with_timezone(&Utc))
         .map_err(Into::into)
 }

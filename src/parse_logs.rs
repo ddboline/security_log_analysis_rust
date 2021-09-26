@@ -238,7 +238,7 @@ pub async fn parse_systemd_logs_sshd(server: &str) -> Result<Vec<IntrusionLogIns
                     username: log_line.user,
                 }))
             } else if line.contains("nginx") {
-                let log: ServiceLogLine = serde_json::from_str(&line)?;
+                let log: ServiceLogLine = serde_json::from_str(line)?;
                 Ok(log.parse_nginx()?.map(|log_line| IntrusionLogInsert {
                     service: "nginx".into(),
                     server: server.into(),

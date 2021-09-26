@@ -182,11 +182,11 @@ impl ParseOpts {
                     pool: &PgPool,
                     server: &HostName,
                 ) -> Result<DateTime<Utc>, Error> {
-                    let result = IntrusionLog::get_max_datetime(&pool, "ssh", &server.0)?
+                    let result = IntrusionLog::get_max_datetime(pool, "ssh", &server.0)?
                         .as_ref()
                         .map_or_else(Utc::now, |dt| {
                             if let Ok(Some(dt2)) =
-                                IntrusionLog::get_max_datetime(&pool, "nginx", &server.0)
+                                IntrusionLog::get_max_datetime(pool, "nginx", &server.0)
                             {
                                 if *dt < dt2 {
                                     *dt
@@ -338,7 +338,7 @@ impl ParseOpts {
                     }
                     match vals.get(..2) {
                         Some([host, code]) => {
-                            metadata.insert_host_code(&host, &code)?;
+                            metadata.insert_host_code(host, code)?;
                         }
                         _ => continue,
                     }
