@@ -13,7 +13,7 @@ extended-description = """\
 Analyze Auth Logs."""
 
 [dependencies]
-rweb = {version="0.13", features=["openapi"]}
+rweb = {version="0.14", features=["openapi"]}
 http = "0.2"
 r2d2 = "0.8"
 deadpool = "0.8"
@@ -35,7 +35,7 @@ env_logger = "0.9"
 retry = "1.2"
 anyhow = "1.0"
 thiserror = "1.0"
-dirs = "3.0"
+dirs = "4.0"
 reqwest = {version="0.11", features=["json"]}
 futures = "0.3"
 tokio = {version="1.6", features=["full"]}
