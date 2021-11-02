@@ -95,7 +95,7 @@ async fn intrusion_attempts(
         .await
         .map_err(Into::<ServiceError>::into)?
         .into_iter()
-        .map(|(x, y)| format!(r#"["{}", {}]"#, x, y))
+        .map(|cc| format!(r#"["{}", {}]"#, cc.country, cc.count))
         .join(",");
     let body = template.replace("PUTLISTOFCOUNTRIESANDATTEMPTSHERE", &results);
     Ok(rweb::reply::html(body))

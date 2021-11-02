@@ -299,7 +299,7 @@ impl ParseOpts {
                         let results = get_country_count_recent(&pool, service, &server, 30)
                             .await?
                             .into_iter()
-                            .map(|(x, y)| format!(r#"["{}", {}]"#, x, y))
+                            .map(|cc| format!(r#"["{}", {}]"#, cc.country, cc.count))
                             .join(",");
                         let results =
                             template.replace("PUTLISTOFCOUNTRIESANDATTEMPTSHERE", &results);

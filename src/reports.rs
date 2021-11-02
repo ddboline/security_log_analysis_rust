@@ -1,14 +1,21 @@
 use anyhow::Error;
+use postgres_query::FromSqlRow;
 use stack_string::StackString;
 
 use crate::pgpool::PgPool;
+
+#[derive(FromSqlRow)]
+pub struct CountryCount {
+    pub country: StackString,
+    pub count: i64,
+}
 
 pub async fn get_country_count_recent(
     pool: &PgPool,
     service: &str,
     server: &str,
     ndays: i32,
-) -> Result<Vec<(StackString, i64)>, Error> {
+) -> Result<Vec<CountryCount>, Error> {
     let query = postgres_query::query_dyn!(
         &format!(
             r#"
@@ -27,15 +34,6 @@ pub async fn get_country_count_recent(
         service = service,
         server = server
     )?;
-    pool.get()
-        .await?
-        .query(query.sql(), query.parameters())
-        .await?
-        .iter()
-        .map(|row| {
-            let country: StackString = row.try_get("country")?;
-            let count: i64 = row.try_get("count")?;
-            Ok((country, count))
-        })
-        .collect()
+    let conn = pool.get().await?;
+    query.fetch(&conn).await.map_err(Into::into)
 }
