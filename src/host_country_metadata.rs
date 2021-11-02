@@ -1,7 +1,7 @@
 use anyhow::{format_err, Error};
-use diesel::connection::SimpleConnection;
 use log::{debug, error};
 use parking_lot::RwLock;
+use postgres_query::query;
 use reqwest::{Client, Url};
 use serde::{Deserialize, Serialize};
 use smallvec::SmallVec;
@@ -42,17 +42,19 @@ impl HostCountryMetadata {
         }
     }
 
-    pub fn from_pool(pool: &PgPool) -> Result<Self, Error> {
+    pub async fn from_pool(pool: &PgPool) -> Result<Self, Error> {
         let result = Self {
             pool: Some(pool.clone()),
             country_code_map: Arc::new(RwLock::new(
-                CountryCode::get_country_code_list(pool)?
+                CountryCode::get_country_code_list(pool)
+                    .await?
                     .into_iter()
                     .map(|item| (item.code.clone(), item))
                     .collect(),
             )),
             host_country_map: Arc::new(RwLock::new(
-                HostCountry::get_host_country(pool)?
+                HostCountry::get_host_country(pool)
+                    .await?
                     .into_iter()
                     .map(|item| (item.host.clone(), item))
                     .collect(),
@@ -62,7 +64,7 @@ impl HostCountryMetadata {
         Ok(result)
     }
 
-    pub fn insert_host_code(&self, host: &str, code: &str) -> Result<StackString, Error> {
+    pub async fn insert_host_code(&self, host: &str, code: &str) -> Result<StackString, Error> {
         let ccmap = self.country_code_map.read();
         if (*ccmap).contains_key(code) {
             let ipaddr = (host, 22).to_socket_addrs()?.next().and_then(|s| {
@@ -83,7 +85,7 @@ impl HostCountryMetadata {
                 let mut lock = self.host_country_map.write();
                 if !(*lock).contains_key(host) {
                     if let Some(pool) = self.pool.as_ref() {
-                        host_country.insert_host_country(pool)?;
+                        host_country.insert_host_country(pool).await?;
                     }
                     (*lock).insert(host.into(), host_country);
                 }
@@ -98,7 +100,7 @@ impl HostCountryMetadata {
             return Ok(entry.code.clone());
         }
         let whois_code = self.get_whois_country_info(host).await?;
-        self.insert_host_code(host, &whois_code)
+        self.insert_host_code(host, &whois_code).await
     }
 
     pub async fn get_whois_country_info(&self, host: &str) -> Result<StackString, Error> {
@@ -161,31 +163,35 @@ impl HostCountryMetadata {
         }
     }
 
-    pub fn cleanup_intrusion_log(&self) -> Result<(), Error> {
-        let dedupe_query0 = r#"
-            DELETE FROM intrusion_log a
-                USING intrusion_log b
-            WHERE a.id<b.id AND 
-                  a.service=b.service AND 
-                  a.server=b.server AND 
-                  a.datetime=b.datetime AND 
-                  a.host=b.host AND 
-                  a.username=b.username
-        "#;
-        let dedupe_query1 = r#"
-            DELETE FROM intrusion_log a
-                USING intrusion_log b
-            WHERE a.id<b.id AND
-                  a.service=b.service AND
-                  a.server=b.server AND
-                  a.datetime=b.datetime AND
-                  a.host=b.host AND
-                  a.username is NULL
-        "#;
+    pub async fn cleanup_intrusion_log(&self) -> Result<(), Error> {
+        let dedupe_query0 = query!(
+            r#"
+                DELETE FROM intrusion_log a
+                    USING intrusion_log b
+                WHERE a.id<b.id AND 
+                    a.service=b.service AND 
+                    a.server=b.server AND 
+                    a.datetime=b.datetime AND 
+                    a.host=b.host AND 
+                    a.username=b.username
+            "#
+        );
+        let dedupe_query1 = query!(
+            r#"
+                DELETE FROM intrusion_log a
+                    USING intrusion_log b
+                WHERE a.id<b.id AND
+                    a.service=b.service AND
+                    a.server=b.server AND
+                    a.datetime=b.datetime AND
+                    a.host=b.host AND
+                    a.username is NULL
+            "#
+        );
         if let Some(pool) = self.pool.as_ref() {
-            let conn = pool.get()?;
-            conn.batch_execute(dedupe_query0)?;
-            conn.batch_execute(dedupe_query1)?;
+            let conn = pool.get().await?;
+            dedupe_query0.execute(&conn).await?;
+            dedupe_query1.execute(&conn).await?;
         }
         Ok(())
     }

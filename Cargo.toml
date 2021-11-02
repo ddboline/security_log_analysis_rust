@@ -15,10 +15,8 @@ Analyze Auth Logs."""
 [dependencies]
 rweb = {version="0.14", features=["openapi"]}
 http = "0.2"
-r2d2 = "0.8"
-deadpool = "0.8"
-deadpool-postgres = "0.9"
-diesel = {version="1.4", features=["postgres", "r2d2", "chrono"]}
+deadpool = {version = "0.9", features=["serde", "rt_tokio_1"]}
+deadpool-postgres = {version="0.10", features=["serde"]}
 chrono = "0.4"
 rayon = "1.5"
 serde = { version="1.0", features=["derive"]}
@@ -28,7 +26,7 @@ glob = "0.3"
 flate2 = "1.0"
 structopt = "0.3"
 parking_lot = "0.11"
-tokio-postgres = "0.7"
+tokio-postgres = {version="0.7", features=["with-chrono-0_4", "with-uuid-0_8", "with-serde_json-1"]}
 rand = "0.8"
 log = "0.4"
 env_logger = "0.9"
@@ -48,8 +46,9 @@ avro-rs = {version = "0.13", features = ["snappy"]}
 deadqueue = "0.2"
 itertools = "0.10"
 stdout-channel = "0.4"
-postgres_query = {git = "https://github.com/ddboline/rust-postgres-query", tag = "0.3.3-2", features=["deadpool"]}
-stack-string = { version="0.3", features=["postgres_types", "diesel_types", "rweb-openapi"] }
+refinery = {version="0.7", features=["tokio-postgres"]}
+postgres_query = {git = "https://github.com/ddboline/rust-postgres-query", tag = "0.3.4", features=["deadpool"]}
+stack-string = { version="0.3", features=["postgres_types", "rweb-openapi"] }
 
 [[bin]]
 name = "security-log-parse-rust"

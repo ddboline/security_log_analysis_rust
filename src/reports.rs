@@ -1,10 +1,10 @@
 use anyhow::Error;
 use stack_string::StackString;
 
-use crate::pgpool_pg::PgPoolPg;
+use crate::pgpool::PgPool;
 
 pub async fn get_country_count_recent(
-    pool: &PgPoolPg,
+    pool: &PgPool,
     service: &str,
     server: &str,
     ndays: i32,

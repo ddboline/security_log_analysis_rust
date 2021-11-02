@@ -22,9 +22,7 @@ use tokio::{
 };
 
 use crate::{
-    config::Config,
-    host_country_metadata::HostCountryMetadata,
-    models::{IntrusionLog, IntrusionLogInsert},
+    config::Config, host_country_metadata::HostCountryMetadata, models::IntrusionLog,
     pgpool::PgPool,
 };
 
@@ -107,13 +105,13 @@ where
     Ok(lines)
 }
 
-pub fn parse_all_log_files<T>(
+pub async fn parse_all_log_files<T>(
     hc: &HostCountryMetadata,
     service: &str,
     server: &str,
     parse_func: &T,
     log_prefix: &str,
-) -> Result<Vec<IntrusionLogInsert>, Error>
+) -> Result<Vec<IntrusionLog>, Error>
 where
     T: Fn(i32, &str) -> Result<Option<LogLineSSH>, Error> + Send + Sync,
 {
@@ -138,7 +136,7 @@ where
     }
 
     let max_datetime: Option<DateTime<Utc>> = match hc.pool.as_ref() {
-        Some(pool) => IntrusionLog::get_max_datetime(pool, service, server)?,
+        Some(pool) => IntrusionLog::get_max_datetime(pool, service, server).await?,
         None => None,
     };
 
@@ -150,7 +148,8 @@ where
                 None => true,
             };
             if cond {
-                Some(IntrusionLogInsert {
+                Some(IntrusionLog {
+                    id: -1,
                     service: service.into(),
                     server: server.into(),
                     datetime: log_line.timestamp,
@@ -161,8 +160,10 @@ where
                 None
             }
         })
-        .sorted()
-        .dedup()
+        .sorted_by(|i0, i1| Ord::cmp(&i0.datetime, &i1.datetime))
+        .dedup_by(|i0, i1| {
+            (i0.datetime == i1.datetime) && (i0.host == i1.host) && (i0.username == i1.username)
+        })
         .collect();
     Ok(inserts)
 }
@@ -192,12 +193,12 @@ pub fn parse_log_line_apache(_: i32, line: &str) -> Result<Option<LogLineSSH>, E
 pub async fn parse_systemd_logs_sshd_all(
     hc: &HostCountryMetadata,
     server: &str,
-) -> Result<Vec<IntrusionLogInsert>, Error> {
+) -> Result<Vec<IntrusionLog>, Error> {
     let max_datetime: Option<DateTime<Utc>> = match hc.pool.as_ref() {
         Some(pool) => {
             let pool = pool.clone();
             let server: StackString = server.into();
-            spawn_blocking(move || IntrusionLog::get_max_datetime(&pool, "ssh", &server)).await??
+            IntrusionLog::get_max_datetime(&pool, "ssh", &server).await?
         }
         None => None,
     };
@@ -213,7 +214,7 @@ pub async fn parse_systemd_logs_sshd_all(
     Ok(inserts)
 }
 
-pub async fn parse_systemd_logs_sshd(server: &str) -> Result<Vec<IntrusionLogInsert>, Error> {
+pub async fn parse_systemd_logs_sshd(server: &str) -> Result<Vec<IntrusionLog>, Error> {
     let command = Command::new("journalctl")
         .args(&[
             "-o",
@@ -230,7 +231,8 @@ pub async fn parse_systemd_logs_sshd(server: &str) -> Result<Vec<IntrusionLogIns
             if line.contains("Invalid user") {
                 let log: ServiceLogLine = serde_json::from_str(line)?;
                 let log_line: LogLineSSH = log.parse_sshd()?;
-                Ok(Some(IntrusionLogInsert {
+                Ok(Some(IntrusionLog {
+                    id: -1,
                     service: "ssh".into(),
                     server: server.into(),
                     datetime: log_line.timestamp,
@@ -239,7 +241,8 @@ pub async fn parse_systemd_logs_sshd(server: &str) -> Result<Vec<IntrusionLogIns
                 }))
             } else if line.contains("nginx") {
                 let log: ServiceLogLine = serde_json::from_str(line)?;
-                Ok(log.parse_nginx()?.map(|log_line| IntrusionLogInsert {
+                Ok(log.parse_nginx()?.map(|log_line| IntrusionLog {
+                    id: -1,
                     service: "nginx".into(),
                     server: server.into(),
                     datetime: log_line.timestamp,
@@ -288,31 +291,31 @@ async fn process_systemd_sshd_output(
             if line.contains("_SOURCE_REALTIME_TIMESTAMP") && line.contains("Invalid user") {
                 let log: ServiceLogLine = serde_json::from_str(&line)?;
                 let log_line = log.parse_sshd()?;
-                let log_entry = IntrusionLogInsert {
+                let log_entry = IntrusionLog {
+                    id: -1,
                     service: "ssh".into(),
                     server: config.server.clone(),
                     datetime: log_line.timestamp,
                     host: log_line.host,
                     username: log_line.user,
                 };
-                let pool = pool.clone();
+                let conn = pool.get().await?;
                 debug!("proc sshd {:?}", log_entry);
-                spawn_blocking(move || IntrusionLogInsert::insert_single(&pool, &log_entry))
-                    .await??;
+                log_entry.insert_single(&conn).await?;
             } else if line.contains("_SOURCE_REALTIME_TIMESTAMP") && line.contains("nginx") {
                 let log: ServiceLogLine = serde_json::from_str(&line)?;
                 if let Some(log_line) = log.parse_nginx()? {
-                    let log_entry = IntrusionLogInsert {
+                    let log_entry = IntrusionLog {
+                        id: -1,
                         service: "nginx".into(),
                         server: config.server.clone(),
                         datetime: log_line.timestamp,
                         host: log_line.host,
                         username: log_line.user,
                     };
-                    let pool = pool.clone();
+                    let conn = pool.get().await?;
                     debug!("proc nginx {:?}", log_entry);
-                    spawn_blocking(move || IntrusionLogInsert::insert_single(&pool, &log_entry))
-                        .await??;
+                    log_entry.insert_single(&conn).await?;
                 }
             }
         } else {
@@ -462,12 +465,12 @@ mod tests {
         assert!(results.len() == 20);
     }
 
-    #[test]
+    #[tokio::test]
     #[ignore]
-    fn test_parse_all_log_files_ssh() {
-        let config = Config::init_config().unwrap();
+    async fn test_parse_all_log_files_ssh() -> Result<(), Error> {
+        let config = Config::init_config()?;
         let pool = PgPool::new(&config.database_url);
-        let mut hc = HostCountryMetadata::from_pool(&pool).unwrap();
+        let mut hc = HostCountryMetadata::from_pool(&pool).await?;
         hc.pool = None;
         let results = parse_all_log_files(
             &hc,
@@ -476,9 +479,10 @@ mod tests {
             &parse_log_line_ssh,
             "tests/data/test_auth.log",
         )
-        .unwrap();
+        .await?;
         println!("{}", results.len());
         assert!(results.len() == 18);
+        Ok(())
     }
 
     #[tokio::test]

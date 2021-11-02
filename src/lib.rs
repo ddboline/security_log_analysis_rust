@@ -14,9 +14,6 @@
 #![allow(clippy::case_sensitive_file_extension_comparisons)]
 #![allow(clippy::default_trait_access)]
 
-#[macro_use]
-extern crate diesel;
-
 pub mod config;
 pub mod host_country_metadata;
 pub mod iso_8601_datetime;
@@ -24,9 +21,7 @@ pub mod models;
 pub mod parse_logs;
 pub mod parse_opts;
 pub mod pgpool;
-pub mod pgpool_pg;
 pub mod reports;
-pub mod schema;
 
 use anyhow::{format_err, Error};
 use log::error;

@@ -1,9 +1,10 @@
 use anyhow::{format_err, Error};
 use avro_rs::{from_value, Codec, Reader, Schema, Writer};
 use chrono::{DateTime, Datelike, NaiveDate, NaiveDateTime, NaiveTime, Utc};
-use diesel::{Connection, ExpressionMethods, QueryDsl, RunQueryDsl};
-use futures::future::try_join_all;
+use derive_more::Into;
+use futures::{future::try_join_all, TryFutureExt};
 use log::debug;
+use postgres_query::{client::GenericClient, query, query_dyn, FromSqlRow, Parameter};
 use serde::{Deserialize, Serialize};
 use stack_string::StackString;
 use std::{fs::File, path::Path};
@@ -11,9 +12,7 @@ use tokio::{fs::create_dir_all, task::spawn_blocking};
 
 use crate::{
     iso_8601_datetime,
-    pgpool::{PgPool, PgPoolConnection},
-    pgpool_pg::PgPoolPg,
-    schema::{country_code, host_country, intrusion_log},
+    pgpool::{PgPool, PgTransaction},
 };
 
 pub const INTRUSION_LOG_AVRO_SCHEMA: &str = r#"
@@ -31,25 +30,21 @@ pub const INTRUSION_LOG_AVRO_SCHEMA: &str = r#"
     }
 "#;
 
-#[derive(Queryable, Clone, Debug, Insertable)]
-#[table_name = "country_code"]
+#[derive(FromSqlRow, Clone, Debug)]
 pub struct CountryCode {
     pub code: StackString,
     pub country: StackString,
 }
 
 impl CountryCode {
-    pub fn get_country_code_list(pool: &PgPool) -> Result<Vec<Self>, Error> {
-        use crate::schema::country_code::dsl::country_code;
-
-        let conn = pool.get()?;
-
-        country_code.load(&conn).map_err(Into::into)
+    pub async fn get_country_code_list(pool: &PgPool) -> Result<Vec<Self>, Error> {
+        let query = query!("SELECT * FROM country_code");
+        let conn = pool.get().await?;
+        query.fetch(&conn).await.map_err(Into::into)
     }
 }
 
-#[derive(Queryable, Clone, Debug, Insertable)]
-#[table_name = "host_country"]
+#[derive(FromSqlRow, Clone, Debug)]
 pub struct HostCountry {
     pub host: StackString,
     pub code: StackString,
@@ -57,31 +52,68 @@ pub struct HostCountry {
 }
 
 impl HostCountry {
-    pub fn get_host_country(pool: &PgPool) -> Result<Vec<Self>, Error> {
-        use crate::schema::host_country::dsl::host_country;
-
-        let conn = pool.get()?;
-
-        host_country.load(&conn).map_err(Into::into)
+    pub async fn get_host_country(pool: &PgPool) -> Result<Vec<Self>, Error> {
+        let query = query!("SELECT * FROM host_country");
+        let conn = pool.get().await?;
+        query.fetch(&conn).await.map_err(Into::into)
     }
 
-    pub fn insert_host_country(&self, pool: &PgPool) -> Result<(), Error> {
-        use crate::schema::host_country::dsl::{host, host_country};
-        let conn = pool.get()?;
+    pub async fn insert_host_country(&self, pool: &PgPool) -> Result<Option<Self>, Error> {
+        let mut conn = pool.get().await?;
+        let tran = conn.transaction().await?;
+        let conn: &PgTransaction = &tran;
 
-        conn.transaction(|| {
-            let current_entry: Vec<Self> = host_country.filter(host.eq(&self.host)).load(&conn)?;
-            if current_entry.is_empty() {
-                diesel::insert_into(host_country)
-                    .values(self)
-                    .execute(&conn)?;
-            }
-            Ok(())
-        })
+        let existing = Self::get_by_host_conn(&self.host, conn).await?;
+        if existing.is_none() {
+            self.insert_host_country_conn(conn).await?;
+        } else {
+            self.update_host_country_conn(conn).await?;
+        }
+
+        tran.commit().await?;
+        Ok(existing)
+    }
+
+    async fn get_by_host_conn<C>(host: &str, conn: &C) -> Result<Option<Self>, Error>
+    where
+        C: GenericClient + Sync,
+    {
+        let query = query!("SELECT * FROM host_country WHERE host=$host", host = host);
+        query.fetch_opt(conn).await.map_err(Into::into)
+    }
+
+    async fn insert_host_country_conn<C>(&self, conn: &C) -> Result<(), Error>
+    where
+        C: GenericClient + Sync,
+    {
+        let query = query!(
+            r#"
+                INSERT INTO host_country (host, code, ipaddr)
+                VALUES ($host, $code, $ipaddr)
+            "#,
+            host = self.host,
+            code = self.code,
+            ipaddr = self.ipaddr,
+        );
+        query.execute(&conn).await?;
+        Ok(())
+    }
+
+    async fn update_host_country_conn<C>(&self, conn: &C) -> Result<(), Error>
+    where
+        C: GenericClient + Sync,
+    {
+        let query = query!(
+            "UPDATE host_country SET code=$code, ipaddr=$ipaddr",
+            code = self.code,
+            ipaddr = self.ipaddr
+        );
+        query.execute(conn).await?;
+        Ok(())
     }
 }
 
-#[derive(Queryable, Clone, Debug, Serialize, Deserialize)]
+#[derive(FromSqlRow, Clone, Debug, Serialize, Deserialize, PartialEq, Eq, Hash)]
 pub struct IntrusionLog {
     pub id: i32,
     pub service: StackString,
@@ -93,346 +125,259 @@ pub struct IntrusionLog {
 }
 
 impl IntrusionLog {
-    fn _get_by_datetime_service_server(
-        conn: &PgPoolConnection,
-        datetime_val: DateTime<Utc>,
-        service_val: &str,
-        server_val: &str,
-    ) -> Result<Vec<Self>, Error> {
-        use crate::schema::intrusion_log::dsl::{datetime, intrusion_log, server, service};
-        intrusion_log
-            .filter(datetime.eq(datetime_val))
-            .filter(service.eq(service_val))
-            .filter(server.eq(server_val))
-            .load(conn)
-            .map_err(Into::into)
+    async fn _get_by_datetime_service_server<C>(
+        conn: &C,
+        datetime: DateTime<Utc>,
+        service: &str,
+        server: &str,
+    ) -> Result<Vec<Self>, Error>
+    where
+        C: GenericClient + Sync,
+    {
+        let query = query!(
+            r#"
+                SELECT * FROM intrusion_log
+                WHERE datetime=$datetime
+                  AND service=$service
+                  AND server=$server
+            "#,
+            datetime = datetime,
+            service = service,
+            server = server,
+        );
+        query.fetch(conn).await.map_err(Into::into)
     }
 
-    pub fn get_max_datetime(
+    pub async fn get_max_datetime(
         pool: &PgPool,
-        service_val: &str,
-        server_val: &str,
+        service: &str,
+        server: &str,
     ) -> Result<Option<DateTime<Utc>>, Error> {
-        let conn = pool.get()?;
-        Self::_get_max_datetime(&conn, service_val, server_val)
-    }
-
-    fn _get_max_datetime(
-        conn: &PgPoolConnection,
-        service_val: &str,
-        server_val: &str,
-    ) -> Result<Option<DateTime<Utc>>, Error> {
-        use crate::schema::intrusion_log::dsl::{datetime, intrusion_log, server, service};
-        use diesel::dsl::max;
-
-        intrusion_log
-            .select(max(datetime))
-            .filter(service.eq(service_val))
-            .filter(server.eq(server_val))
-            .first(conn)
+        let conn = pool.get().await?;
+        Self::_get_max_datetime(&conn, service, server)
+            .await
             .map_err(Into::into)
     }
 
-    fn _get_min_datetime(
-        conn: &PgPoolConnection,
-        service_val: &str,
-        server_val: &str,
-    ) -> Result<Option<DateTime<Utc>>, Error> {
-        use crate::schema::intrusion_log::dsl::{datetime, intrusion_log, server, service};
-        use diesel::dsl::min;
+    async fn _get_max_datetime<C>(
+        conn: &C,
+        service: &str,
+        server: &str,
+    ) -> Result<Option<DateTime<Utc>>, Error>
+    where
+        C: GenericClient + Sync,
+    {
+        #[derive(FromSqlRow, Into)]
+        struct Wrap(DateTime<Utc>);
 
-        intrusion_log
-            .select(min(datetime))
-            .filter(service.eq(service_val))
-            .filter(server.eq(server_val))
-            .first(conn)
-            .map_err(Into::into)
+        let query = query!(
+            r#"
+                SELECT max(datetime) FROM intrusion_log
+                WHERE service=$service
+                  AND server=$server
+            "#,
+            service = service,
+            server = server,
+        );
+        let result: Option<Wrap> = query.fetch_opt(conn).await?;
+        Ok(result.map(Into::into))
     }
 
-    pub fn get_intrusion_log_filtered(
+    async fn _get_min_datetime<C>(
+        conn: &C,
+        service: &str,
+        server: &str,
+    ) -> Result<Option<DateTime<Utc>>, Error>
+    where
+        C: GenericClient + Sync,
+    {
+        #[derive(FromSqlRow, Into)]
+        struct Wrap(DateTime<Utc>);
+
+        let query = query!(
+            r#"
+                SELECT max(datetime) FROM intrusion_log
+                WHERE service=$service
+                    AND server=$server
+            "#,
+            service = service,
+            server = server,
+        );
+        let result: Option<Wrap> = query.fetch_opt(conn).await?;
+        Ok(result.map(Into::into))
+    }
+
+    pub async fn get_intrusion_log_filtered(
         pool: &PgPool,
-        service_val: &str,
-        server_val: &str,
+        service: &str,
+        server: &str,
         min_datetime: Option<DateTime<Utc>>,
         max_datetime: Option<DateTime<Utc>>,
         max_entries: Option<usize>,
     ) -> Result<Vec<Self>, Error> {
-        use crate::schema::intrusion_log::dsl::{datetime, intrusion_log, server, service};
-        use diesel::dsl::min;
-
-        let conn = pool.get()?;
+        let conn = pool.get().await?;
 
         let min_datetime = match min_datetime {
             Some(d) => d,
-            None => {
-                Self::_get_min_datetime(&conn, service_val, server_val)?.unwrap_or_else(Utc::now)
-            }
+            None => Self::_get_min_datetime(&conn, service, server)
+                .await?
+                .unwrap_or_else(Utc::now),
         };
         let max_datetime = max_datetime.unwrap_or_else(Utc::now);
 
-        let query = intrusion_log
-            .filter(service.eq(service_val))
-            .filter(server.eq(server_val))
-            .filter(datetime.ge(min_datetime))
-            .filter(datetime.lt(max_datetime))
-            .order_by(datetime);
-
-        max_entries.map_or_else(
-            || query.load(&conn).map_err(Into::into),
-            |max_entries| {
-                query
-                    .limit(max_entries as i64)
-                    .load(&conn)
-                    .map_err(Into::into)
-            },
-        )
-    }
-}
-
-#[derive(
-    Insertable, Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize, PartialOrd, Ord,
-)]
-#[table_name = "intrusion_log"]
-pub struct IntrusionLogInsert {
-    pub service: StackString,
-    pub server: StackString,
-    #[serde(with = "iso_8601_datetime")]
-    pub datetime: DateTime<Utc>,
-    pub host: StackString,
-    pub username: Option<StackString>,
-}
-
-impl From<IntrusionLog> for IntrusionLogInsert {
-    fn from(item: IntrusionLog) -> Self {
-        Self {
-            service: item.service,
-            server: item.server,
-            datetime: item.datetime,
-            host: item.host,
-            username: item.username,
-        }
-    }
-}
-
-impl IntrusionLogInsert {
-    pub fn dump_avro<T: AsRef<Path>>(values: &[Self], output_filename: T) -> Result<(), Error> {
-        let schema = Schema::parse_str(INTRUSION_LOG_AVRO_SCHEMA)?;
-        let output_file = File::create(output_filename)?;
-        let mut writer = Writer::with_codec(&schema, output_file, Codec::Snappy);
-        writer.extend_ser(values)?;
-        writer.flush()?;
-        Ok(())
-    }
-
-    pub fn read_avro<T: AsRef<Path>>(input_filename: T) -> Result<Vec<Self>, Error> {
-        let input_file = File::open(input_filename)?;
-        Reader::new(input_file)?
-            .next()
-            .map(|record| {
-                let record = record?;
-                from_value::<Vec<Self>>(&record)
-            })
-            .transpose()
-            .map(|x| x.unwrap_or_else(Vec::new))
-            .map_err(Into::into)
-    }
-
-    pub fn insert_single(pool: &PgPool, il: &IntrusionLogInsert) -> Result<(), Error> {
-        use crate::schema::intrusion_log::dsl::intrusion_log;
-        let conn = pool.get()?;
-        let existing = IntrusionLog::_get_by_datetime_service_server(
+        Self::get_intrusion_log_filtered_conn(
             &conn,
-            il.datetime,
-            &il.service,
-            &il.server,
-        )?;
-        if existing.is_empty() {
-            diesel::insert_into(intrusion_log)
-                .values(il)
-                .execute(&conn)?;
-        }
+            service,
+            server,
+            min_datetime,
+            max_datetime,
+            max_entries,
+        )
+        .await
+        .map_err(Into::into)
+    }
+
+    async fn get_intrusion_log_filtered_conn<C>(
+        conn: &C,
+        service: &str,
+        server: &str,
+        min_datetime: DateTime<Utc>,
+        max_datetime: DateTime<Utc>,
+        max_entries: Option<usize>,
+    ) -> Result<Vec<Self>, Error>
+    where
+        C: GenericClient + Sync,
+    {
+        let query = format!(
+            r#"
+                SELECT * FROM intrusion_log
+                WHERE service=$service
+                  AND server=$server,
+                  AND datetime >= $min_datetime
+                  AND datetime <= $max_datetime
+                {}
+            "#,
+            if let Some(max_entries) = max_entries {
+                format!("LIMIT {}", max_entries)
+            } else {
+                "".into()
+            },
+        );
+        let bindings = vec![
+            ("service", &service as Parameter),
+            ("server", &server as Parameter),
+            ("min_datetime", &min_datetime as Parameter),
+            ("max_datetime", &max_datetime as Parameter),
+        ];
+        let query = query_dyn!(&query, ..bindings)?;
+        query.fetch(conn).await.map_err(Into::into)
+    }
+
+    pub async fn insert_single<C>(&self, conn: &C) -> Result<(), Error>
+    where
+        C: GenericClient + Sync,
+    {
+        let query = query!(
+            r#"
+                INSERT INTO intrusion_log (
+                    service, server, datetime, host, username
+                ) VALUES (
+                    $service, $server, $datetime, $host, $username
+                )
+            "#,
+            service = self.service,
+            server = self.server,
+            datetime = self.datetime,
+            host = self.host,
+            username = self.username,
+        );
+        query.execute(conn).await?;
         Ok(())
     }
 
-    pub fn insert(pool: &PgPool, il: &[IntrusionLogInsert]) -> Result<(), Error> {
-        use crate::schema::intrusion_log::dsl::intrusion_log;
-        let conn = pool.get()?;
-
-        for i in il.chunks(100) {
-            match diesel::insert_into(intrusion_log).values(i).execute(&conn) {
-                Ok(_) => (),
-                Err(e) => {
-                    println!("chunk failed {}", e);
-                    continue;
+    pub async fn insert(pool: &PgPool, il: &[IntrusionLog]) -> Result<(), Error> {
+        let mut conn = pool.get().await?;
+        let tran = conn.transaction().await?;
+        let conn: &PgTransaction = &tran;
+        for i_chunk in il.chunks(100) {
+            for i in i_chunk {
+                let existing = IntrusionLog::_get_by_datetime_service_server(
+                    conn, i.datetime, &i.service, &i.server,
+                )
+                .await?;
+                if existing.is_empty() {
+                    i.insert_single(conn).await?;
                 }
             }
         }
+        tran.commit().await?;
         Ok(())
     }
-}
-
-pub async fn get_year_months(
-    pool: &PgPoolPg,
-    /* service_val: &str,
-     * server_val: &str, */
-) -> Result<Vec<(u16, u16)>, Error> {
-    let query = postgres_query::query!(
-        "
-        SELECT extract(year from datetime) as year,
-               extract(month from datetime) as month 
-        FROM intrusion_log
-        GROUP BY 1,2
-        ORDER BY 1,2",
-    );
-    let conn = pool.get().await?;
-    conn.query(query.sql(), query.parameters())
-        .await?
-        .into_iter()
-        .map(|row| {
-            let year: f64 = row.try_get("year")?;
-            let month: f64 = row.try_get("month")?;
-            Ok((year as u16, month as u16))
-        })
-        .collect()
-}
-
-pub async fn export_to_avro(
-    pool: &PgPool,
-    pgpool: &PgPoolPg,
-    /* service_val: &str,
-     * server_val: &str, */
-) -> Result<(), Error> {
-    let futures = get_year_months(pgpool) //, service_val, server_val)
-        .await?
-        .into_iter()
-        .map(|(year, month)| {
-            let pool = pool.clone();
-            async move {
-                let (next_year, next_month) = if month == 12 {
-                    (year + 1, 1)
-                } else if month == 11 {
-                    (year, 12)
-                } else {
-                    (year, (month + 1) % 12)
-                };
-                println!(
-                    "year {} month {} next_year {} next_month {}",
-                    year, month, next_year, next_month
-                );
-                let min_datetime: DateTime<Utc> = DateTime::from_utc(
-                    NaiveDateTime::new(
-                        NaiveDate::from_ymd(i32::from(year), u32::from(month), 1),
-                        NaiveTime::from_hms(0, 0, 0),
-                    ),
-                    Utc,
-                );
-                let max_datetime: DateTime<Utc> = DateTime::from_utc(
-                    NaiveDateTime::new(
-                        NaiveDate::from_ymd(i32::from(next_year), u32::from(next_month), 1),
-                        NaiveTime::from_hms(0, 0, 0),
-                    ),
-                    Utc,
-                );
-
-                let pool = pool.clone();
-                let logs: Vec<IntrusionLogInsert> = spawn_blocking(move || {
-                    IntrusionLog::get_intrusion_log_filtered(
-                        &pool,
-                        "ssh",
-                        "home.ddboline.net",
-                        Some(min_datetime),
-                        Some(max_datetime),
-                        None,
-                    )
-                })
-                .await??
-                .into_iter()
-                .map(Into::into)
-                .collect();
-
-                println!("{}", logs.len());
-
-                let home_dir = dirs::home_dir().expect("No HOME directory");
-                let output_filename = home_dir.join("tmp").join("security_log");
-
-                create_dir_all(&output_filename).await?;
-
-                let output_filename =
-                    output_filename.join(&format!("{:04}_{:02}.avro", year, month));
-
-                spawn_blocking(move || IntrusionLogInsert::dump_avro(&logs, output_filename))
-                    .await??;
-                Ok(())
-            }
-        });
-    let results: Result<Vec<_>, Error> = try_join_all(futures).await;
-    results?;
-    Ok(())
 }
 
 #[cfg(test)]
 mod tests {
     use anyhow::Error;
     use chrono::{DateTime, Datelike, NaiveDate, NaiveDateTime, NaiveTime, Utc};
-    use diesel::{QueryDsl, RunQueryDsl};
     use log::debug;
+    use postgres_query::query;
     use std::path::Path;
 
     use crate::{
         config::Config,
-        models::{export_to_avro, CountryCode, HostCountry, IntrusionLog, IntrusionLogInsert},
+        models::{CountryCode, HostCountry, IntrusionLog},
         pgpool::PgPool,
-        pgpool_pg::PgPoolPg,
     };
 
-    #[test]
+    #[tokio::test]
     #[ignore]
-    fn test_country_code_query() {
-        use crate::schema::country_code::dsl::country_code;
-        let config = Config::init_config().unwrap();
+    async fn test_country_code_query() -> Result<(), Error> {
+        let config = Config::init_config()?;
 
         let pool = PgPool::new(&config.database_url);
-        let conn = pool.get().unwrap();
+        let conn = pool.get().await?;
 
-        let country_code_list: Vec<CountryCode> = country_code.load(&conn).unwrap();
+        let query = query!("SELECT * FROM country_code");
+        let country_code_list: Vec<CountryCode> = query.fetch(&conn).await?;
 
         for entry in &country_code_list {
             debug!("{:?}", entry);
         }
         assert_eq!(country_code_list.len(), 253);
+        Ok(())
     }
 
-    #[test]
+    #[tokio::test]
     #[ignore]
-    fn test_host_country_query() {
-        use crate::schema::host_country::dsl::host_country;
-        let config = Config::init_config().unwrap();
+    async fn test_host_country_query() -> Result<(), Error> {
+        let config = Config::init_config()?;
 
         let pool = PgPool::new(&config.database_url);
-        let conn = pool.get().unwrap();
-
-        let host_country_list: Vec<HostCountry> = host_country.limit(10).load(&conn).unwrap();
+        let conn = pool.get().await?;
+        let query = query!("SELECT * FROM host_country LIMIT 10");
+        let host_country_list: Vec<HostCountry> = query.fetch(&conn).await?;
 
         for entry in &host_country_list {
             debug!("{:?}", entry);
         }
         assert_eq!(host_country_list.len(), 10);
+        Ok(())
     }
 
-    #[test]
+    #[tokio::test]
     #[ignore]
-    fn test_intrusion_log_query() {
-        use crate::schema::intrusion_log::dsl::intrusion_log;
-        let config = Config::init_config().unwrap();
+    async fn test_intrusion_log_query() -> Result<(), Error> {
+        let config = Config::init_config()?;
 
         let pool = PgPool::new(&config.database_url);
-        let conn = pool.get().unwrap();
-
-        let intrusion_log_list: Vec<IntrusionLog> = intrusion_log.limit(10).load(&conn).unwrap();
+        let conn = pool.get().await?;
+        let query = query!("SELECT * FROM intrusion_log LIMIT 10");
+        let intrusion_log_list: Vec<IntrusionLog> = query.fetch(&conn).await?;
 
         for entry in &intrusion_log_list {
             debug!("{:?}", entry);
         }
         assert_eq!(intrusion_log_list.len(), 10);
+        Ok(())
     }
 }
