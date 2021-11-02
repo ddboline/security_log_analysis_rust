@@ -7,5 +7,5 @@ CREATE TABLE intrusion_log (
     host TEXT NOT NULL,
     username TEXT,
 
-    UNIQUE (service, server, datetime, host, username)
+    UNIQUE (service, server, datetime, host)
 );
