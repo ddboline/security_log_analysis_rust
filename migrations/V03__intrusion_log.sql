@@ -4,8 +4,8 @@ CREATE TABLE intrusion_log (
     service TEXT NOT NULL,
     server TEXT NOT NULL,
     datetime TIMESTAMP WITH TIME ZONE NOT NULL,
-    host VARCHAR(60) NOT NULL,
-    username VARCHAR(15),
+    host TEXT NOT NULL,
+    username TEXT,
 
-    UNIQUE (service, server, datetime, host, username)
+    UNIQUE (service, server, datetime, host)
 );

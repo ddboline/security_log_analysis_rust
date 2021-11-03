@@ -27,7 +27,7 @@ use tokio::{task::spawn, time::sleep};
 
 use security_log_analysis_rust::{
     config::Config, parse_logs::parse_systemd_logs_sshd_daemon, pgpool::PgPool,
-    pgpool_pg::PgPoolPg, reports::get_country_count_recent,
+    reports::get_country_count_recent,
 };
 
 type WarpResult<T> = Result<T, Rejection>;
@@ -95,7 +95,7 @@ async fn intrusion_attempts(
         .await
         .map_err(Into::<ServiceError>::into)?
         .into_iter()
-        .map(|(x, y)| format!(r#"["{}", {}]"#, x, y))
+        .map(|cc| format!(r#"["{}", {}]"#, cc.country, cc.count))
         .join(",");
     let body = template.replace("PUTLISTOFCOUNTRIESANDATTEMPTSHERE", &results);
     Ok(rweb::reply::html(body))
@@ -103,7 +103,7 @@ async fn intrusion_attempts(
 
 #[derive(Clone)]
 struct AppState {
-    db: PgPoolPg,
+    db: PgPool,
 }
 
 async fn _run_daemon(config: Config) {
@@ -124,7 +124,7 @@ async fn start_app() -> Result<(), AnyhowError> {
         spawn(async move { _run_daemon(config).await })
     };
 
-    let pool = PgPoolPg::new(&config.database_url);
+    let pool = PgPool::new(&config.database_url);
 
     let port: u32 = var("PORT")
         .ok()

@@ -4,6 +4,7 @@ use futures::future::try_join_all;
 use itertools::Itertools;
 use log::debug;
 use rayon::iter::{IntoParallelIterator, ParallelIterator};
+use refinery::embed_migrations;
 use serde::{Deserialize, Serialize};
 use smallvec::SmallVec;
 use stack_string::StackString;
@@ -20,14 +21,15 @@ use tokio::{
 use crate::{
     config::Config,
     host_country_metadata::HostCountryMetadata,
-    models::{export_to_avro, IntrusionLog, IntrusionLogInsert},
+    models::IntrusionLog,
     parse_logs::{
         parse_all_log_files, parse_log_line_apache, parse_log_line_ssh, parse_systemd_logs_sshd_all,
     },
     pgpool::PgPool,
-    pgpool_pg::PgPoolPg,
     reports::get_country_count_recent,
 };
+
+embed_migrations!("migrations");
 
 #[derive(Debug)]
 pub enum ParseActions {
@@ -36,7 +38,7 @@ pub enum ParseActions {
     Sync,
     CountryPlot,
     AddHost,
-    Export,
+    RunMigrations,
 }
 
 impl FromStr for ParseActions {
@@ -49,7 +51,7 @@ impl FromStr for ParseActions {
             "sync" => Ok(Self::Sync),
             "plot" | "country_plot" => Ok(Self::CountryPlot),
             "add_host" | "add" => Ok(Self::AddHost),
-            "export" => Ok(Self::Export),
+            "run-migrations" => Ok(Self::RunMigrations),
             _ => Err(format_err!("Invalid Action")),
         }
     }
@@ -84,7 +86,7 @@ impl FromStr for DateTimeInput {
 
 #[derive(StructOpt, Debug)]
 pub struct ParseOpts {
-    /// parse, serialize|ser, sync, plot|country_plot, add|add_host
+    /// parse, serialize|ser, sync, plot|country_plot, add|add_host, run-migrations
     #[structopt(parse(try_from_str), default_value = "parse")]
     pub action: ParseActions,
     #[structopt(short = "s", long = "server", parse(try_from_str))]
@@ -110,7 +112,7 @@ impl ParseOpts {
             ParseActions::Parse => {
                 let config = Config::init_config()?;
                 let pool = PgPool::new(&config.database_url);
-                let metadata = HostCountryMetadata::from_pool(&pool)?;
+                let metadata = HostCountryMetadata::from_pool(&pool).await?;
                 let server = opts
                     .server
                     .ok_or_else(|| format_err!("Must specify server for parse action"))?;
@@ -123,17 +125,16 @@ impl ParseOpts {
                 stdout.send(format!("new lines ssh {}", inserts.len()));
                 inserts.extend({
                     let metadata = metadata.clone();
-                    spawn_blocking(move || {
-                        parse_all_log_files(
-                            &metadata,
-                            "nginx",
-                            &server.0,
-                            &parse_log_line_apache,
-                            "/var/log/nginx/access.log",
-                        )
-                    })
+                    parse_all_log_files(
+                        &metadata,
+                        "nginx",
+                        &server.0,
+                        &parse_log_line_apache,
+                        "/var/log/nginx/access.log",
+                    )
                     .await?
-                }?);
+                });
+
                 stdout.send(format!("new lines {}", inserts.len()));
                 let new_hosts: HashSet<_> =
                     inserts.iter().map(|item| item.host.to_string()).collect();
@@ -143,7 +144,7 @@ impl ParseOpts {
                     async move { metadata.get_country_info(&host).await }
                 });
                 try_join_all(futures).await?;
-                spawn_blocking(move || IntrusionLogInsert::insert(&pool, &inserts)).await??;
+                IntrusionLog::insert(&pool, &inserts).await?;
             }
             ParseActions::Serialize => {
                 let config = Config::init_config()?;
@@ -157,52 +158,50 @@ impl ParseOpts {
                     .server
                     .ok_or_else(|| format_err!("Must specify server for ser action"))?;
                 for service in &["ssh", "apache"] {
-                    let results = {
-                        let pool = pool.clone();
-                        let server = server.clone();
-                        spawn_blocking(move || {
-                            IntrusionLog::get_intrusion_log_filtered(
-                                &pool,
-                                service,
-                                &server.0,
-                                Some(datetime),
-                                None,
-                                number_of_entries,
-                            )
-                        })
-                        .await?
-                    }?;
+                    let results = IntrusionLog::get_intrusion_log_filtered(
+                        &pool,
+                        service,
+                        &server.0,
+                        Some(datetime),
+                        None,
+                        number_of_entries,
+                    )
+                    .await?;
                     for result in results {
                         stdout.send(serde_json::to_string(&result)?);
                     }
                 }
             }
             ParseActions::Sync => {
-                fn get_max_datetime(
+                async fn get_max_datetime(
                     pool: &PgPool,
                     server: &HostName,
                 ) -> Result<DateTime<Utc>, Error> {
-                    let result = IntrusionLog::get_max_datetime(pool, "ssh", &server.0)?
-                        .as_ref()
-                        .map_or_else(Utc::now, |dt| {
-                            if let Ok(Some(dt2)) =
-                                IntrusionLog::get_max_datetime(pool, "nginx", &server.0)
-                            {
-                                if *dt < dt2 {
-                                    *dt
-                                } else {
-                                    dt2
-                                }
-                            } else {
+                    let result = if let Some(dt) =
+                        IntrusionLog::get_max_datetime(pool, "ssh", &server.0)
+                            .await?
+                            .as_ref()
+                    {
+                        if let Ok(Some(dt2)) =
+                            IntrusionLog::get_max_datetime(pool, "nginx", &server.0).await
+                        {
+                            if *dt < dt2 {
                                 *dt
+                            } else {
+                                dt2
                             }
-                        });
+                        } else {
+                            *dt
+                        }
+                    } else {
+                        Utc::now()
+                    };
                     Ok(result)
                 }
 
                 let config = Config::init_config()?;
                 let pool = PgPool::new(&config.database_url);
-                let metadata = HostCountryMetadata::from_pool(&pool)?;
+                let metadata = HostCountryMetadata::from_pool(&pool).await?;
                 debug!("{:?}", opts);
                 let server = opts
                     .server
@@ -222,11 +221,7 @@ impl ParseOpts {
                     return Err(format_err!("{} failed", command));
                 }
 
-                let max_datetime = {
-                    let pool = pool.clone();
-                    let server = server.clone();
-                    spawn_blocking(move || get_max_datetime(&pool, &server)).await?
-                }?;
+                let max_datetime = { get_max_datetime(&pool, &server).await? };
                 debug!("{:?}", max_datetime);
 
                 let user_host = format!("{}@{}", username, server.0);
@@ -249,7 +244,7 @@ impl ParseOpts {
                         if reader.read_line(&mut line).await? == 0 {
                             break;
                         }
-                        let val: IntrusionLogInsert = serde_json::from_str(&line)?;
+                        let val: IntrusionLog = serde_json::from_str(&line)?;
                         inserts.insert(val);
                         line.clear();
                     }
@@ -267,44 +262,36 @@ impl ParseOpts {
                 try_join_all(futures).await?;
 
                 let mut existing_entries = {
-                    let pool = pool.clone();
-                    let server = server.clone();
-                    spawn_blocking(move || {
-                        IntrusionLog::get_intrusion_log_filtered(
-                            &pool,
-                            "ssh",
-                            &server.0,
-                            Some(max_datetime),
-                            None,
-                            None,
-                        )
-                    })
+                    IntrusionLog::get_intrusion_log_filtered(
+                        &pool,
+                        "ssh",
+                        &server.0,
+                        Some(max_datetime),
+                        None,
+                        None,
+                    )
                     .await?
-                }?;
+                };
                 existing_entries.extend_from_slice(&{
-                    let pool = pool.clone();
-                    let server = server.clone();
-                    spawn_blocking(move || {
-                        IntrusionLog::get_intrusion_log_filtered(
-                            &pool,
-                            "apache",
-                            &server.0,
-                            Some(max_datetime),
-                            None,
-                            None,
-                        )
-                    })
+                    IntrusionLog::get_intrusion_log_filtered(
+                        &pool,
+                        "apache",
+                        &server.0,
+                        Some(max_datetime),
+                        None,
+                        None,
+                    )
                     .await?
-                }?);
-                let existing_entries: HashSet<IntrusionLogInsert> =
+                });
+                let existing_entries: HashSet<IntrusionLog> =
                     existing_entries.into_iter().map(Into::into).collect();
                 let inserts: Vec<_> = inserts.difference(&existing_entries).cloned().collect();
-                IntrusionLogInsert::insert(&pool, &inserts)?;
+                IntrusionLog::insert(&pool, &inserts).await?;
                 stdout.send(format!("inserts {}", inserts.len()));
             }
             ParseActions::CountryPlot => {
                 let config = Config::init_config()?;
-                let pool = PgPoolPg::new(&config.database_url);
+                let pool = PgPool::new(&config.database_url);
                 let template = include_str!("../templates/COUNTRY_TEMPLATE.html");
                 for service in &["ssh", "apache", "nginx"] {
                     for server_prefix in &["home", "cloud"] {
@@ -312,7 +299,7 @@ impl ParseOpts {
                         let results = get_country_count_recent(&pool, service, &server, 30)
                             .await?
                             .into_iter()
-                            .map(|(x, y)| format!(r#"["{}", {}]"#, x, y))
+                            .map(|cc| format!(r#"["{}", {}]"#, cc.country, cc.count))
                             .join(",");
                         let results =
                             template.replace("PUTLISTOFCOUNTRIESANDATTEMPTSHERE", &results);
@@ -330,7 +317,7 @@ impl ParseOpts {
             ParseActions::AddHost => {
                 let config = Config::init_config()?;
                 let pool = PgPool::new(&config.database_url);
-                let metadata = HostCountryMetadata::from_pool(&pool)?;
+                let metadata = HostCountryMetadata::from_pool(&pool).await?;
                 for host_country in &opts.host_codes {
                     let vals: SmallVec<[&str; 2]> = host_country.split(':').take(2).collect();
                     if vals.len() < 2 {
@@ -338,24 +325,17 @@ impl ParseOpts {
                     }
                     match vals.get(..2) {
                         Some([host, code]) => {
-                            metadata.insert_host_code(host, code)?;
+                            metadata.insert_host_code(host, code).await?;
                         }
                         _ => continue,
                     }
                 }
             }
-            ParseActions::Export => {
+            ParseActions::RunMigrations => {
                 let config = Config::init_config()?;
                 let pool = PgPool::new(&config.database_url);
-                let pgpool = PgPoolPg::new(&config.database_url);
-
-                export_to_avro(&pool, &pgpool).await?;
-                // for service_val in &["ssh", "apache"] {
-                //     for server_val in &["home.ddboline.net",
-                // "cloud.ddboline.net"] {
-                //         export_to_avro(&pool, &pgpool, service_val,
-                // server_val).await?;     }
-                // }
+                let mut client = pool.get().await?;
+                migrations::runner().run_async(&mut **client).await?;
             }
         }
         stdout.close().await
