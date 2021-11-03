@@ -301,13 +301,7 @@ impl IntrusionLog {
         let conn: &PgTransaction = &tran;
         for i_chunk in il.chunks(100) {
             for i in i_chunk {
-                let existing = IntrusionLog::_get_by_datetime_service_server(
-                    conn, i.datetime, &i.service, &i.server,
-                )
-                .await?;
-                if existing.is_empty() {
-                    i.insert_single(conn).await?;
-                }
+                i.insert_single(conn).await?;
             }
         }
         tran.commit().await?;
