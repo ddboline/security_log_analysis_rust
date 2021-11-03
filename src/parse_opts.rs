@@ -139,11 +139,9 @@ impl ParseOpts {
                 let new_hosts: HashSet<_> =
                     inserts.iter().map(|item| item.host.to_string()).collect();
                 stdout.send(format!("new hosts {:#?}", new_hosts));
-                let futures = new_hosts.into_iter().map(|host| {
-                    let metadata = metadata.clone();
-                    async move { metadata.get_country_info(&host).await }
-                });
-                try_join_all(futures).await?;
+                for host in new_hosts {
+                    metadata.get_country_info(&host).await?;
+                }
                 IntrusionLog::insert(&pool, &inserts).await?;
             }
             ParseActions::Serialize => {
