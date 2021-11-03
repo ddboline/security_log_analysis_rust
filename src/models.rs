@@ -283,7 +283,7 @@ impl IntrusionLog {
                     service, server, datetime, host, username
                 ) VALUES (
                     $service, $server, $datetime, $host, $username
-                )
+                ) ON CONFLICT DO NOTHING;
             "#,
             service = self.service,
             server = self.server,
