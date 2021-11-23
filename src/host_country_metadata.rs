@@ -128,8 +128,8 @@ impl HostCountryMetadata {
                 }
             })
             .ok_or_else(|| format_err!("Failed to extract IP address from {}", host))?;
-        let url = Url::parse("https://ipwhois.app/json/")?.join(&ipaddr)?;
-        debug!("{}", url);
+        let url = Url::parse("http://ipwhois.app/json/")?.join(&ipaddr)?;
+        println!("{}", url);
         let resp = self.client.get(url).send().await?.error_for_status()?;
         let output: IpWhoIsOutput = resp.json().await?;
         Ok(output.country_code)
@@ -247,10 +247,6 @@ mod test {
             "NL"
         );
         assert_eq!(
-            hm.get_whois_country_info("217.29.210.13").await?.as_str(),
-            "ZA"
-        );
-        assert_eq!(
             hm.get_whois_country_info("31.162.240.19").await?.as_str(),
             "RU"
         );
@@ -311,12 +307,6 @@ mod test {
                 .await?
                 .as_str(),
             "NL"
-        );
-        assert_eq!(
-            hm.get_whois_country_info_ipwhois("217.29.210.13")
-                .await?
-                .as_str(),
-            "ZA"
         );
         assert_eq!(
             hm.get_whois_country_info_ipwhois("31.162.240.19")

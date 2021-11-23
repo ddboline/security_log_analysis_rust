@@ -1,6 +1,6 @@
 [package]
 name = "security_log_analysis_rust"
-version = "0.6.1"
+version = "0.6.2"
 authors = ["Daniel Boline <ddboline@gmail.com>"]
 edition = "2018"
 
@@ -13,7 +13,7 @@ extended-description = """\
 Analyze Auth Logs."""
 
 [dependencies]
-rweb = {version="0.14", features=["openapi"]}
+rweb = {version="0.15", features=["openapi"]}
 http = "0.2"
 deadpool = {version = "0.9", features=["serde", "rt_tokio_1"]}
 deadpool-postgres = {version="0.10", features=["serde"]}
@@ -34,7 +34,7 @@ retry = "1.2"
 anyhow = "1.0"
 thiserror = "1.0"
 dirs = "4.0"
-reqwest = {version="0.11", features=["json"]}
+reqwest = {version="0.11", features=["json", "rustls"], default_features=false}
 futures = "0.3"
 tokio = {version="1.6", features=["full"]}
 derive_more = "0.99"
@@ -48,7 +48,7 @@ itertools = "0.10"
 stdout-channel = "0.4"
 refinery = {version="0.7", features=["tokio-postgres"]}
 postgres_query = {git = "https://github.com/ddboline/rust-postgres-query", tag = "0.3.4", features=["deadpool"]}
-stack-string = { version="0.3", features=["postgres_types", "rweb-openapi"] }
+stack-string = { version="0.4", features=["postgres_types", "rweb-openapi"] }
 
 [[bin]]
 name = "security-log-parse-rust"
