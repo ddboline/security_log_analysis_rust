@@ -17,4 +17,4 @@ COPY --from=buildstage /security_log_analysis_rust/bin/* /usr/bin/
 
 STOPSIGNAL SIGTERM
 
-CMD ["/usr/bin/notification-app-api"]
+CMD ["/usr/bin/security-log-http"]
