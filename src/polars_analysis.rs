@@ -15,7 +15,7 @@ use structopt::StructOpt;
 
 use polars::{
     chunked_array::builder::NewChunkedArray,
-    datatypes::{AnyValue, DataType, DatetimeChunked, Int64Chunked, UInt32Chunked},
+    datatypes::{AnyValue, DataType, DatetimeChunked, Int32Chunked, Int64Chunked, UInt32Chunked},
     frame::DataFrame,
     io::{
         csv::{CsvReader, NullValues},
@@ -61,7 +61,7 @@ fn read_tsv_file(input: &Path, outdir: &Path) -> Result<(), Error> {
             nlines = 0;
         }
     }
-    if buf.len() > 0 {
+    if !buf.is_empty() {
         write_to_parquet(&buf, outdir)?;
     }
     Ok(())
@@ -110,8 +110,8 @@ fn write_to_parquet(buf: &[u8], outdir: &Path) -> Result<(), Error> {
     let dt = dt.into_series();
     csv.with_column(dt)?;
 
-    let y: Vec<_> = v.iter().map(|d| d.year() as u32).collect();
-    let y = UInt32Chunked::new_from_slice("year", &y);
+    let y: Vec<_> = v.iter().map(|d| d.year()).collect();
+    let y = Int32Chunked::new_from_slice("year", &y);
     let y = y.into_series();
     csv.with_column(y)?;
 
@@ -119,19 +119,18 @@ fn write_to_parquet(buf: &[u8], outdir: &Path) -> Result<(), Error> {
     let yg = year_group.groups()?;
     for idx in 0..yg.shape().0 {
         if let Some(row) = yg.get(idx) {
-            let year = match row[0] {
-                AnyValue::UInt32(y) => y,
+            let year = match row.get(0) {
+                Some(AnyValue::Int32(y)) => y,
                 _ => panic!("Unexpected"),
             };
-            let indicies: Vec<_> = year_group
+            let indicies = year_group
                 .get_groups()
                 .get(idx)
                 .unwrap()
                 .1
                 .iter()
-                .map(|i| *i as usize)
-                .collect();
-            let mut new_csv = csv.take_iter(indicies.into_iter())?;
+                .map(|i| *i as usize);
+            let mut new_csv = csv.take_iter(indicies)?;
             new_csv.drop_in_place("year")?;
             let filename = format!("intrusion_log_{:04}.parquet", year);
             let file = outdir.join(&filename);
@@ -184,7 +183,7 @@ async fn insert_db_into_parquet(pool: &PgPool, outdir: &Path) -> Result<(), Erro
             year = year,
         );
         let rows: Vec<IntrusionLogRow> = query.fetch(&conn).await?;
-        let id: Vec<_> = rows.iter().map(|x| x.id as i64).collect();
+        let id: Vec<_> = rows.iter().map(|x| i64::from(x.id)).collect();
         let id = Int64Chunked::new_from_slice("id", &id).into_series();
         let service: Vec<_> = rows.iter().map(|x| &x.service).collect();
         let service = Utf8Chunked::new_from_slice("service", &service).into_series();
