@@ -106,13 +106,11 @@ fn write_to_parquet(buf: &[u8], outdir: &Path) -> Result<(), Error> {
         .collect();
     csv.drop_in_place("datetime_str")?;
 
-    let dt = DatetimeChunked::new_from_naive_datetime("datetime", &v);
-    let dt = dt.into_series();
+    let dt = DatetimeChunked::new_from_naive_datetime("datetime", &v).into_series();
     csv.with_column(dt)?;
 
     let y: Vec<_> = v.iter().map(Datelike::year).collect();
-    let y = Int32Chunked::new_from_slice("year", &y);
-    let y = y.into_series();
+    let y = Int32Chunked::new_from_slice("year", &y).into_series();
     csv.with_column(y)?;
 
     let year_group = csv.groupby("year")?;
@@ -183,27 +181,26 @@ async fn insert_db_into_parquet(pool: &PgPool, outdir: &Path) -> Result<(), Erro
             year = year,
         );
         let rows: Vec<IntrusionLogRow> = query.fetch(&conn).await?;
-        let id: Vec<_> = rows.iter().map(|x| i64::from(x.id)).collect();
-        let id = Int64Chunked::new_from_slice("id", &id).into_series();
-        let service: Vec<_> = rows.iter().map(|x| &x.service).collect();
-        let service = Utf8Chunked::new_from_slice("service", &service).into_series();
-        let server: Vec<_> = rows.iter().map(|x| &x.server).collect();
-        let server = Utf8Chunked::new_from_slice("server", &server).into_series();
-        let datetime: Vec<_> = rows.iter().map(|x| x.datetime.naive_utc()).collect();
-        let datetime =
-            DatetimeChunked::new_from_naive_datetime("datetime", &datetime).into_series();
-        let host: Vec<_> = rows.iter().map(|x| &x.host).collect();
-        let host = Utf8Chunked::new_from_slice("host", &host).into_series();
-        let username: Vec<_> = rows.iter().map(|x| x.username.as_ref()).collect();
-        let username = Utf8Chunked::new_from_opt_slice("username", &username).into_series();
-        let code: Vec<_> = rows.iter().map(|x| x.code.as_ref()).collect();
-        let code = Utf8Chunked::new_from_opt_slice("code", &code).into_series();
-        let country: Vec<_> = rows.iter().map(|x| x.country.as_ref()).collect();
-        let country = Utf8Chunked::new_from_opt_slice("country", &country).into_series();
 
-        let new_df = DataFrame::new(vec![
-            id, service, server, host, username, code, country, datetime,
-        ])?;
+        let mut columns = Vec::new();
+        let v: Vec<_> = rows.iter().map(|x| i64::from(x.id)).collect();
+        columns.push(Int64Chunked::new_from_slice("id", &v).into_series());
+        let v: Vec<_> = rows.iter().map(|x| &x.service).collect();
+        columns.push(Utf8Chunked::new_from_slice("service", &v).into_series());
+        let v: Vec<_> = rows.iter().map(|x| &x.server).collect();
+        columns.push(Utf8Chunked::new_from_slice("server", &v).into_series());
+        let v: Vec<_> = rows.iter().map(|x| x.datetime.naive_utc()).collect();
+        columns.push(DatetimeChunked::new_from_naive_datetime("datetime", &v).into_series());
+        let v: Vec<_> = rows.iter().map(|x| &x.host).collect();
+        columns.push(Utf8Chunked::new_from_slice("host", &v).into_series());
+        let v: Vec<_> = rows.iter().map(|x| x.username.as_ref()).collect();
+        columns.push(Utf8Chunked::new_from_opt_slice("username", &v).into_series());
+        let v: Vec<_> = rows.iter().map(|x| x.code.as_ref()).collect();
+        columns.push(Utf8Chunked::new_from_opt_slice("code", &v).into_series());
+        let v: Vec<_> = rows.iter().map(|x| x.country.as_ref()).collect();
+        columns.push(Utf8Chunked::new_from_opt_slice("country", &v).into_series());
+
+        let new_df = DataFrame::new(columns)?;
         println!("{:?}", new_df.shape());
 
         let filename = format!("intrusion_log_{:04}.parquet", year);
