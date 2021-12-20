@@ -1,9 +1,10 @@
 use anyhow::{format_err, Error};
-use chrono::{DateTime, Datelike};
+use chrono::{DateTime, Datelike, Utc};
 use flate2::read::GzDecoder;
 use itertools::Itertools;
 use log::debug;
 use polars::prelude::Utf8Chunked;
+use postgres_query::{query, FromSqlRow};
 use stack_string::StackString;
 use std::{
     fs::File,
@@ -14,7 +15,7 @@ use structopt::StructOpt;
 
 use polars::{
     chunked_array::builder::NewChunkedArray,
-    datatypes::{AnyValue, DataType, DatetimeChunked, UInt32Chunked},
+    datatypes::{AnyValue, DataType, DatetimeChunked, Int64Chunked, UInt32Chunked},
     frame::DataFrame,
     io::{
         csv::{CsvReader, NullValues},
@@ -24,11 +25,17 @@ use polars::{
     series::IntoSeries,
 };
 
+use security_log_analysis_rust::{config::Config, pgpool::PgPool};
+
 #[derive(StructOpt)]
 enum AnalysisOpts {
     Etl {
         #[structopt(short = "i", long = "input")]
         input: Option<PathBuf>,
+        #[structopt(short = "d", long = "directory")]
+        output: Option<PathBuf>,
+    },
+    Db {
         #[structopt(short = "d", long = "directory")]
         output: Option<PathBuf>,
     },
@@ -143,6 +150,78 @@ fn write_to_parquet(buf: &[u8], outdir: &Path) -> Result<(), Error> {
     Ok(())
 }
 
+async fn insert_db_into_parquet(pool: &PgPool, outdir: &Path) -> Result<(), Error> {
+    #[derive(FromSqlRow)]
+    struct Wrap(i32);
+
+    #[derive(FromSqlRow)]
+    struct IntrusionLogRow {
+        id: i32,
+        service: StackString,
+        server: StackString,
+        datetime: DateTime<Utc>,
+        host: StackString,
+        username: Option<StackString>,
+        code: Option<StackString>,
+        country: Option<StackString>,
+    }
+
+    let query =
+        query!("SELECT distinct cast(extract(year from datetime) as int) FROM intrusion_log");
+    let conn = pool.get().await?;
+    let rows: Vec<Wrap> = query.fetch(&conn).await?;
+    for year in rows {
+        let year = year.0;
+        println!("year {}", year);
+        let query = query!(
+            r#"
+                SELECT a.*, b.code, c.country
+                FROM intrusion_log a
+                JOIN host_country b ON a.host = b.host
+                JOIN country_code c ON b.code = c.code
+                WHERE cast(extract(year from datetime at time zone 'utc') as int) = $year
+            "#,
+            year = year,
+        );
+        let rows: Vec<IntrusionLogRow> = query.fetch(&conn).await?;
+        let id: Vec<_> = rows.iter().map(|x| x.id as i64).collect();
+        let id = Int64Chunked::new_from_slice("id", &id).into_series();
+        let service: Vec<_> = rows.iter().map(|x| &x.service).collect();
+        let service = Utf8Chunked::new_from_slice("service", &service).into_series();
+        let server: Vec<_> = rows.iter().map(|x| &x.server).collect();
+        let server = Utf8Chunked::new_from_slice("server", &server).into_series();
+        let datetime: Vec<_> = rows.iter().map(|x| x.datetime.naive_utc()).collect();
+        let datetime =
+            DatetimeChunked::new_from_naive_datetime("datetime", &datetime).into_series();
+        let host: Vec<_> = rows.iter().map(|x| &x.host).collect();
+        let host = Utf8Chunked::new_from_slice("host", &host).into_series();
+        let username: Vec<_> = rows.iter().map(|x| x.username.as_ref()).collect();
+        let username = Utf8Chunked::new_from_opt_slice("username", &username).into_series();
+        let code: Vec<_> = rows.iter().map(|x| x.code.as_ref()).collect();
+        let code = Utf8Chunked::new_from_opt_slice("code", &code).into_series();
+        let country: Vec<_> = rows.iter().map(|x| x.country.as_ref()).collect();
+        let country = Utf8Chunked::new_from_opt_slice("country", &country).into_series();
+
+        let new_df = DataFrame::new(vec![
+            id, service, server, host, username, code, country, datetime,
+        ])?;
+        println!("{:?}", new_df.shape());
+
+        let filename = format!("intrusion_log_{:04}.parquet", year);
+        let file = outdir.join(&filename);
+        let df = if file.exists() {
+            let df = ParquetReader::new(File::open(&file)?).finish()?;
+            println!("{:?}", df.shape());
+            df.vstack(&new_df)?.drop_duplicates(true, None)?
+        } else {
+            new_df
+        };
+        ParquetWriter::new(File::create(&file)?).finish(&df)?;
+        println!("wrote {} {:?}", filename, df.shape());
+    }
+    Ok(())
+}
+
 #[derive(Debug)]
 pub struct CodeCount {
     pub code: StackString,
@@ -160,7 +239,9 @@ fn read_parquet_files(input: &Path) -> Result<Vec<CodeCount>, Error> {
             .into_iter()
             .map(|p| p.map(|p| p.path()).map_err(Into::into))
             .collect();
-        v?
+        let mut v = v?;
+        v.sort();
+        v
     } else {
         vec![input.to_path_buf()]
     };
@@ -192,11 +273,17 @@ fn read_parquet_files(input: &Path) -> Result<Vec<CodeCount>, Error> {
 
 fn get_code_count(input: &Path) -> Result<DataFrame, Error> {
     let df = ParquetReader::new(File::open(&input)?).finish()?;
+    println!(
+        "{} {:?}",
+        input.file_name().unwrap().to_string_lossy(),
+        df.shape()
+    );
     let df = df.groupby("code")?.select("code").count()?;
     Ok(df)
 }
 
-fn main() -> Result<(), Error> {
+#[tokio::main]
+async fn main() -> Result<(), Error> {
     let default_input =
         Path::new("/media/seagate4000/dilepton_tower_backup/intrusion_log_backup_20211216.sql.gz")
             .to_path_buf();
@@ -209,11 +296,18 @@ fn main() -> Result<(), Error> {
             let output = output.unwrap_or_else(|| Path::new(".").to_path_buf());
             read_tsv_file(&input, &output)?;
         }
+        AnalysisOpts::Db { output } => {
+            let output = output.unwrap_or_else(|| Path::new(".").to_path_buf());
+            let config = Config::init_config()?;
+            let pool = PgPool::new(&config.database_url);
+            insert_db_into_parquet(&pool, &output).await?;
+        }
         AnalysisOpts::Read { input } => {
             let input = input.unwrap_or_else(|| Path::new(".").to_path_buf());
             let body = read_parquet_files(&input)?
                 .into_iter()
                 .map(|c| format!("code {} count {}", c.code, c.count))
+                .take(10)
                 .join("\n");
             println!("{}", body);
         }
