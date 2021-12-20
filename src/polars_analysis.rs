@@ -110,7 +110,7 @@ fn write_to_parquet(buf: &[u8], outdir: &Path) -> Result<(), Error> {
     let dt = dt.into_series();
     csv.with_column(dt)?;
 
-    let y: Vec<_> = v.iter().map(|d| d.year()).collect();
+    let y: Vec<_> = v.iter().map(Datelike::year).collect();
     let y = Int32Chunked::new_from_slice("year", &y);
     let y = y.into_series();
     csv.with_column(y)?;
