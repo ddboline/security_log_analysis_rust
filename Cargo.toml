@@ -49,6 +49,7 @@ stdout-channel = "0.4"
 refinery = {version="0.7", features=["tokio-postgres"]}
 postgres_query = {git = "https://github.com/ddboline/rust-postgres-query", tag = "0.3.4", features=["deadpool"]}
 stack-string = { version="0.4", features=["postgres_types", "rweb-openapi"] }
+polars = {version="0.18", features=["temporal", "parquet"]}
 
 [[bin]]
 name = "security-log-parse-rust"
@@ -58,4 +59,9 @@ doc = false
 [[bin]]
 name = "security-log-http"
 path = "src/security_log_http.rs"
+doc = false
+
+[[bin]]
+name = "security-log-polars-analysis"
+path = "src/polars_analysis.rs"
 doc = false
