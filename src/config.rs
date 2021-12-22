@@ -14,10 +14,23 @@ pub struct ConfigInner {
     pub username: StackString,
     pub export_dir: Option<PathBuf>,
     pub server: StackString,
+    #[serde(default = "default_bucket")]
+    pub s3_bucket: StackString,
+    #[serde(default = "default_cache_dir")]
+    pub cache_dir: PathBuf,
 }
 
 fn default_username() -> StackString {
     std::env::var("USER").expect("USER must be set").into()
+}
+fn default_bucket() -> StackString {
+    "security-log-analysis-backup".into()
+}
+fn default_home_dir() -> PathBuf {
+    dirs::home_dir().expect("No home directory")
+}
+fn default_cache_dir() -> PathBuf {
+    default_home_dir().join(".security-log-cache")
 }
 
 #[derive(Default, Debug, Clone)]

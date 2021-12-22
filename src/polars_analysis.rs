@@ -25,23 +25,27 @@ use polars::{
     series::IntoSeries,
 };
 
-use security_log_analysis_rust::{config::Config, pgpool::PgPool};
+use security_log_analysis_rust::{config::Config, pgpool::PgPool, s3_sync::GarminSync};
 
 #[derive(StructOpt)]
 enum AnalysisOpts {
+    Sync {
+        #[structopt(short = "d", long = "directory")]
+        directory: Option<PathBuf>,
+    },
     Etl {
         #[structopt(short = "i", long = "input")]
         input: Option<PathBuf>,
         #[structopt(short = "d", long = "directory")]
-        output: Option<PathBuf>,
+        directory: Option<PathBuf>,
     },
     Db {
         #[structopt(short = "d", long = "directory")]
-        output: Option<PathBuf>,
+        directory: Option<PathBuf>,
     },
     Read {
-        #[structopt(short = "i", long = "input")]
-        input: Option<PathBuf>,
+        #[structopt(short = "d", long = "directory")]
+        directory: Option<PathBuf>,
     },
 }
 
@@ -113,15 +117,23 @@ fn write_to_parquet(buf: &[u8], outdir: &Path) -> Result<(), Error> {
     let y = Int32Chunked::new_from_slice("year", &y).into_series();
     csv.with_column(y)?;
 
-    let year_group = csv.groupby("year")?;
-    let yg = year_group.groups()?;
-    for idx in 0..yg.shape().0 {
-        if let Some(row) = yg.get(idx) {
+    let m: Vec<_> = v.iter().map(Datelike::month).collect();
+    let m = UInt32Chunked::new_from_slice("month", &m).into_series();
+    csv.with_column(m)?;
+
+    let year_month_group = csv.groupby(("year", "month"))?;
+    let ymg = year_month_group.groups()?;
+    for idx in 0..ymg.shape().0 {
+        if let Some(row) = ymg.get(idx) {
             let year = match row.get(0) {
                 Some(AnyValue::Int32(y)) => y,
                 _ => panic!("Unexpected"),
             };
-            let indicies = year_group
+            let month = match row.get(1) {
+                Some(AnyValue::UInt32(m)) => m,
+                _ => panic!("Unexpected"),
+            };
+            let indicies = year_month_group
                 .get_groups()
                 .get(idx)
                 .unwrap()
@@ -130,7 +142,8 @@ fn write_to_parquet(buf: &[u8], outdir: &Path) -> Result<(), Error> {
                 .map(|i| *i as usize);
             let mut new_csv = csv.take_iter(indicies)?;
             new_csv.drop_in_place("year")?;
-            let filename = format!("intrusion_log_{:04}.parquet", year);
+            new_csv.drop_in_place("month")?;
+            let filename = format!("intrusion_log_{:04}_{:02}.parquet", year, month);
             let file = outdir.join(&filename);
             let df = if file.exists() {
                 ParquetReader::new(File::open(&file)?)
@@ -149,7 +162,10 @@ fn write_to_parquet(buf: &[u8], outdir: &Path) -> Result<(), Error> {
 
 async fn insert_db_into_parquet(pool: &PgPool, outdir: &Path) -> Result<(), Error> {
     #[derive(FromSqlRow)]
-    struct Wrap(i32);
+    struct Wrap {
+        year: i32,
+        month: i32,
+    }
 
     #[derive(FromSqlRow)]
     struct IntrusionLogRow {
@@ -163,22 +179,29 @@ async fn insert_db_into_parquet(pool: &PgPool, outdir: &Path) -> Result<(), Erro
         country: Option<StackString>,
     }
 
-    let query =
-        query!("SELECT distinct cast(extract(year from datetime) as int) FROM intrusion_log");
+    let query = query!(
+        r#"
+            SELECT cast(extract(year from datetime at time zone 'utc') as int) as year,
+                   cast(extract(month from datetime at time zone 'utc') as int) as month
+            FROM intrusion_log
+            GROUP BY 1,2
+        "#
+    );
     let conn = pool.get().await?;
     let rows: Vec<Wrap> = query.fetch(&conn).await?;
-    for year in rows {
-        let year = year.0;
-        println!("year {}", year);
+    for Wrap { year, month } in rows {
+        println!("year {} month {}", year, month);
         let query = query!(
             r#"
                 SELECT a.*, b.code, c.country
                 FROM intrusion_log a
-                JOIN host_country b ON a.host = b.host
-                JOIN country_code c ON b.code = c.code
-                WHERE cast(extract(year from datetime at time zone 'utc') as int) = $year
+                LEFT JOIN host_country b ON a.host = b.host
+                LEFT JOIN country_code c ON b.code = c.code
+                WHERE cast(extract(year from a.datetime at time zone 'utc') as int) = $year
+                  AND cast(extract(month from a.datetime at time zone 'utc') as int) = $month
             "#,
             year = year,
+            month = month,
         );
         let rows: Vec<IntrusionLogRow> = query.fetch(&conn).await?;
 
@@ -189,8 +212,6 @@ async fn insert_db_into_parquet(pool: &PgPool, outdir: &Path) -> Result<(), Erro
         columns.push(Utf8Chunked::new_from_slice("service", &v).into_series());
         let v: Vec<_> = rows.iter().map(|x| &x.server).collect();
         columns.push(Utf8Chunked::new_from_slice("server", &v).into_series());
-        let v: Vec<_> = rows.iter().map(|x| x.datetime.naive_utc()).collect();
-        columns.push(DatetimeChunked::new_from_naive_datetime("datetime", &v).into_series());
         let v: Vec<_> = rows.iter().map(|x| &x.host).collect();
         columns.push(Utf8Chunked::new_from_slice("host", &v).into_series());
         let v: Vec<_> = rows.iter().map(|x| x.username.as_ref()).collect();
@@ -199,11 +220,13 @@ async fn insert_db_into_parquet(pool: &PgPool, outdir: &Path) -> Result<(), Erro
         columns.push(Utf8Chunked::new_from_opt_slice("code", &v).into_series());
         let v: Vec<_> = rows.iter().map(|x| x.country.as_ref()).collect();
         columns.push(Utf8Chunked::new_from_opt_slice("country", &v).into_series());
+        let v: Vec<_> = rows.iter().map(|x| x.datetime.naive_utc()).collect();
+        columns.push(DatetimeChunked::new_from_naive_datetime("datetime", &v).into_series());
 
         let new_df = DataFrame::new(columns)?;
         println!("{:?}", new_df.shape());
 
-        let filename = format!("intrusion_log_{:04}.parquet", year);
+        let filename = format!("intrusion_log_{:04}_{:02}.parquet", year, month);
         let file = outdir.join(&filename);
         let df = if file.exists() {
             let df = ParquetReader::new(File::open(&file)?).finish()?;
@@ -269,11 +292,6 @@ fn read_parquet_files(input: &Path) -> Result<Vec<CodeCount>, Error> {
 
 fn get_code_count(input: &Path) -> Result<DataFrame, Error> {
     let df = ParquetReader::new(File::open(&input)?).finish()?;
-    println!(
-        "{} {:?}",
-        input.file_name().unwrap().to_string_lossy(),
-        df.shape()
-    );
     let df = df.groupby("code")?.select("code").count()?;
     Ok(df)
 }
@@ -285,22 +303,31 @@ async fn main() -> Result<(), Error> {
             .to_path_buf();
 
     let opts = AnalysisOpts::from_args();
+    let config = Config::init_config()?;
 
     match opts {
-        AnalysisOpts::Etl { input, output } => {
+        AnalysisOpts::Sync { directory } => {
+            let sync = GarminSync::new();
+            let directory = directory.unwrap_or_else(|| config.cache_dir.clone());
+            println!(
+                "{}",
+                sync.sync_dir("security-log-analysis", &directory, &config.s3_bucket, true,)
+                    .await?
+            );
+        }
+        AnalysisOpts::Etl { input, directory } => {
             let input = input.unwrap_or(default_input);
-            let output = output.unwrap_or_else(|| Path::new(".").to_path_buf());
-            read_tsv_file(&input, &output)?;
+            let directory = directory.unwrap_or_else(|| config.cache_dir.clone());
+            read_tsv_file(&input, &directory)?;
         }
-        AnalysisOpts::Db { output } => {
-            let output = output.unwrap_or_else(|| Path::new(".").to_path_buf());
-            let config = Config::init_config()?;
+        AnalysisOpts::Db { directory } => {
+            let directory = directory.unwrap_or_else(|| config.cache_dir.clone());
             let pool = PgPool::new(&config.database_url);
-            insert_db_into_parquet(&pool, &output).await?;
+            insert_db_into_parquet(&pool, &directory).await?;
         }
-        AnalysisOpts::Read { input } => {
-            let input = input.unwrap_or_else(|| Path::new(".").to_path_buf());
-            let body = read_parquet_files(&input)?
+        AnalysisOpts::Read { directory } => {
+            let directory = directory.unwrap_or_else(|| config.cache_dir.clone());
+            let body = read_parquet_files(&directory)?
                 .into_iter()
                 .map(|c| format!("code {} count {}", c.code, c.count))
                 .take(10)

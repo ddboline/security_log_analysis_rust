@@ -22,19 +22,17 @@ pub mod parse_logs;
 pub mod parse_opts;
 pub mod pgpool;
 pub mod reports;
+pub mod s3_sync;
 
 use anyhow::{format_err, Error};
 use log::error;
-// use retry::{
-//     delay::{jitter, Exponential},
-//     retry,
-// };
 use rand::{
     distributions::{Alphanumeric, Distribution, Uniform},
     thread_rng,
 };
-use std::{future::Future, time::Duration};
-use tokio::time::sleep;
+use stack_string::StackString;
+use std::{future::Future, path::Path, time::Duration};
+use tokio::{process::Command, time::sleep};
 
 pub async fn exponential_retry<T, U, F>(closure: T) -> Result<U, Error>
 where
@@ -55,4 +53,25 @@ where
             }
         }
     }
+}
+
+pub async fn get_md5sum(filename: &Path) -> Result<StackString, Error> {
+    if !Path::new("/usr/bin/md5sum").exists() {
+        return Err(format_err!(
+            "md5sum not installed (or not present at /usr/bin/md5sum"
+        ));
+    }
+    let output = Command::new("/usr/bin/md5sum")
+        .args(&[filename])
+        .output()
+        .await?;
+    if output.status.success() {
+        let buf = String::from_utf8_lossy(&output.stdout);
+        for line in buf.split('\n') {
+            if let Some(entry) = line.split_whitespace().next() {
+                return Ok(entry.into());
+            }
+        }
+    }
+    Err(format_err!("Command failed"))
 }
