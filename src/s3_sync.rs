@@ -193,7 +193,7 @@ impl GarminSync {
         let uploaded: Vec<_> = join_all(futures)
             .await
             .into_iter()
-            .filter_map(|x| x)
+            .flatten()
             .collect();
         let uploaded_files: Vec<_> = uploaded
             .iter()
@@ -349,5 +349,5 @@ async fn get_downloaded(
         }
     });
     let result: Result<Vec<_>, Error> = try_join_all(futures).await;
-    Ok(result?.into_iter().filter_map(|x| x).collect())
+    Ok(result?.into_iter().flatten().collect())
 }
