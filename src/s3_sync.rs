@@ -190,11 +190,7 @@ impl GarminSync {
                 }
             }
         });
-        let uploaded: Vec<_> = join_all(futures)
-            .await
-            .into_iter()
-            .flatten()
-            .collect();
+        let uploaded: Vec<_> = join_all(futures).await.into_iter().flatten().collect();
         let uploaded_files: Vec<_> = uploaded
             .iter()
             .map(|(_, filename)| filename.clone())
