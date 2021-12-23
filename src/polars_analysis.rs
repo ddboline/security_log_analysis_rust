@@ -15,7 +15,7 @@ use structopt::StructOpt;
 
 use polars::{
     chunked_array::builder::NewChunkedArray,
-    datatypes::{AnyValue, DataType, DatetimeChunked, Int32Chunked, Int64Chunked, UInt32Chunked},
+    datatypes::{AnyValue, DataType, DatetimeChunked, Int32Chunked, UInt32Chunked},
     frame::DataFrame,
     io::{
         csv::{CsvReader, NullValues},
@@ -108,6 +108,7 @@ fn write_to_parquet(buf: &[u8], outdir: &Path) -> Result<(), Error> {
             d.naive_utc()
         })
         .collect();
+    csv.drop_in_place("id")?;
     csv.drop_in_place("datetime_str")?;
 
     let dt = DatetimeChunked::new_from_naive_datetime("datetime", &v).into_series();
@@ -169,7 +170,6 @@ async fn insert_db_into_parquet(pool: &PgPool, outdir: &Path) -> Result<(), Erro
 
     #[derive(FromSqlRow)]
     struct IntrusionLogRow {
-        id: i32,
         service: StackString,
         server: StackString,
         datetime: DateTime<Utc>,
@@ -206,8 +206,6 @@ async fn insert_db_into_parquet(pool: &PgPool, outdir: &Path) -> Result<(), Erro
         let rows: Vec<IntrusionLogRow> = query.fetch(&conn).await?;
 
         let mut columns = Vec::new();
-        let v: Vec<_> = rows.iter().map(|x| i64::from(x.id)).collect();
-        columns.push(Int64Chunked::new_from_slice("id", &v).into_series());
         let v: Vec<_> = rows.iter().map(|x| &x.service).collect();
         columns.push(Utf8Chunked::new_from_slice("service", &v).into_series());
         let v: Vec<_> = rows.iter().map(|x| &x.server).collect();
