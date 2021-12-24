@@ -327,8 +327,9 @@ fn get_country_count(
         df = df.filter(&mask)?;
     }
     if let Some(ndays) = ndays {
-        let begin_timestamp =
-            naive_datetime_to_datetime(&(Utc::now() - Duration::days(ndays as i64)).naive_utc());
+        let begin_timestamp = naive_datetime_to_datetime(
+            &(Utc::now() - Duration::days(i64::from(ndays))).naive_utc(),
+        );
         let mask: Vec<_> = df
             .column("datetime")?
             .datetime()?
