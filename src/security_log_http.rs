@@ -23,7 +23,10 @@ use serde::{Deserialize, Serialize};
 use stack_string::StackString;
 use std::{convert::Infallible, env::var, net::SocketAddr, time::Duration};
 use thiserror::Error;
-use tokio::{task::spawn, time::sleep};
+use tokio::{
+    task::{spawn, spawn_blocking, JoinError},
+    time::sleep,
+};
 
 use security_log_analysis_rust::{
     config::Config, parse_logs::parse_systemd_logs_sshd_daemon, pgpool::PgPool,
@@ -36,6 +39,8 @@ type WarpResult<T> = Result<T, Rejection>;
 enum ServiceError {
     #[error("AnyhowError {0}")]
     AnyhowError(#[from] AnyhowError),
+    #[error("JoinError {0}")]
+    JoinError(#[from] JoinError),
 }
 
 impl Reject for ServiceError {}
@@ -117,12 +122,17 @@ async fn intrusion_attempts_all(
     let template = include_str!("../templates/COUNTRY_TEMPLATE.html");
     let server = format!("{}.ddboline.net", location);
     let query = query.into_inner();
-    let results = read_parquet_files(
-        &data.config.cache_dir,
-        Some(service.as_str()),
-        Some(server.as_str()),
-        query.ndays,
-    )
+    let config = data.config.clone();
+    let results = spawn_blocking(move || {
+        read_parquet_files(
+            &config.cache_dir,
+            Some(service.as_str()),
+            Some(server.as_str()),
+            query.ndays,
+        )
+    })
+    .await
+    .map_err(Into::<ServiceError>::into)?
     .map_err(Into::<ServiceError>::into)?
     .into_iter()
     .map(|cc| format!(r#"["{}", {}]"#, cc.country, cc.count))
