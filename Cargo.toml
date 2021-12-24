@@ -67,5 +67,5 @@ doc = false
 
 [[bin]]
 name = "security-log-polars-analysis"
-path = "src/polars_analysis.rs"
+path = "src/polars_main.rs"
 doc = false

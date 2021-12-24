@@ -21,6 +21,7 @@ pub mod models;
 pub mod parse_logs;
 pub mod parse_opts;
 pub mod pgpool;
+pub mod polars_analysis;
 pub mod reports;
 pub mod s3_sync;
 
