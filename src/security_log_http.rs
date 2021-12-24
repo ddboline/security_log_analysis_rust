@@ -27,7 +27,7 @@ use tokio::{task::spawn, time::sleep};
 
 use security_log_analysis_rust::{
     config::Config, parse_logs::parse_systemd_logs_sshd_daemon, pgpool::PgPool,
-    reports::get_country_count_recent,
+    polars_analysis::read_parquet_files, reports::get_country_count_recent,
 };
 
 type WarpResult<T> = Result<T, Rejection>;
@@ -76,6 +76,12 @@ pub async fn error_response(err: Rejection) -> Result<Box<dyn Reply>, Infallible
     Ok(Box::new(reply))
 }
 
+#[derive(Clone)]
+pub struct AppState {
+    pub pool: PgPool,
+    pub config: Config,
+}
+
 #[derive(Serialize, Deserialize, Schema)]
 struct AttemptsQuery {
     ndays: Option<i32>,
@@ -91,7 +97,7 @@ async fn intrusion_attempts(
     let template = include_str!("../templates/COUNTRY_TEMPLATE.html");
     let server = format!("{}.ddboline.net", location);
     let ndays = query.into_inner().ndays.unwrap_or(30);
-    let results = get_country_count_recent(&data.db, &service, &server, ndays)
+    let results = get_country_count_recent(&data.pool, &service, &server, ndays)
         .await
         .map_err(Into::<ServiceError>::into)?
         .into_iter()
@@ -101,9 +107,28 @@ async fn intrusion_attempts(
     Ok(rweb::reply::html(body))
 }
 
-#[derive(Clone)]
-struct AppState {
-    db: PgPool,
+#[get("/security_log/intrusion_attempts/{service}/{location}/all")]
+async fn intrusion_attempts_all(
+    service: StackString,
+    location: StackString,
+    query: Query<AttemptsQuery>,
+    #[data] data: AppState,
+) -> WarpResult<impl Reply> {
+    let template = include_str!("../templates/COUNTRY_TEMPLATE.html");
+    let server = format!("{}.ddboline.net", location);
+    let query = query.into_inner();
+    let results = read_parquet_files(
+        &data.config.cache_dir,
+        Some(service.as_str()),
+        Some(server.as_str()),
+        query.ndays,
+    )
+    .map_err(Into::<ServiceError>::into)?
+    .into_iter()
+    .map(|cc| format!(r#"["{}", {}]"#, cc.country, cc.count))
+    .join(",");
+    let body = template.replace("PUTLISTOFCOUNTRIESANDATTEMPTSHERE", &results);
+    Ok(rweb::reply::html(body))
 }
 
 async fn _run_daemon(config: Config) {
@@ -126,12 +151,12 @@ async fn start_app() -> Result<(), AnyhowError> {
 
     let pool = PgPool::new(&config.database_url);
 
+    let app = AppState { pool, config };
+
     let port: u32 = var("PORT")
         .ok()
         .and_then(|s| s.parse().ok())
         .unwrap_or(4086);
-
-    let app = AppState { db: pool.clone() };
 
     let intrusion_attemps_path = intrusion_attempts(app.clone());
 
