@@ -1,9 +1,9 @@
 use anyhow::{format_err, Error};
-use chrono::{DateTime, Datelike, Utc};
+use chrono::{DateTime, Datelike, Duration, Utc};
 use flate2::read::GzDecoder;
 use itertools::Itertools;
 use log::debug;
-use polars::prelude::Utf8Chunked;
+use polars::prelude::{ChunkCompare, Utf8Chunked};
 use postgres_query::{query, FromSqlRow};
 use stack_string::StackString;
 use std::{
@@ -14,21 +14,21 @@ use std::{
 use structopt::StructOpt;
 
 use polars::{
-    chunked_array::builder::NewChunkedArray,
-    datatypes::{AnyValue, DataType, DatetimeChunked, Int32Chunked, UInt32Chunked},
+    chunked_array::{builder::NewChunkedArray, temporal::naive_datetime_to_datetime},
+    datatypes::{AnyValue, BooleanChunked, DataType, DatetimeChunked, Int32Chunked, UInt32Chunked},
     frame::DataFrame,
     io::{
         csv::{CsvReader, NullValues},
         parquet::{ParquetReader, ParquetWriter},
         SerReader,
     },
-    series::IntoSeries,
+    series::{IntoSeries, Series},
 };
 
-use security_log_analysis_rust::{config::Config, pgpool::PgPool, s3_sync::GarminSync};
+use crate::{config::Config, pgpool::PgPool, s3_sync::GarminSync};
 
 #[derive(StructOpt)]
-enum AnalysisOpts {
+pub enum AnalysisOpts {
     Sync {
         #[structopt(short = "d", long = "directory")]
         directory: Option<PathBuf>,
@@ -46,6 +46,12 @@ enum AnalysisOpts {
     Read {
         #[structopt(short = "d", long = "directory")]
         directory: Option<PathBuf>,
+        #[structopt(short = "s", long = "service")]
+        service: Option<StackString>,
+        #[structopt(short = "t", long = "server")]
+        server: Option<StackString>,
+        #[structopt(short = "n", long = "ndays")]
+        ndays: Option<i32>,
     },
 }
 
@@ -241,11 +247,16 @@ async fn insert_db_into_parquet(pool: &PgPool, outdir: &Path) -> Result<(), Erro
 
 #[derive(Debug)]
 pub struct CodeCount {
-    pub code: StackString,
+    pub country: StackString,
     pub count: u32,
 }
 
-fn read_parquet_files(input: &Path) -> Result<Vec<CodeCount>, Error> {
+pub fn read_parquet_files(
+    input: &Path,
+    service: Option<&str>,
+    server: Option<&str>,
+    ndays: Option<i32>,
+) -> Result<Vec<CodeCount>, Error> {
     if !input.exists() {
         return Err(format_err!("Path does not exists"));
     }
@@ -262,76 +273,122 @@ fn read_parquet_files(input: &Path) -> Result<Vec<CodeCount>, Error> {
     } else {
         vec![input.to_path_buf()]
     };
-    let code: Vec<&str> = Vec::new();
-    let code = Utf8Chunked::new_from_slice("code", &code).into_series();
-    let code_count = UInt32Chunked::new_from_slice("code_count", &[]).into_series();
-    let mut df = DataFrame::new(vec![code, code_count])?;
+    let country: Vec<&str> = Vec::new();
+    let country = Utf8Chunked::new_from_slice("country", &country).into_series();
+    let country_count = UInt32Chunked::new_from_slice("country_count", &[]).into_series();
+    let mut df = DataFrame::new(vec![country, country_count])?;
     for input_file in input_files {
-        let new_df = get_code_count(&input_file)?;
+        let new_df = get_country_count(&input_file, service, server, ndays)?;
         df = df.vstack(&new_df)?;
     }
-    let mut df = df.groupby("code")?.sum()?;
-    df.rename("code_count_sum", "count")?;
+    let mut df = df.groupby("country")?.sum()?;
+    df.rename("country_count_sum", "count")?;
     df.sort_in_place("count", true)?;
-    let code_iter = df.column("code")?.utf8()?.into_iter();
+    let country_iter = df.column("country")?.utf8()?.into_iter();
     let count_iter = df.column("count")?.u32()?.into_iter();
-    let code_count: Vec<_> = code_iter
+    let code_count: Vec<_> = country_iter
         .zip(count_iter)
-        .filter_map(|(code, count)| {
-            code.map(|code| {
-                let code = code.into();
+        .filter_map(|(country, count)| {
+            country.map(|country| {
+                let country = country.into();
                 let count = count.unwrap_or(0);
-                CodeCount { code, count }
+                CodeCount { country, count }
             })
         })
         .collect();
     Ok(code_count)
 }
 
-fn get_code_count(input: &Path) -> Result<DataFrame, Error> {
-    let df = ParquetReader::new(File::open(&input)?).finish()?;
-    let df = df.groupby("code")?.select("code").count()?;
+fn get_country_count(
+    input: &Path,
+    service: Option<&str>,
+    server: Option<&str>,
+    ndays: Option<i32>,
+) -> Result<DataFrame, Error> {
+    let mut df = ParquetReader::new(File::open(&input)?).finish()?;
+    if let Some(service) = service {
+        let mask: Vec<_> = df
+            .column("service")?
+            .utf8()?
+            .into_iter()
+            .map(|x| x == Some(service))
+            .collect();
+        let mask = BooleanChunked::new_from_slice("service_mask", &mask);
+        df = df.filter(&mask)?;
+    }
+    if let Some(server) = server {
+        let mask: Vec<_> = df
+            .column("server")?
+            .utf8()?
+            .into_iter()
+            .map(|x| x == Some(server))
+            .collect();
+        let mask = BooleanChunked::new_from_slice("server_mask", &mask);
+        df = df.filter(&mask)?;
+    }
+    if let Some(ndays) = ndays {
+        let begin_timestamp =
+            naive_datetime_to_datetime(&(Utc::now() - Duration::days(ndays as i64)).naive_utc());
+        let mask: Vec<_> = df
+            .column("datetime")?
+            .datetime()?
+            .into_iter()
+            .map(|x| x.map(|d| d > begin_timestamp))
+            .collect();
+        let mask = BooleanChunked::new_from_opt_slice("datetime_mask", &mask);
+        df = df.filter(&mask)?;
+    }
+    let df = df.groupby("country")?.select("country").count()?;
     Ok(df)
 }
 
-#[tokio::main]
-async fn main() -> Result<(), Error> {
-    let default_input =
-        Path::new("/media/seagate4000/dilepton_tower_backup/intrusion_log_backup_20211216.sql.gz")
-            .to_path_buf();
+impl AnalysisOpts {
+    pub async fn parse_opts() -> Result<(), Error> {
+        let default_input = Path::new(
+            "/media/seagate4000/dilepton_tower_backup/intrusion_log_backup_20211216.sql.gz",
+        )
+        .to_path_buf();
 
-    let opts = AnalysisOpts::from_args();
-    let config = Config::init_config()?;
+        let opts = AnalysisOpts::from_args();
+        let config = Config::init_config()?;
 
-    match opts {
-        AnalysisOpts::Sync { directory } => {
-            let sync = GarminSync::new();
-            let directory = directory.unwrap_or_else(|| config.cache_dir.clone());
-            println!(
-                "{}",
-                sync.sync_dir("security-log-analysis", &directory, &config.s3_bucket, true,)
-                    .await?
-            );
+        match opts {
+            AnalysisOpts::Sync { directory } => {
+                let sync = GarminSync::new();
+                let directory = directory.unwrap_or_else(|| config.cache_dir.clone());
+                println!(
+                    "{}",
+                    sync.sync_dir("security-log-analysis", &directory, &config.s3_bucket, true,)
+                        .await?
+                );
+            }
+            AnalysisOpts::Etl { input, directory } => {
+                let input = input.unwrap_or(default_input);
+                let directory = directory.unwrap_or_else(|| config.cache_dir.clone());
+                read_tsv_file(&input, &directory)?;
+            }
+            AnalysisOpts::Db { directory } => {
+                let directory = directory.unwrap_or_else(|| config.cache_dir.clone());
+                let pool = PgPool::new(&config.database_url);
+                insert_db_into_parquet(&pool, &directory).await?;
+            }
+            AnalysisOpts::Read {
+                directory,
+                service,
+                server,
+                ndays,
+            } => {
+                let directory = directory.unwrap_or_else(|| config.cache_dir.clone());
+                let service = service.as_ref().map(StackString::as_str);
+                let server = server.as_ref().map(StackString::as_str);
+                let body = read_parquet_files(&directory, service, server, ndays)?
+                    .into_iter()
+                    .map(|c| format!("country {} count {}", c.country, c.count))
+                    .take(10)
+                    .join("\n");
+                println!("{}", body);
+            }
         }
-        AnalysisOpts::Etl { input, directory } => {
-            let input = input.unwrap_or(default_input);
-            let directory = directory.unwrap_or_else(|| config.cache_dir.clone());
-            read_tsv_file(&input, &directory)?;
-        }
-        AnalysisOpts::Db { directory } => {
-            let directory = directory.unwrap_or_else(|| config.cache_dir.clone());
-            let pool = PgPool::new(&config.database_url);
-            insert_db_into_parquet(&pool, &directory).await?;
-        }
-        AnalysisOpts::Read { directory } => {
-            let directory = directory.unwrap_or_else(|| config.cache_dir.clone());
-            let body = read_parquet_files(&directory)?
-                .into_iter()
-                .map(|c| format!("code {} count {}", c.code, c.count))
-                .take(10)
-                .join("\n");
-            println!("{}", body);
-        }
+        Ok(())
     }
-    Ok(())
 }
