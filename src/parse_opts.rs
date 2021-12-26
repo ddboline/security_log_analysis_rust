@@ -212,7 +212,7 @@ impl ParseOpts {
                             None,
                         )
                         .await?,
-                    )
+                    );
                 }
 
                 let existing_entries: HashSet<IntrusionLog> =

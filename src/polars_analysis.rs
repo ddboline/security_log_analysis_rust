@@ -289,7 +289,7 @@ pub fn read_parquet_files(
         .filter_map(|(country, count)| {
             country.map(|country| {
                 let country = country.into();
-                let count = count.unwrap_or(0) as i64;
+                let count = i64::from(count.unwrap_or(0));
                 CountryCount { country, count }
             })
         })
