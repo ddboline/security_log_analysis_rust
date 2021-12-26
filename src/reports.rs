@@ -1,21 +1,19 @@
-use anyhow::Error;
+use anyhow::{format_err, Error};
 use postgres_query::FromSqlRow;
+use rweb::Schema;
 use stack_string::StackString;
+use std::{fmt, str::FromStr};
 
-use crate::pgpool::PgPool;
-
-#[derive(FromSqlRow)]
-pub struct CountryCount {
-    pub country: StackString,
-    pub count: i64,
-}
+use crate::{pgpool::PgPool, CountryCount, Host, Service};
 
 pub async fn get_country_count_recent(
     pool: &PgPool,
-    service: &str,
-    server: &str,
+    service: Service,
+    server: Host,
     ndays: i32,
 ) -> Result<Vec<CountryCount>, Error> {
+    let service = service.to_str();
+    let server = server.to_str();
     let query = postgres_query::query_dyn!(
         &format!(
             r#"
