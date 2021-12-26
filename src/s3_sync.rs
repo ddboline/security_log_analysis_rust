@@ -33,7 +33,7 @@ pub fn get_s3_client() -> S3Client {
 }
 
 #[derive(Clone)]
-pub struct GarminSync {
+pub struct S3Sync {
     s3_client: S3Client,
 }
 
@@ -66,7 +66,7 @@ impl Borrow<str> for &KeyItem {
     }
 }
 
-impl Default for GarminSync {
+impl Default for S3Sync {
     fn default() -> Self {
         Self::new()
     }
@@ -89,7 +89,7 @@ fn process_s3_item(mut item: S3Object) -> Option<KeyItem> {
     })
 }
 
-impl GarminSync {
+impl S3Sync {
     pub fn new() -> Self {
         Self {
             s3_client: get_s3_client(),
