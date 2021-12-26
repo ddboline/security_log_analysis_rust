@@ -1,17 +1,30 @@
 use anyhow::{format_err, Error};
 use chrono::{DateTime, Datelike, Duration, Utc};
 use flate2::read::GzDecoder;
+use futures::future::try_join_all;
 use itertools::Itertools;
 use log::debug;
 use polars::prelude::{ChunkCompare, Utf8Chunked};
 use postgres_query::{query, FromSqlRow};
+use refinery::embed_migrations;
+use rweb::Schema;
+use smallvec::SmallVec;
 use stack_string::StackString;
 use std::{
-    fs::File,
-    io::{BufRead, BufReader, Cursor},
+    collections::HashSet,
+    fmt,
+    io::Cursor,
     path::{Path, PathBuf},
+    process::Stdio,
+    str::FromStr,
 };
+use stdout_channel::StdoutChannel;
 use structopt::StructOpt;
+use tokio::{
+    fs::File,
+    io::{AsyncBufReadExt, AsyncWriteExt, BufReader},
+    process::Command,
+};
 
 use polars::{
     chunked_array::{builder::NewChunkedArray, temporal::naive_datetime_to_datetime},
@@ -25,37 +38,24 @@ use polars::{
     series::{IntoSeries, Series},
 };
 
-use crate::{config::Config, pgpool::PgPool, s3_sync::GarminSync};
+use crate::{
+    config::Config,
+    host_country_metadata::HostCountryMetadata,
+    models::{get_max_datetime, IntrusionLog},
+    parse_logs::{
+        parse_all_log_files, parse_log_line_apache, parse_log_line_ssh, parse_systemd_logs_sshd_all,
+    },
+    pgpool::PgPool,
+    reports::get_country_count_recent,
+    CountryCount, DateTimeInput, Host, Service,
+};
 
-#[derive(StructOpt)]
-pub enum AnalysisOpts {
-    Sync {
-        #[structopt(short = "d", long = "directory")]
-        directory: Option<PathBuf>,
-    },
-    Etl {
-        #[structopt(short = "i", long = "input")]
-        input: Option<PathBuf>,
-        #[structopt(short = "d", long = "directory")]
-        directory: Option<PathBuf>,
-    },
-    Db {
-        #[structopt(short = "d", long = "directory")]
-        directory: Option<PathBuf>,
-    },
-    Read {
-        #[structopt(short = "d", long = "directory")]
-        directory: Option<PathBuf>,
-        #[structopt(short = "s", long = "service")]
-        service: Option<StackString>,
-        #[structopt(short = "t", long = "server")]
-        server: Option<StackString>,
-        #[structopt(short = "n", long = "ndays")]
-        ndays: Option<i32>,
-    },
-}
+pub fn read_tsv_file(input: &Path, outdir: &Path) -> Result<(), Error> {
+    use std::{
+        fs::File,
+        io::{BufRead, BufReader, Read},
+    };
 
-fn read_tsv_file(input: &Path, outdir: &Path) -> Result<(), Error> {
     let gz = GzDecoder::new(File::open(input)?);
     let mut buf = Vec::new();
     let mut gzbuf = BufReader::new(gz);
@@ -78,6 +78,8 @@ fn read_tsv_file(input: &Path, outdir: &Path) -> Result<(), Error> {
 }
 
 fn write_to_parquet(buf: &[u8], outdir: &Path) -> Result<(), Error> {
+    use std::fs::File;
+
     let cursor = Cursor::new(&buf);
     let mut csv = CsvReader::new(cursor)
         .with_null_values(Some(NullValues::AllColumns("\\N".into())))
@@ -167,7 +169,9 @@ fn write_to_parquet(buf: &[u8], outdir: &Path) -> Result<(), Error> {
     Ok(())
 }
 
-async fn insert_db_into_parquet(pool: &PgPool, outdir: &Path) -> Result<(), Error> {
+pub async fn insert_db_into_parquet(pool: &PgPool, outdir: &Path) -> Result<(), Error> {
+    use std::fs::File;
+
     #[derive(FromSqlRow)]
     struct Wrap {
         year: i32,
@@ -245,18 +249,12 @@ async fn insert_db_into_parquet(pool: &PgPool, outdir: &Path) -> Result<(), Erro
     Ok(())
 }
 
-#[derive(Debug)]
-pub struct CodeCount {
-    pub country: StackString,
-    pub count: u32,
-}
-
 pub fn read_parquet_files(
     input: &Path,
-    service: Option<&str>,
-    server: Option<&str>,
+    service: Option<Service>,
+    server: Option<Host>,
     ndays: Option<i32>,
-) -> Result<Vec<CodeCount>, Error> {
+) -> Result<Vec<CountryCount>, Error> {
     if !input.exists() {
         return Err(format_err!("Path does not exists"));
     }
@@ -291,8 +289,8 @@ pub fn read_parquet_files(
         .filter_map(|(country, count)| {
             country.map(|country| {
                 let country = country.into();
-                let count = count.unwrap_or(0);
-                CodeCount { country, count }
+                let count = count.unwrap_or(0) as i64;
+                CountryCount { country, count }
             })
         })
         .collect();
@@ -301,17 +299,19 @@ pub fn read_parquet_files(
 
 fn get_country_count(
     input: &Path,
-    service: Option<&str>,
-    server: Option<&str>,
+    service: Option<Service>,
+    server: Option<Host>,
     ndays: Option<i32>,
 ) -> Result<DataFrame, Error> {
+    use std::fs::File;
+
     let mut df = ParquetReader::new(File::open(&input)?).finish()?;
     if let Some(service) = service {
         let mask: Vec<_> = df
             .column("service")?
             .utf8()?
             .into_iter()
-            .map(|x| x == Some(service))
+            .map(|x| x == Some(service.to_str()))
             .collect();
         let mask = BooleanChunked::new_from_slice("service_mask", &mask);
         df = df.filter(&mask)?;
@@ -321,7 +321,7 @@ fn get_country_count(
             .column("server")?
             .utf8()?
             .into_iter()
-            .map(|x| x == Some(server))
+            .map(|x| x == Some(server.to_str()))
             .collect();
         let mask = BooleanChunked::new_from_slice("server_mask", &mask);
         df = df.filter(&mask)?;
@@ -341,55 +341,4 @@ fn get_country_count(
     }
     let df = df.groupby("country")?.select("country").count()?;
     Ok(df)
-}
-
-impl AnalysisOpts {
-    pub async fn parse_opts() -> Result<(), Error> {
-        let default_input = Path::new(
-            "/media/seagate4000/dilepton_tower_backup/intrusion_log_backup_20211216.sql.gz",
-        )
-        .to_path_buf();
-
-        let opts = AnalysisOpts::from_args();
-        let config = Config::init_config()?;
-
-        match opts {
-            AnalysisOpts::Sync { directory } => {
-                let sync = GarminSync::new();
-                let directory = directory.unwrap_or_else(|| config.cache_dir.clone());
-                println!(
-                    "{}",
-                    sync.sync_dir("security-log-analysis", &directory, &config.s3_bucket, true,)
-                        .await?
-                );
-            }
-            AnalysisOpts::Etl { input, directory } => {
-                let input = input.unwrap_or(default_input);
-                let directory = directory.unwrap_or_else(|| config.cache_dir.clone());
-                read_tsv_file(&input, &directory)?;
-            }
-            AnalysisOpts::Db { directory } => {
-                let directory = directory.unwrap_or_else(|| config.cache_dir.clone());
-                let pool = PgPool::new(&config.database_url);
-                insert_db_into_parquet(&pool, &directory).await?;
-            }
-            AnalysisOpts::Read {
-                directory,
-                service,
-                server,
-                ndays,
-            } => {
-                let directory = directory.unwrap_or_else(|| config.cache_dir.clone());
-                let service = service.as_ref().map(StackString::as_str);
-                let server = server.as_ref().map(StackString::as_str);
-                let body = read_parquet_files(&directory, service, server, ndays)?
-                    .into_iter()
-                    .map(|c| format!("country {} count {}", c.country, c.count))
-                    .take(10)
-                    .join("\n");
-                println!("{}", body);
-            }
-        }
-        Ok(())
-    }
 }
