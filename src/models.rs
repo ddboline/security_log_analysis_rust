@@ -13,6 +13,7 @@ use tokio::{fs::create_dir_all, task::spawn_blocking};
 use crate::{
     iso_8601_datetime,
     pgpool::{PgPool, PgTransaction},
+    Host, Service,
 };
 
 pub const INTRUSION_LOG_AVRO_SCHEMA: &str = r#"
@@ -150,8 +151,8 @@ impl IntrusionLog {
 
     pub async fn get_max_datetime(
         pool: &PgPool,
-        service: &str,
-        server: &str,
+        service: Service,
+        server: Host,
     ) -> Result<Option<DateTime<Utc>>, Error> {
         let conn = pool.get().await?;
         Self::_get_max_datetime(&conn, service, server)
@@ -161,14 +162,17 @@ impl IntrusionLog {
 
     async fn _get_max_datetime<C>(
         conn: &C,
-        service: &str,
-        server: &str,
+        service: Service,
+        server: Host,
     ) -> Result<Option<DateTime<Utc>>, Error>
     where
         C: GenericClient + Sync,
     {
         #[derive(FromSqlRow, Into)]
         struct Wrap(DateTime<Utc>);
+
+        let service = service.to_str();
+        let server = server.to_str();
 
         let query = query!(
             r#"
@@ -185,14 +189,17 @@ impl IntrusionLog {
 
     async fn _get_min_datetime<C>(
         conn: &C,
-        service: &str,
-        server: &str,
+        service: Service,
+        server: Host,
     ) -> Result<Option<DateTime<Utc>>, Error>
     where
         C: GenericClient + Sync,
     {
         #[derive(FromSqlRow, Into)]
         struct Wrap(DateTime<Utc>);
+
+        let service = service.to_str();
+        let server = server.to_str();
 
         let query = query!(
             r#"
@@ -209,8 +216,8 @@ impl IntrusionLog {
 
     pub async fn get_intrusion_log_filtered(
         pool: &PgPool,
-        service: &str,
-        server: &str,
+        service: Service,
+        server: Host,
         min_datetime: Option<DateTime<Utc>>,
         max_datetime: Option<DateTime<Utc>>,
         max_entries: Option<usize>,
@@ -239,8 +246,8 @@ impl IntrusionLog {
 
     async fn get_intrusion_log_filtered_conn<C>(
         conn: &C,
-        service: &str,
-        server: &str,
+        service: Service,
+        server: Host,
         min_datetime: DateTime<Utc>,
         max_datetime: DateTime<Utc>,
         max_entries: Option<usize>,
@@ -263,6 +270,9 @@ impl IntrusionLog {
                 "".into()
             },
         );
+        let service = service.to_str();
+        let server = server.to_str();
+
         let bindings = vec![
             ("service", &service as Parameter),
             ("server", &server as Parameter),
@@ -307,6 +317,26 @@ impl IntrusionLog {
         tran.commit().await?;
         Ok(())
     }
+}
+
+pub async fn get_max_datetime(pool: &PgPool, server: Host) -> Result<DateTime<Utc>, Error> {
+    let result = if let Some(dt) = IntrusionLog::get_max_datetime(pool, Service::Ssh, server)
+        .await?
+        .as_ref()
+    {
+        if let Ok(Some(dt2)) = IntrusionLog::get_max_datetime(pool, Service::Nginx, server).await {
+            if *dt < dt2 {
+                *dt
+            } else {
+                dt2
+            }
+        } else {
+            *dt
+        }
+    } else {
+        Utc::now()
+    };
+    Ok(result)
 }
 
 #[cfg(test)]
