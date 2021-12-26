@@ -23,7 +23,7 @@ use tokio::{
 
 use crate::{
     config::Config, host_country_metadata::HostCountryMetadata, models::IntrusionLog,
-    pgpool::PgPool,
+    pgpool::PgPool, Host, Service,
 };
 
 #[derive(Debug, PartialEq, Eq, Hash)]
@@ -107,8 +107,8 @@ where
 
 pub async fn parse_all_log_files<T>(
     hc: &HostCountryMetadata,
-    service: &str,
-    server: &str,
+    service: Service,
+    server: Host,
     parse_func: &T,
     log_prefix: &str,
 ) -> Result<Vec<IntrusionLog>, Error>
@@ -150,8 +150,8 @@ where
             if cond {
                 Some(IntrusionLog {
                     id: -1,
-                    service: service.into(),
-                    server: server.into(),
+                    service: service.to_str().into(),
+                    server: server.to_str().into(),
                     datetime: log_line.timestamp,
                     host: log_line.host,
                     username: log_line.user,
@@ -192,13 +192,12 @@ pub fn parse_log_line_apache(_: i32, line: &str) -> Result<Option<LogLineSSH>, E
 
 pub async fn parse_systemd_logs_sshd_all(
     hc: &HostCountryMetadata,
-    server: &str,
+    server: Host,
 ) -> Result<Vec<IntrusionLog>, Error> {
     let max_datetime: Option<DateTime<Utc>> = match hc.pool.as_ref() {
         Some(pool) => {
             let pool = pool.clone();
-            let server: StackString = server.into();
-            IntrusionLog::get_max_datetime(&pool, "ssh", &server).await?
+            IntrusionLog::get_max_datetime(&pool, Service::Ssh, server).await?
         }
         None => None,
     };
@@ -214,7 +213,7 @@ pub async fn parse_systemd_logs_sshd_all(
     Ok(inserts)
 }
 
-pub async fn parse_systemd_logs_sshd(server: &str) -> Result<Vec<IntrusionLog>, Error> {
+pub async fn parse_systemd_logs_sshd(server: Host) -> Result<Vec<IntrusionLog>, Error> {
     let command = Command::new("journalctl")
         .args(&[
             "-o",
@@ -233,8 +232,8 @@ pub async fn parse_systemd_logs_sshd(server: &str) -> Result<Vec<IntrusionLog>, 
                 let log_line: LogLineSSH = log.parse_sshd()?;
                 Ok(Some(IntrusionLog {
                     id: -1,
-                    service: "ssh".into(),
-                    server: server.into(),
+                    service: Service::Ssh.to_str().into(),
+                    server: server.to_str().into(),
                     datetime: log_line.timestamp,
                     host: log_line.host,
                     username: log_line.user,
@@ -243,8 +242,8 @@ pub async fn parse_systemd_logs_sshd(server: &str) -> Result<Vec<IntrusionLog>, 
                 let log: ServiceLogLine = serde_json::from_str(line)?;
                 Ok(log.parse_nginx()?.map(|log_line| IntrusionLog {
                     id: -1,
-                    service: "nginx".into(),
-                    server: server.into(),
+                    service: Service::Nginx.to_str().into(),
+                    server: server.to_str().into(),
                     datetime: log_line.timestamp,
                     host: log_line.host,
                     username: log_line.user,
@@ -405,6 +404,7 @@ mod tests {
             parse_systemd_logs_sshd,
         },
         pgpool::PgPool,
+        Host, Service,
     };
 
     #[test]
@@ -474,8 +474,8 @@ mod tests {
         hc.pool = None;
         let results = parse_all_log_files(
             &hc,
-            "ssh",
-            "home.ddboline.net",
+            Service::Ssh,
+            Host::Home,
             &parse_log_line_ssh,
             "tests/data/test_auth.log",
         )
@@ -488,7 +488,7 @@ mod tests {
     #[tokio::test]
     #[ignore]
     async fn test_parse_systemd_logs_sshd() -> Result<(), Error> {
-        let logs = parse_systemd_logs_sshd("home.ddboline.net").await?;
+        let logs = parse_systemd_logs_sshd(Host::Home).await?;
         println!("{:?}", logs[0]);
         assert!(logs.len() > 0);
         Ok(())
