@@ -64,8 +64,3 @@ doc = false
 name = "security-log-http"
 path = "src/security_log_http.rs"
 doc = false
-
-[[bin]]
-name = "security-log-polars-analysis"
-path = "src/polars_main.rs"
-doc = false
