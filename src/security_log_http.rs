@@ -30,7 +30,7 @@ use tokio::{
 
 use security_log_analysis_rust::{
     config::Config, parse_logs::parse_systemd_logs_sshd_daemon, pgpool::PgPool,
-    polars_analysis::read_parquet_files, reports::get_country_count_recent,
+    polars_analysis::read_parquet_files, reports::get_country_count_recent, Host, Service,
 };
 
 type WarpResult<T> = Result<T, Rejection>;
@@ -94,15 +94,14 @@ struct AttemptsQuery {
 
 #[get("/security_log/intrusion_attempts/{service}/{location}")]
 async fn intrusion_attempts(
-    service: StackString,
-    location: StackString,
+    service: Service,
+    location: Host,
     query: Query<AttemptsQuery>,
     #[data] data: AppState,
 ) -> WarpResult<impl Reply> {
     let template = include_str!("../templates/COUNTRY_TEMPLATE.html");
-    let server = format!("{}.ddboline.net", location);
     let ndays = query.into_inner().ndays.unwrap_or(30);
-    let results = get_country_count_recent(&data.pool, &service, &server, ndays)
+    let results = get_country_count_recent(&data.pool, service, location, ndays)
         .await
         .map_err(Into::<ServiceError>::into)?
         .into_iter()
@@ -114,20 +113,19 @@ async fn intrusion_attempts(
 
 #[get("/security_log/intrusion_attempts/{service}/{location}/all")]
 async fn intrusion_attempts_all(
-    service: StackString,
-    location: StackString,
+    service: Service,
+    location: Host,
     query: Query<AttemptsQuery>,
     #[data] data: AppState,
 ) -> WarpResult<impl Reply> {
     let template = include_str!("../templates/COUNTRY_TEMPLATE.html");
-    let server = format!("{}.ddboline.net", location);
     let query = query.into_inner();
     let config = data.config.clone();
     let results = spawn_blocking(move || {
         read_parquet_files(
             &config.cache_dir,
-            Some(service.as_str()),
-            Some(server.as_str()),
+            Some(service),
+            Some(location),
             query.ndays,
         )
     })
