@@ -259,7 +259,7 @@ impl IntrusionLog {
             r#"
                 SELECT * FROM intrusion_log
                 WHERE service=$service
-                  AND server=$server,
+                  AND server=$server
                   AND datetime >= $min_datetime
                   AND datetime <= $max_datetime
                 {}
