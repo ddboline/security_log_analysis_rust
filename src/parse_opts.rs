@@ -191,10 +191,10 @@ impl ParseOpts {
                 process.wait().await?;
 
                 let new_hosts: HashSet<_> =
-                    inserts.iter().map(|item| item.host.to_string()).collect();
+                    inserts.iter().map(|item| item.host.as_str()).collect();
 
-                for host in new_hosts {
-                    metadata.get_country_info(&host).await?;
+                for host in &new_hosts {
+                    metadata.get_country_info(host).await?;
                 }
 
                 let mut existing_entries = Vec::new();
@@ -217,6 +217,7 @@ impl ParseOpts {
                     existing_entries.into_iter().map(Into::into).collect();
                 let inserts: Vec<_> = inserts.difference(&existing_entries).cloned().collect();
                 IntrusionLog::insert(&pool, &inserts).await?;
+                stdout.send(format!("hosts {}", new_hosts.len()));
                 stdout.send(format!("inserts {}", inserts.len()));
             }
             ParseOpts::AddHost { host_codes } => {
