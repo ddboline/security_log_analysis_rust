@@ -190,8 +190,7 @@ impl ParseOpts {
 
                 process.wait().await?;
 
-                let new_hosts: HashSet<_> =
-                    inserts.iter().map(|item| item.host.as_str()).collect();
+                let new_hosts: HashSet<_> = inserts.iter().map(|item| item.host.as_str()).collect();
 
                 for host in &new_hosts {
                     metadata.get_country_info(host).await?;
