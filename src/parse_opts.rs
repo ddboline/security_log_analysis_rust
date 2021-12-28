@@ -193,11 +193,14 @@ impl ParseOpts {
                 let new_hosts: HashSet<_> =
                     inserts.iter().map(|item| item.host.to_string()).collect();
 
-                let futures = new_hosts.into_iter().map(|host| {
-                    let metadata = metadata.clone();
-                    async move { metadata.get_country_info(&host).await }
-                });
-                try_join_all(futures).await?;
+                for host in new_hosts {
+                    metadata.get_country_info(&host).await?;
+                }
+                // let futures = new_hosts.into_iter().map(|host| {
+                //     let metadata = metadata.clone();
+                //     async move { metadata.get_country_info(&host).await }
+                // });
+                // try_join_all(futures).await?;
 
                 let mut existing_entries = Vec::new();
 
