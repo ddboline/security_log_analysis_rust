@@ -24,8 +24,10 @@ use tokio::{
     fs::File,
     io::{AsyncBufReadExt, AsyncWriteExt, BufReader},
     process::Command,
-    task::spawn_blocking,
+    task::{spawn_blocking, spawn},
 };
+use deadqueue::limited::Queue;
+use std::sync::Arc;
 
 use crate::{
     config::Config,
@@ -190,17 +192,34 @@ impl ParseOpts {
 
                 process.wait().await?;
 
+                let num_cpus = num_cpus::get();
+
+                let queue: Arc<Queue<Option<String>>> = Arc::new(Queue::new(num_cpus));
+
+                let workers: Vec<_> = (0..num_cpus).map(|_| {
+                    let queue = queue.clone();
+                    let metadata = metadata.clone();
+                    spawn(async move {
+                        while let Some(host) = queue.pop().await {
+                            metadata.get_country_info(&host).await?;
+                        }
+                        Ok(())
+                    })
+                }).collect();
+
                 let new_hosts: HashSet<_> =
                     inserts.iter().map(|item| item.host.to_string()).collect();
 
+                
                 for host in new_hosts {
-                    metadata.get_country_info(&host).await?;
+                    queue.push(Some(host));
                 }
-                // let futures = new_hosts.into_iter().map(|host| {
-                //     let metadata = metadata.clone();
-                //     async move { metadata.get_country_info(&host).await }
-                // });
-                // try_join_all(futures).await?;
+                for _ in (0..num_cpus) {
+                    queue.push(None);
+                }
+                for worker in workers {
+                    worker.await?;
+                }
 
                 let mut existing_entries = Vec::new();
 
