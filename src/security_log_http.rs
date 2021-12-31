@@ -166,7 +166,8 @@ async fn start_app() -> Result<(), AnyhowError> {
         .and_then(|s| s.parse().ok())
         .unwrap_or(4086);
 
-    let intrusion_attemps_path = intrusion_attempts(app.clone());
+    let intrusion_attemps_path =
+        intrusion_attempts(app.clone()).or(intrusion_attempts_all(app.clone()));
 
     let cors = rweb::cors()
         .allow_methods(vec!["GET"])
