@@ -124,8 +124,7 @@ impl ParseOpts {
                 debug!("got here {}", line!());
                 let inserts = parse_systemd_logs_sshd_all(&metadata, server).await?;
                 stdout.send(format!("new lines ssh {}", inserts.len()));
-                let new_hosts: HashSet<_> =
-                    inserts.iter().map(|item| item.host.to_string()).collect();
+                let new_hosts: HashSet<_> = inserts.iter().map(|item| item.host.clone()).collect();
                 stdout.send(format!("new hosts {:#?}", new_hosts));
                 for host in new_hosts {
                     metadata.get_country_info(&host).await?;

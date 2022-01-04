@@ -70,7 +70,8 @@ impl HostCountryMetadata {
             let ipaddr = (host, 22).to_socket_addrs()?.next().and_then(|s| {
                 let ip = s.ip();
                 if ip.is_ipv4() {
-                    Some(ip.to_string().into())
+                    let ip_str = StackString::from_display(ip).unwrap();
+                    Some(ip_str)
                 } else {
                     None
                 }
@@ -122,7 +123,8 @@ impl HostCountryMetadata {
             .and_then(|s| {
                 let ip = s.ip();
                 if ip.is_ipv4() {
-                    Some(ip.to_string())
+                    let ip_str = StackString::from_display(ip).unwrap();
+                    Some(ip_str)
                 } else {
                     None
                 }
