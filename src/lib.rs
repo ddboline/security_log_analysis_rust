@@ -13,6 +13,7 @@
 #![allow(clippy::upper_case_acronyms)]
 #![allow(clippy::case_sensitive_file_extension_comparisons)]
 #![allow(clippy::default_trait_access)]
+#![allow(clippy::missing_panics_doc)]
 
 pub mod config;
 pub mod host_country_metadata;
