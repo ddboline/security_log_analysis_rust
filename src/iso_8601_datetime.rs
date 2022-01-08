@@ -10,7 +10,7 @@ pub fn sentinel_datetime() -> DateTime<Utc> {
 pub fn convert_datetime_to_str(datetime: DateTime<Utc>) -> StackString {
     use chrono::format::{Fixed, Item};
     const ITEMS: &[Item<'static>] = &[Item::Fixed(Fixed::RFC3339)];
-    StackString::from_display(datetime.format_with_items(ITEMS.iter())).unwrap()
+    StackString::from_display(datetime.format_with_items(ITEMS.iter()))
 }
 
 pub fn convert_str_to_datetime(s: &str) -> Result<DateTime<Utc>, Error> {

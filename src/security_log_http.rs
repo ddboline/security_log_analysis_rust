@@ -20,8 +20,8 @@ use itertools::Itertools;
 use log::error;
 use rweb::{get, reject::Reject, Filter, Query, Rejection, Reply, Schema};
 use serde::{Deserialize, Serialize};
-use stack_string::StackString;
-use std::{convert::Infallible, env::var, net::SocketAddr, time::Duration};
+use stack_string::{format_sstr, StackString};
+use std::{convert::Infallible, env::var, fmt::Write, net::SocketAddr, time::Duration};
 use thiserror::Error;
 use tokio::{
     task::{spawn, spawn_blocking, JoinError},
@@ -105,7 +105,7 @@ async fn intrusion_attempts(
         .await
         .map_err(Into::<ServiceError>::into)?
         .into_iter()
-        .map(|cc| format!(r#"["{}", {}]"#, cc.country, cc.count))
+        .map(|cc| format_sstr!(r#"["{}", {}]"#, cc.country, cc.count))
         .join(",");
     let body = template.replace("PUTLISTOFCOUNTRIESANDATTEMPTSHERE", &results);
     Ok(rweb::reply::html(body))
@@ -133,7 +133,7 @@ async fn intrusion_attempts_all(
     .map_err(Into::<ServiceError>::into)?
     .map_err(Into::<ServiceError>::into)?
     .into_iter()
-    .map(|cc| format!(r#"["{}", {}]"#, cc.country, cc.count))
+    .map(|cc| format_sstr!(r#"["{}", {}]"#, cc.country, cc.count))
     .join(",");
     let body = template.replace("PUTLISTOFCOUNTRIESANDATTEMPTSHERE", &results);
     Ok(rweb::reply::html(body))
@@ -176,7 +176,7 @@ async fn start_app() -> Result<(), AnyhowError> {
         .build();
 
     let routes = intrusion_attemps_path.recover(error_response).with(cors);
-    let addr: SocketAddr = format!("127.0.0.1:{}", port).parse()?;
+    let addr: SocketAddr = format_sstr!("127.0.0.1:{}", port).parse()?;
     rweb::serve(routes).bind(addr).await;
 
     daemon_task.await?;

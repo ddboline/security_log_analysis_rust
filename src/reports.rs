@@ -1,8 +1,8 @@
 use anyhow::{format_err, Error};
 use postgres_query::FromSqlRow;
 use rweb::Schema;
-use stack_string::StackString;
-use std::{fmt, str::FromStr};
+use stack_string::{format_sstr, StackString};
+use std::{fmt, fmt::Write, str::FromStr};
 
 use crate::{pgpool::PgPool, CountryCount, Host, Service};
 
@@ -15,7 +15,7 @@ pub async fn get_country_count_recent(
     let service = service.to_str();
     let server = server.to_str();
     let query = postgres_query::query_dyn!(
-        &format!(
+        &format_sstr!(
             r#"
         SELECT c.country, count(1) AS count
         FROM intrusion_log a

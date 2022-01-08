@@ -8,11 +8,12 @@ use refinery::embed_migrations;
 use rweb::Schema;
 use serde::{Deserialize, Serialize};
 use smallvec::SmallVec;
-use stack_string::StackString;
+use stack_string::{format_sstr, StackString};
 use std::{
     collections::HashSet,
     env::var,
     fmt,
+    fmt::Write,
     net::ToSocketAddrs,
     path::{Path, PathBuf},
     process::Stdio,
@@ -123,9 +124,9 @@ impl ParseOpts {
                 let metadata = HostCountryMetadata::from_pool(&pool).await?;
                 debug!("got here {}", line!());
                 let inserts = parse_systemd_logs_sshd_all(&metadata, server).await?;
-                stdout.send(format!("new lines ssh {}", inserts.len()));
+                stdout.send(format_sstr!("new lines ssh {}", inserts.len()));
                 let new_hosts: HashSet<_> = inserts.iter().map(|item| item.host.clone()).collect();
-                stdout.send(format!("new hosts {:#?}", new_hosts));
+                stdout.send(format_sstr!("new hosts {:#?}", new_hosts));
                 for host in new_hosts {
                     metadata.get_country_info(&host).await?;
                 }
@@ -147,8 +148,8 @@ impl ParseOpts {
                 let username = username
                     .as_ref()
                     .map_or_else(|| config.username.as_str(), StackString::as_str);
-                let user_host = format!("{}@{}", username, server);
-                let command = format!("security-log-parse-rust parse -s {}", server);
+                let user_host = format_sstr!("{}@{}", username, server);
+                let command = format_sstr!("security-log-parse-rust parse -s {}", server);
                 debug!("{}", command);
                 let status = Command::new("ssh")
                     .args(&[&user_host, &command])
@@ -161,8 +162,8 @@ impl ParseOpts {
                 let max_datetime = { get_max_datetime(&pool, server).await? };
                 debug!("{:?}", max_datetime);
 
-                let user_host = format!("{}@{}", username, server);
-                let command = format!(
+                let user_host = format_sstr!("{}@{}", username, server);
+                let command = format_sstr!(
                     "security-log-parse-rust ser -s {} -d {}",
                     server,
                     max_datetime.to_rfc3339(),
@@ -215,8 +216,8 @@ impl ParseOpts {
                     existing_entries.into_iter().map(Into::into).collect();
                 let inserts: Vec<_> = inserts.difference(&existing_entries).cloned().collect();
                 IntrusionLog::insert(&pool, &inserts).await?;
-                stdout.send(format!("hosts {}", new_hosts.len()));
-                stdout.send(format!("inserts {}", inserts.len()));
+                stdout.send(format_sstr!("hosts {}", new_hosts.len()));
+                stdout.send(format_sstr!("inserts {}", inserts.len()));
             }
             ParseOpts::AddHost { host_codes } => {
                 let config = Config::init_config()?;
@@ -244,13 +245,13 @@ impl ParseOpts {
                         let results = get_country_count_recent(&pool, service, server, 30)
                             .await?
                             .into_iter()
-                            .map(|cc| format!(r#"["{}", {}]"#, cc.country, cc.count))
+                            .map(|cc| format_sstr!(r#"["{}", {}]"#, cc.country, cc.count))
                             .join(",");
                         let results =
                             template.replace("PUTLISTOFCOUNTRIESANDATTEMPTSHERE", &results);
 
                         if let Some(export_dir) = config.export_dir.as_ref() {
-                            let outfname = format!(
+                            let outfname = format_sstr!(
                                 "{}_intrusion_attempts_{}.html",
                                 service,
                                 server.get_prefix()
@@ -313,7 +314,7 @@ impl ParseOpts {
                 let directory = directory.unwrap_or_else(|| config.cache_dir.clone());
                 let body = read_parquet_files(&directory, service, server, ndays)?
                     .into_iter()
-                    .map(|c| format!("country {} count {}", c.country, c.count))
+                    .map(|c| format_sstr!("country {} count {}", c.country, c.count))
                     .take(10)
                     .join("\n");
                 println!("{}", body);

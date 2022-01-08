@@ -6,11 +6,12 @@ use itertools::Itertools;
 use log::debug;
 use serde::{Deserialize, Serialize};
 use smallvec::SmallVec;
-use stack_string::StackString;
+use stack_string::{format_sstr, StackString};
 use std::{
     collections::HashSet,
     convert::{TryFrom, TryInto},
     fmt,
+    fmt::Write,
     fs::File,
     io::{BufRead, BufReader, Read},
     process::Stdio,
@@ -70,7 +71,7 @@ pub fn parse_log_line_ssh(year: i32, line: &str) -> Result<Option<LogLineSSH>, E
     if tokens.len() < 10 {
         return Ok(None);
     }
-    let timestr = format!("{} {} {} {}", tokens[0], tokens[1], year, tokens[2]);
+    let timestr = format_sstr!("{} {} {} {}", tokens[0], tokens[1], year, tokens[2]);
     let timestamp = Local.datetime_from_str(&timestr, "%B %e %Y %H:%M:%S")?;
     if let Some((host, user)) = parse_log_message(line)? {
         let result = LogLineSSH {
@@ -116,7 +117,7 @@ where
     T: Fn(i32, &str) -> Result<Option<LogLineSSH>, Error> + Send + Sync,
 {
     let mut results = Vec::new();
-    for entry in glob(&format!("{}*", log_prefix))? {
+    for entry in glob(&format_sstr!("{}*", log_prefix))? {
         let fname = entry?;
         let metadata = fname.metadata()?;
         let modified: DateTime<Utc> = metadata.modified()?.into();

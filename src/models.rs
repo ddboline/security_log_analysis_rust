@@ -6,8 +6,8 @@ use futures::{future::try_join_all, TryFutureExt};
 use log::debug;
 use postgres_query::{client::GenericClient, query, query_dyn, FromSqlRow, Parameter};
 use serde::{Deserialize, Serialize};
-use stack_string::StackString;
-use std::{fs::File, path::Path};
+use stack_string::{format_sstr, StackString};
+use std::{fmt::Write, fs::File, path::Path};
 use tokio::{fs::create_dir_all, task::spawn_blocking};
 
 use crate::{
@@ -255,7 +255,7 @@ impl IntrusionLog {
     where
         C: GenericClient + Sync,
     {
-        let query = format!(
+        let query = format_sstr!(
             r#"
                 SELECT * FROM intrusion_log
                 WHERE service=$service
@@ -265,7 +265,7 @@ impl IntrusionLog {
                 {}
             "#,
             if let Some(max_entries) = max_entries {
-                format!("LIMIT {}", max_entries)
+                format_sstr!("LIMIT {}", max_entries)
             } else {
                 "".into()
             },

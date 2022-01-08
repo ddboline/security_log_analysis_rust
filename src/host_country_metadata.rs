@@ -5,8 +5,8 @@ use postgres_query::query;
 use reqwest::{Client, Url};
 use serde::{Deserialize, Serialize};
 use smallvec::SmallVec;
-use stack_string::StackString;
-use std::{collections::HashMap, net::ToSocketAddrs, process::Stdio, sync::Arc};
+use stack_string::{format_sstr, StackString};
+use std::{collections::HashMap, fmt::Write, net::ToSocketAddrs, process::Stdio, sync::Arc};
 use tokio::{
     io::{AsyncBufReadExt, BufReader},
     process::Command,
@@ -70,7 +70,7 @@ impl HostCountryMetadata {
             let ipaddr = (host, 22).to_socket_addrs()?.next().and_then(|s| {
                 let ip = s.ip();
                 if ip.is_ipv4() {
-                    let ip_str = StackString::from_display(ip).unwrap();
+                    let ip_str = StackString::from_display(ip);
                     Some(ip_str)
                 } else {
                     None
@@ -123,7 +123,7 @@ impl HostCountryMetadata {
             .and_then(|s| {
                 let ip = s.ip();
                 if ip.is_ipv4() {
-                    let ip_str = StackString::from_display(ip).unwrap();
+                    let ip_str = StackString::from_display(ip);
                     Some(ip_str)
                 } else {
                     None
