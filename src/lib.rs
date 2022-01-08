@@ -123,7 +123,7 @@ impl Host {
 
 impl fmt::Display for Host {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", self.to_str())
+        f.write_str(self.to_str())
     }
 }
 
@@ -158,7 +158,7 @@ impl Service {
 
 impl fmt::Display for Service {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", self.to_str())
+        f.write_str(self.to_str())
     }
 }
 
