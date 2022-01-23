@@ -4,7 +4,10 @@ use flate2::read::GzDecoder;
 use futures::future::try_join_all;
 use itertools::Itertools;
 use log::debug;
-use polars::prelude::{ChunkCompare, Utf8Chunked};
+use polars::{
+    datatypes::TimeUnit,
+    prelude::{ChunkCompare, Utf8Chunked},
+};
 use postgres_query::{query, FromSqlRow};
 use refinery::embed_migrations;
 use rweb::Schema;
@@ -28,7 +31,7 @@ use tokio::{
 };
 
 use polars::{
-    chunked_array::{builder::NewChunkedArray, temporal::naive_datetime_to_datetime},
+    chunked_array::{builder::NewChunkedArray, temporal::naive_datetime_to_datetime_ms},
     datatypes::{AnyValue, BooleanChunked, DataType, DatetimeChunked, Int32Chunked, UInt32Chunked},
     frame::DataFrame,
     io::{
@@ -117,10 +120,11 @@ fn write_to_parquet(buf: &[u8], outdir: &Path) -> Result<(), Error> {
             d.naive_utc()
         })
         .collect();
-    csv.drop_in_place("id")?;
-    csv.drop_in_place("datetime_str")?;
+    let _ = csv.drop_in_place("id")?;
+    let _ = csv.drop_in_place("datetime_str")?;
 
-    let dt = DatetimeChunked::new_from_naive_datetime("datetime", &v).into_series();
+    let dt = DatetimeChunked::new_from_naive_datetime("datetime", &v, TimeUnit::Milliseconds)
+        .into_series();
     csv.with_column(dt)?;
 
     let y: Vec<_> = v.iter().map(Datelike::year).collect();
@@ -131,7 +135,7 @@ fn write_to_parquet(buf: &[u8], outdir: &Path) -> Result<(), Error> {
     let m = UInt32Chunked::new_from_slice("month", &m).into_series();
     csv.with_column(m)?;
 
-    let year_month_group = csv.groupby(("year", "month"))?;
+    let year_month_group = csv.groupby(["year", "month"])?;
     let ymg = year_month_group.groups()?;
     for idx in 0..ymg.shape().0 {
         if let Some(row) = ymg.get(idx) {
@@ -151,8 +155,8 @@ fn write_to_parquet(buf: &[u8], outdir: &Path) -> Result<(), Error> {
                 .iter()
                 .map(|i| *i as usize);
             let mut new_csv = csv.take_iter(indicies)?;
-            new_csv.drop_in_place("year")?;
-            new_csv.drop_in_place("month")?;
+            let _ = new_csv.drop_in_place("year")?;
+            let _ = new_csv.drop_in_place("month")?;
             let filename = format_sstr!("intrusion_log_{year:04}_{month:02}.parquet");
             let file = outdir.join(&filename);
             let df = if file.exists() {
@@ -230,7 +234,10 @@ pub async fn insert_db_into_parquet(pool: &PgPool, outdir: &Path) -> Result<(), 
         let v: Vec<_> = rows.iter().map(|x| x.country.as_ref()).collect();
         columns.push(Utf8Chunked::new_from_opt_slice("country", &v).into_series());
         let v: Vec<_> = rows.iter().map(|x| x.datetime.naive_utc()).collect();
-        columns.push(DatetimeChunked::new_from_naive_datetime("datetime", &v).into_series());
+        columns.push(
+            DatetimeChunked::new_from_naive_datetime("datetime", &v, TimeUnit::Milliseconds)
+                .into_series(),
+        );
 
         let new_df = DataFrame::new(columns)?;
         println!("{:?}", new_df.shape());
@@ -280,7 +287,7 @@ pub fn read_parquet_files(
         let new_df = get_country_count(&input_file, service, server, ndays)?;
         df = df.vstack(&new_df)?;
     }
-    let mut df = df.groupby("country")?.sum()?;
+    let mut df = df.groupby(["country"])?.sum()?;
     df.rename("country_count_sum", "count")?;
     df.sort_in_place("count", true)?;
     let country_iter = df.column("country")?.utf8()?.into_iter();
@@ -328,7 +335,7 @@ fn get_country_count(
         df = df.filter(&mask)?;
     }
     if let Some(ndays) = ndays {
-        let begin_timestamp = naive_datetime_to_datetime(
+        let begin_timestamp = naive_datetime_to_datetime_ms(
             &(Utc::now() - Duration::days(i64::from(ndays))).naive_utc(),
         );
         let mask: Vec<_> = df
@@ -340,6 +347,6 @@ fn get_country_count(
         let mask = BooleanChunked::new_from_opt_slice("datetime_mask", &mask);
         df = df.filter(&mask)?;
     }
-    let df = df.groupby("country")?.select("country").count()?;
+    let df = df.groupby(["country"])?.select(["country"]).count()?;
     Ok(df)
 }

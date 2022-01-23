@@ -1,6 +1,6 @@
 [package]
 name = "security_log_analysis_rust"
-version = "0.7.5"
+version = "0.7.6"
 authors = ["Daniel Boline <ddboline@gmail.com>"]
 edition = "2018"
 
@@ -53,7 +53,7 @@ stdout-channel = "0.4"
 refinery = {version="0.8", features=["tokio-postgres"]}
 postgres_query = {git = "https://github.com/ddboline/rust-postgres-query", tag = "0.3.4", features=["deadpool"]}
 stack-string = { version="0.5", features=["postgres_types", "rweb-openapi"] }
-polars = {version="0.18", features=["temporal", "parquet"]}
+polars = {version="0.19", features=["temporal", "parquet"]}
 
 [[bin]]
 name = "security-log-parse-rust"
