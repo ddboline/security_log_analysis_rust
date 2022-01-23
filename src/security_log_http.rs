@@ -176,7 +176,7 @@ async fn start_app() -> Result<(), AnyhowError> {
         .build();
 
     let routes = intrusion_attemps_path.recover(error_response).with(cors);
-    let addr: SocketAddr = format_sstr!("127.0.0.1:{}", port).parse()?;
+    let addr: SocketAddr = format_sstr!("127.0.0.1:{port}").parse()?;
     rweb::serve(routes).bind(addr).await;
 
     daemon_task.await?;

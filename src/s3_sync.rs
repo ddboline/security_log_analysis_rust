@@ -236,7 +236,7 @@ impl S3Sync {
         let tmp_path = {
             let mut rng = thread_rng();
             let rand_str = Alphanumeric.sample_string(&mut rng, 8);
-            local_file.with_file_name(format_sstr!(".tmp_{}", rand_str))
+            local_file.with_file_name(format_sstr!(".tmp_{rand_str}"))
         };
         let etag: Result<StackString, Error> = exponential_retry(|| {
             let tmp_path = tmp_path.clone();

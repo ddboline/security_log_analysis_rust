@@ -153,7 +153,7 @@ fn write_to_parquet(buf: &[u8], outdir: &Path) -> Result<(), Error> {
             let mut new_csv = csv.take_iter(indicies)?;
             new_csv.drop_in_place("year")?;
             new_csv.drop_in_place("month")?;
-            let filename = format_sstr!("intrusion_log_{:04}_{:02}.parquet", year, month);
+            let filename = format_sstr!("intrusion_log_{year:04}_{month:02}.parquet");
             let file = outdir.join(&filename);
             let df = if file.exists() {
                 ParquetReader::new(File::open(&file)?)
@@ -235,7 +235,7 @@ pub async fn insert_db_into_parquet(pool: &PgPool, outdir: &Path) -> Result<(), 
         let new_df = DataFrame::new(columns)?;
         println!("{:?}", new_df.shape());
 
-        let filename = format_sstr!("intrusion_log_{:04}_{:02}.parquet", year, month);
+        let filename = format_sstr!("intrusion_log_{year:04}_{month:02}.parquet");
         let file = outdir.join(&filename);
         let df = if file.exists() {
             let df = ParquetReader::new(File::open(&file)?).finish()?;

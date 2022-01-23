@@ -93,7 +93,7 @@ impl HostCountryMetadata {
             }
             return Ok(code.into());
         }
-        Err(format_err!("Failed to insert {}", code))
+        Err(format_err!("Failed to insert {code}"))
     }
 
     pub async fn get_country_info(&self, host: &str) -> Result<StackString, Error> {
@@ -129,7 +129,7 @@ impl HostCountryMetadata {
                     None
                 }
             })
-            .ok_or_else(|| format_err!("Failed to extract IP address from {}", host))?;
+            .ok_or_else(|| format_err!("Failed to extract IP address from {host}"))?;
         let url = Url::parse("https://ipwhois.app/json/")?.join(&ipaddr)?;
         debug!("{}", url);
         let resp = self.client.get(url).send().await?.error_for_status()?;

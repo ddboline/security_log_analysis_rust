@@ -31,6 +31,7 @@ use tokio::{
 use crate::{
     config::Config,
     host_country_metadata::HostCountryMetadata,
+    iso_8601_datetime::convert_datetime_to_str,
     models::{get_max_datetime, IntrusionLog},
     parse_logs::{
         parse_all_log_files, parse_log_line_apache, parse_log_line_ssh, parse_systemd_logs_sshd_all,
@@ -126,7 +127,7 @@ impl ParseOpts {
                 let inserts = parse_systemd_logs_sshd_all(&metadata, server).await?;
                 stdout.send(format_sstr!("new lines ssh {}", inserts.len()));
                 let new_hosts: HashSet<_> = inserts.iter().map(|item| item.host.clone()).collect();
-                stdout.send(format_sstr!("new hosts {:#?}", new_hosts));
+                stdout.send(format_sstr!("new hosts {new_hosts:#?}"));
                 for host in new_hosts {
                     metadata.get_country_info(&host).await?;
                 }
@@ -148,26 +149,23 @@ impl ParseOpts {
                 let username = username
                     .as_ref()
                     .map_or_else(|| config.username.as_str(), StackString::as_str);
-                let user_host = format_sstr!("{}@{}", username, server);
-                let command = format_sstr!("security-log-parse-rust parse -s {}", server);
+                let user_host = format_sstr!("{username}@{server}");
+                let command = format_sstr!("security-log-parse-rust parse -s {server}");
                 debug!("{}", command);
                 let status = Command::new("ssh")
                     .args(&[&user_host, &command])
                     .status()
                     .await?;
                 if !status.success() {
-                    return Err(format_err!("{} failed", command));
+                    return Err(format_err!("{command} failed"));
                 }
-
-                let max_datetime = { get_max_datetime(&pool, server).await? };
+                let max_datetime = get_max_datetime(&pool, server).await?;
+                let max_datetime_str = convert_datetime_to_str(max_datetime);
                 debug!("{:?}", max_datetime);
 
-                let user_host = format_sstr!("{}@{}", username, server);
-                let command = format_sstr!(
-                    "security-log-parse-rust ser -s {} -d {}",
-                    server,
-                    max_datetime.to_rfc3339(),
-                );
+                let user_host = format_sstr!("{username}@{server}");
+                let command =
+                    format_sstr!("security-log-parse-rust ser -s {server} -d {max_datetime_str}");
                 debug!("{}", command);
                 let mut process = Command::new("ssh")
                     .args(&[&user_host, &command])

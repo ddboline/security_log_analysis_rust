@@ -265,7 +265,7 @@ impl IntrusionLog {
                 {}
             "#,
             if let Some(max_entries) = max_entries {
-                format_sstr!("LIMIT {}", max_entries)
+                format_sstr!("LIMIT {max_entries}")
             } else {
                 "".into()
             },

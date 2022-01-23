@@ -21,13 +21,12 @@ pub async fn get_country_count_recent(
         FROM intrusion_log a
             JOIN host_country b ON a.host = b.host
             JOIN country_code c ON b.code = c.code
-        WHERE a.datetime >= ('now'::text::date - '{} days'::interval)
+        WHERE a.datetime >= ('now'::text::date - '{ndays} days'::interval)
             AND a.service = $service
             AND a.server = $server
         GROUP BY c.country
         ORDER BY (count(1)) DESC
-    "#,
-            ndays
+    "#
         ),
         service = service,
         server = server

@@ -117,7 +117,7 @@ where
     T: Fn(i32, &str) -> Result<Option<LogLineSSH>, Error> + Send + Sync,
 {
     let mut results = Vec::new();
-    for entry in glob(&format_sstr!("{}*", log_prefix))? {
+    for entry in glob(&format_sstr!("{log_prefix}*"))? {
         let fname = entry?;
         let metadata = fname.metadata()?;
         let modified: DateTime<Utc> = metadata.modified()?.into();
