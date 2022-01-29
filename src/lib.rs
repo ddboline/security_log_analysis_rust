@@ -16,8 +16,10 @@
 #![allow(clippy::missing_panics_doc)]
 
 pub mod config;
+pub mod errors;
 pub mod host_country_metadata;
 pub mod iso_8601_datetime;
+pub mod logged_user;
 pub mod models;
 pub mod parse_logs;
 pub mod parse_opts;

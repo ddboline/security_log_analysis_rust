@@ -56,6 +56,8 @@ pub enum ParseOpts {
     Ser {
         #[structopt(short, long)]
         number_of_entries: Option<usize>,
+        #[structopt(short, long)]
+        offset: Option<usize>,
         #[structopt(short = "d", long = "datetime", parse(try_from_str))]
         datetime: Option<DateTimeInput>,
         #[structopt(short = "s", long = "server", parse(try_from_str))]
@@ -205,6 +207,7 @@ impl ParseOpts {
                             Some(max_datetime),
                             None,
                             None,
+                            None,
                         )
                         .await?,
                     );
@@ -269,6 +272,7 @@ impl ParseOpts {
             }
             ParseOpts::Ser {
                 number_of_entries,
+                offset,
                 datetime,
                 server,
             } => {
@@ -286,6 +290,7 @@ impl ParseOpts {
                         Some(datetime),
                         None,
                         number_of_entries,
+                        offset,
                     )
                     .await?;
                     for result in results {

@@ -5,6 +5,7 @@ use derive_more::Into;
 use futures::{future::try_join_all, TryFutureExt};
 use log::debug;
 use postgres_query::{client::GenericClient, query, query_dyn, FromSqlRow, Parameter};
+use rweb::Schema;
 use serde::{Deserialize, Serialize};
 use stack_string::{format_sstr, StackString};
 use std::{fmt::Write, fs::File, path::Path};
@@ -114,7 +115,7 @@ impl HostCountry {
     }
 }
 
-#[derive(FromSqlRow, Clone, Debug, Serialize, Deserialize, PartialEq, Eq, Hash)]
+#[derive(FromSqlRow, Clone, Debug, Serialize, Deserialize, PartialEq, Eq, Hash, Schema)]
 pub struct IntrusionLog {
     pub id: i32,
     pub service: StackString,
@@ -220,17 +221,10 @@ impl IntrusionLog {
         server: Host,
         min_datetime: Option<DateTime<Utc>>,
         max_datetime: Option<DateTime<Utc>>,
-        max_entries: Option<usize>,
+        limit: Option<usize>,
+        offset: Option<usize>,
     ) -> Result<Vec<Self>, Error> {
         let conn = pool.get().await?;
-
-        let min_datetime = match min_datetime {
-            Some(d) => d,
-            None => Self::_get_min_datetime(&conn, service, server)
-                .await?
-                .unwrap_or_else(Utc::now),
-        };
-        let max_datetime = max_datetime.unwrap_or_else(Utc::now);
 
         Self::get_intrusion_log_filtered_conn(
             &conn,
@@ -238,7 +232,8 @@ impl IntrusionLog {
             server,
             min_datetime,
             max_datetime,
-            max_entries,
+            limit,
+            offset,
         )
         .await
         .map_err(Into::into)
@@ -248,42 +243,58 @@ impl IntrusionLog {
         conn: &C,
         service: Service,
         server: Host,
-        min_datetime: DateTime<Utc>,
-        max_datetime: DateTime<Utc>,
-        max_entries: Option<usize>,
+        min_datetime: Option<DateTime<Utc>>,
+        max_datetime: Option<DateTime<Utc>>,
+        limit: Option<usize>,
+        offset: Option<usize>,
     ) -> Result<Vec<Self>, Error>
     where
         C: GenericClient + Sync,
     {
+        let service = service.to_str();
+        let server = server.to_str();
+        let mut bindings = vec![
+            ("service", &service as Parameter),
+            ("server", &server as Parameter),
+        ];
         let query = format_sstr!(
             r#"
                 SELECT * FROM intrusion_log
                 WHERE service=$service
                   AND server=$server
-                  AND datetime >= $min_datetime
-                  AND datetime <= $max_datetime
-                {}
+                  {mindatetime}
+                  {maxdatetime}
+                {limit} {offset}
             "#,
-            if let Some(max_entries) = max_entries {
-                format_sstr!("LIMIT {max_entries}")
+            mindatetime = if let Some(min_datetime) = &min_datetime {
+                bindings.push(("min_datetime", min_datetime as Parameter));
+                format_sstr!("AND datetime >= $min_datetime")
+            } else {
+                "".into()
+            },
+            maxdatetime = if let Some(max_datetime) = &max_datetime {
+                bindings.push(("max_datetime", max_datetime as Parameter));
+                format_sstr!("AND datetime <= $max_datetime")
+            } else {
+                "".into()
+            },
+            limit = if let Some(limit) = limit {
+                format_sstr!("LIMIT {limit}")
+            } else {
+                "".into()
+            },
+            offset = if let Some(offset) = offset {
+                format_sstr!("OFFSET {offset}")
             } else {
                 "".into()
             },
         );
-        let service = service.to_str();
-        let server = server.to_str();
 
-        let bindings = vec![
-            ("service", &service as Parameter),
-            ("server", &server as Parameter),
-            ("min_datetime", &min_datetime as Parameter),
-            ("max_datetime", &max_datetime as Parameter),
-        ];
         let query = query_dyn!(&query, ..bindings)?;
         query.fetch(conn).await.map_err(Into::into)
     }
 
-    pub async fn insert_single<C>(&self, conn: &C) -> Result<(), Error>
+    pub async fn insert_single<C>(&self, conn: &C) -> Result<u64, Error>
     where
         C: GenericClient + Sync,
     {
@@ -301,21 +312,34 @@ impl IntrusionLog {
             host = self.host,
             username = self.username,
         );
-        query.execute(conn).await?;
-        Ok(())
+        query.execute(conn).await.map_err(Into::into)
     }
 
-    pub async fn insert(pool: &PgPool, il: &[IntrusionLog]) -> Result<(), Error> {
+    pub async fn insert(pool: &PgPool, il: &[IntrusionLog]) -> Result<u64, Error> {
         let mut conn = pool.get().await?;
         let tran = conn.transaction().await?;
         let conn: &PgTransaction = &tran;
+        let mut inserts = 0;
         for i_chunk in il.chunks(100) {
             for i in i_chunk {
-                i.insert_single(conn).await?;
+                inserts += i.insert_single(conn).await?;
             }
         }
         tran.commit().await?;
-        Ok(())
+        Ok(inserts)
+    }
+}
+
+#[derive(FromSqlRow, Clone, Debug)]
+pub struct AuthorizedUsers {
+    pub email: StackString,
+}
+
+impl AuthorizedUsers {
+    pub async fn get_authorized_users(pool: &PgPool) -> Result<Vec<Self>, Error> {
+        let query = query!("SELECT * FROM authorized_users");
+        let conn = pool.get().await?;
+        query.fetch(&conn).await.map_err(Into::into)
     }
 }
 
