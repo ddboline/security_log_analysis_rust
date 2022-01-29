@@ -33,7 +33,7 @@ use security_log_analysis_rust::{
     config::Config,
     errors::ServiceError,
     logged_user::{fill_from_db, get_secrets, LoggedUser, TRIGGER_DB_UPDATE},
-    models::IntrusionLog,
+    models::{HostCountry, IntrusionLog},
     parse_logs::parse_systemd_logs_sshd_daemon,
     pgpool::PgPool,
     polars_analysis::read_parquet_files,
@@ -87,18 +87,21 @@ pub struct AppState {
 
 #[derive(Serialize, Deserialize, Schema)]
 struct AttemptsQuery {
+    service: Option<Service>,
+    location: Option<Host>,
     ndays: Option<i32>,
 }
 
-#[get("/security_log/intrusion_attempts/{service}/{location}")]
+#[get("/security_log/intrusion_attempts")]
 async fn intrusion_attempts(
-    service: Service,
-    location: Host,
     query: Query<AttemptsQuery>,
     #[data] data: AppState,
 ) -> WarpResult<impl Reply> {
     let template = include_str!("../templates/COUNTRY_TEMPLATE.html");
-    let ndays = query.into_inner().ndays.unwrap_or(30);
+    let query = query.into_inner();
+    let ndays = query.ndays.unwrap_or(30);
+    let service = query.service.unwrap_or(Service::Ssh);
+    let location = query.location.unwrap_or(Host::Home);
     let results = get_country_count_recent(&data.pool, service, location, ndays)
         .await
         .map_err(Into::<ServiceError>::into)?
@@ -109,10 +112,8 @@ async fn intrusion_attempts(
     Ok(rweb::reply::html(body))
 }
 
-#[get("/security_log/intrusion_attempts/{service}/{location}/all")]
+#[get("/security_log/intrusion_attempts/all")]
 async fn intrusion_attempts_all(
-    service: Service,
-    location: Host,
     query: Query<AttemptsQuery>,
     #[data] data: AppState,
 ) -> WarpResult<impl Reply> {
@@ -122,8 +123,8 @@ async fn intrusion_attempts_all(
     let results = spawn_blocking(move || {
         read_parquet_files(
             &config.cache_dir,
-            Some(service),
-            Some(location),
+            query.service,
+            query.location,
             query.ndays,
         )
     })
@@ -139,14 +140,14 @@ async fn intrusion_attempts_all(
 
 #[derive(Serialize, Deserialize, Schema)]
 struct SyncQuery {
+    service: Option<Service>,
+    server: Option<Host>,
     offset: Option<usize>,
     limit: Option<usize>,
 }
 
-#[get("/security_log/intrusion_log/{service}/{location}")]
+#[get("/security_log/intrusion_log")]
 async fn intursion_log_get(
-    service: Service,
-    location: Host,
     query: Query<SyncQuery>,
     #[data] data: AppState,
     #[filter = "LoggedUser::filter"] _: LoggedUser,
@@ -155,8 +156,8 @@ async fn intursion_log_get(
     let limit = query.limit.unwrap_or(1000);
     let results = IntrusionLog::get_intrusion_log_filtered(
         &data.pool,
-        service,
-        location,
+        query.service,
+        query.server,
         None,
         None,
         Some(limit),
@@ -183,6 +184,48 @@ async fn intrusion_log_post(
         .await
         .map_err(Into::<ServiceError>::into)?;
     Ok(rweb::reply::html(format_sstr!("Inserts {}", inserts)))
+}
+
+#[derive(Serialize, Deserialize, Schema)]
+struct HostCountryQuery {
+    offset: Option<usize>,
+    limit: Option<usize>,
+}
+
+#[get("/security_log/host_country")]
+async fn host_country_get(
+    query: Query<HostCountryQuery>,
+    #[data] data: AppState,
+    #[filter = "LoggedUser::filter"] _: LoggedUser,
+) -> WarpResult<impl Reply> {
+    let query = query.into_inner();
+    let results = HostCountry::get_host_country(&data.pool, query.offset, query.limit, true)
+        .await
+        .map_err(Into::<ServiceError>::into)?;
+    Ok(rweb::reply::json(&results))
+}
+
+#[post("/security_log/host_country")]
+async fn host_country_post(
+    payload: Json<Vec<HostCountry>>,
+    #[data] data: AppState,
+    #[filter = "LoggedUser::filter"] _: LoggedUser,
+) -> WarpResult<impl Reply> {
+    let payload = payload.into_inner();
+    let mut inserts = 0;
+    for entry in payload {
+        inserts += entry
+            .insert_host_country(&data.pool)
+            .await
+            .map_err(Into::<ServiceError>::into)?
+            .map_or(0, |_| 1);
+    }
+    Ok(rweb::reply::html(format_sstr!("Inserts {inserts}")))
+}
+
+#[get("/security_log/user")]
+async fn user(#[filter = "LoggedUser::filter"] user: LoggedUser) -> WarpResult<impl Reply> {
+    Ok(rweb::reply::json(&user))
 }
 
 async fn start_app() -> Result<(), AnyhowError> {
@@ -223,7 +266,10 @@ async fn start_app() -> Result<(), AnyhowError> {
     let intrusion_attemps_path = intrusion_attempts(app.clone())
         .or(intrusion_attempts_all(app.clone()))
         .or(intursion_log_get(app.clone()))
-        .or(intrusion_log_post(app.clone()));
+        .or(intrusion_log_post(app.clone()))
+        .or(host_country_get(app.clone()))
+        .or(host_country_post(app.clone()))
+        .or(user());
 
     let cors = rweb::cors()
         .allow_methods(vec!["GET"])

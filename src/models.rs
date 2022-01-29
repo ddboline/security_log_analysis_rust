@@ -46,16 +46,32 @@ impl CountryCode {
     }
 }
 
-#[derive(FromSqlRow, Clone, Debug)]
+#[derive(FromSqlRow, Clone, Debug, Serialize, Deserialize, Schema)]
 pub struct HostCountry {
     pub host: StackString,
     pub code: StackString,
     pub ipaddr: Option<StackString>,
+    pub created_at: DateTime<Utc>,
 }
 
 impl HostCountry {
-    pub async fn get_host_country(pool: &PgPool) -> Result<Vec<Self>, Error> {
-        let query = query!("SELECT * FROM host_country");
+    pub async fn get_host_country(
+        pool: &PgPool,
+        offset: Option<usize>,
+        limit: Option<usize>,
+        order: bool,
+    ) -> Result<Vec<Self>, Error> {
+        let mut query = format_sstr!("SELECT * FROM host_country");
+        if order {
+            query.push_str(" ORDER BY created_at DESC");
+        }
+        if let Some(offset) = offset {
+            query.push_str(&format_sstr!(" OFFSET {offset}"));
+        }
+        if let Some(limit) = limit {
+            query.push_str(&format_sstr!(" LIMIT {limit}"));
+        }
+        let query = query_dyn!(&query)?;
         let conn = pool.get().await?;
         query.fetch(&conn).await.map_err(Into::into)
     }
@@ -120,7 +136,6 @@ pub struct IntrusionLog {
     pub id: i32,
     pub service: StackString,
     pub server: StackString,
-    #[serde(with = "iso_8601_datetime")]
     pub datetime: DateTime<Utc>,
     pub host: StackString,
     pub username: Option<StackString>,
@@ -217,8 +232,8 @@ impl IntrusionLog {
 
     pub async fn get_intrusion_log_filtered(
         pool: &PgPool,
-        service: Service,
-        server: Host,
+        service: Option<Service>,
+        server: Option<Host>,
         min_datetime: Option<DateTime<Utc>>,
         max_datetime: Option<DateTime<Utc>>,
         limit: Option<usize>,
@@ -241,8 +256,8 @@ impl IntrusionLog {
 
     async fn get_intrusion_log_filtered_conn<C>(
         conn: &C,
-        service: Service,
-        server: Host,
+        service: Option<Service>,
+        server: Option<Host>,
         min_datetime: Option<DateTime<Utc>>,
         max_datetime: Option<DateTime<Utc>>,
         limit: Option<usize>,
@@ -251,45 +266,49 @@ impl IntrusionLog {
     where
         C: GenericClient + Sync,
     {
-        let service = service.to_str();
-        let server = server.to_str();
-        let mut bindings = vec![
-            ("service", &service as Parameter),
-            ("server", &server as Parameter),
-        ];
+        let mut bindings = Vec::new();
+        let mut constraints = Vec::new();
+        let service = service.map(|x| x.to_str());
+        let server = server.map(|x| x.to_str());
+        if let Some(service) = &service {
+            constraints.push(format_sstr!("service=$service"));
+            bindings.push(("service", service as Parameter));
+        }
+        if let Some(server) = &server {
+            constraints.push(format_sstr!("server=$server"));
+            bindings.push(("server", server as Parameter));
+        }
+        if let Some(min_datetime) = &min_datetime {
+            constraints.push(format_sstr!("datetime >= $min_datetime"));
+            bindings.push(("min_datetime", min_datetime as Parameter));
+        }
+        if let Some(max_datetime) = &max_datetime {
+            constraints.push(format_sstr!("datetine <= $max_datetime"));
+            bindings.push(("max_datetime", max_datetime as Parameter));
+        }
+        let where_str = if constraints.is_empty() {
+            "".into()
+        } else {
+            format_sstr!("WHERE {}", constraints.join(" AND "))
+        };
+        let limit = if let Some(limit) = limit {
+            format_sstr!("LIMIT {limit}")
+        } else {
+            "".into()
+        };
+        let offset = if let Some(offset) = offset {
+            format_sstr!("OFFSET {offset}")
+        } else {
+            "".into()
+        };
         let query = format_sstr!(
             r#"
                 SELECT * FROM intrusion_log
-                WHERE service=$service
-                  AND server=$server
-                  {mindatetime}
-                  {maxdatetime}
+                {where_str}
+                ORDER BY datetime DESC
                 {limit} {offset}
             "#,
-            mindatetime = if let Some(min_datetime) = &min_datetime {
-                bindings.push(("min_datetime", min_datetime as Parameter));
-                format_sstr!("AND datetime >= $min_datetime")
-            } else {
-                "".into()
-            },
-            maxdatetime = if let Some(max_datetime) = &max_datetime {
-                bindings.push(("max_datetime", max_datetime as Parameter));
-                format_sstr!("AND datetime <= $max_datetime")
-            } else {
-                "".into()
-            },
-            limit = if let Some(limit) = limit {
-                format_sstr!("LIMIT {limit}")
-            } else {
-                "".into()
-            },
-            offset = if let Some(offset) = offset {
-                format_sstr!("OFFSET {offset}")
-            } else {
-                "".into()
-            },
         );
-
         let query = query_dyn!(&query, ..bindings)?;
         query.fetch(conn).await.map_err(Into::into)
     }
