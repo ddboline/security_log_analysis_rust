@@ -6,7 +6,7 @@ use itertools::Itertools;
 use log::debug;
 use polars::{
     datatypes::TimeUnit,
-    prelude::{ChunkCompare, Utf8Chunked},
+    prelude::{ChunkCompare, GroupsProxy, Utf8Chunked},
 };
 use postgres_query::{query, FromSqlRow};
 use refinery::embed_migrations;
@@ -120,8 +120,8 @@ fn write_to_parquet(buf: &[u8], outdir: &Path) -> Result<(), Error> {
             d.naive_utc()
         })
         .collect();
-    let _ = csv.drop_in_place("id")?;
-    let _ = csv.drop_in_place("datetime_str")?;
+    let _drop = csv.drop_in_place("id")?;
+    let _drop = csv.drop_in_place("datetime_str")?;
 
     let dt = DatetimeChunked::new_from_naive_datetime("datetime", &v, TimeUnit::Milliseconds)
         .into_series();
@@ -149,14 +149,15 @@ fn write_to_parquet(buf: &[u8], outdir: &Path) -> Result<(), Error> {
             };
             let indicies = year_month_group
                 .get_groups()
+                .idx_ref()
                 .get(idx)
                 .unwrap()
                 .1
                 .iter()
                 .map(|i| *i as usize);
             let mut new_csv = csv.take_iter(indicies)?;
-            let _ = new_csv.drop_in_place("year")?;
-            let _ = new_csv.drop_in_place("month")?;
+            let _drop = new_csv.drop_in_place("year")?;
+            let _drop = new_csv.drop_in_place("month")?;
             let filename = format_sstr!("intrusion_log_{year:04}_{month:02}.parquet");
             let file = outdir.join(&filename);
             let df = if file.exists() {
