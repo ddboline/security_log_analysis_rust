@@ -223,6 +223,7 @@ async fn host_country_post(
     Ok(rweb::reply::html(format_sstr!("Inserts {inserts}")))
 }
 
+#[allow(clippy::unused_async)]
 #[get("/security_log/user")]
 async fn user(#[filter = "LoggedUser::filter"] user: LoggedUser) -> WarpResult<impl Reply> {
     Ok(rweb::reply::json(&user))

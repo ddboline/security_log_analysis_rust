@@ -268,8 +268,8 @@ impl IntrusionLog {
     {
         let mut bindings = Vec::new();
         let mut constraints = Vec::new();
-        let service = service.map(|x| x.to_str());
-        let server = server.map(|x| x.to_str());
+        let service = service.map(Service::to_str);
+        let server = server.map(Host::to_str);
         if let Some(service) = &service {
             constraints.push(format_sstr!("service=$service"));
             bindings.push(("service", service as Parameter));
