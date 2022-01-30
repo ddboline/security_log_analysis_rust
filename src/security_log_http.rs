@@ -175,12 +175,12 @@ struct IntrusionLogUpdate {
 
 #[post("/security_log/intrusion_log")]
 async fn intrusion_log_post(
-    payload: Json<Vec<IntrusionLog>>,
+    payload: Json<IntrusionLogUpdate>,
     #[data] data: AppState,
     #[filter = "LoggedUser::filter"] _: LoggedUser,
 ) -> WarpResult<impl Reply> {
     let payload = payload.into_inner();
-    let inserts = IntrusionLog::insert(&data.pool, &payload)
+    let inserts = IntrusionLog::insert(&data.pool, &payload.updates)
         .await
         .map_err(Into::<ServiceError>::into)?;
     Ok(rweb::reply::html(format_sstr!("Inserts {}", inserts)))
@@ -205,15 +205,20 @@ async fn host_country_get(
     Ok(rweb::reply::json(&results))
 }
 
+#[derive(Serialize, Deserialize, Schema)]
+struct HostCountryUpdate {
+    updates: Vec<HostCountry>,
+}
+
 #[post("/security_log/host_country")]
 async fn host_country_post(
-    payload: Json<Vec<HostCountry>>,
+    payload: Json<HostCountryUpdate>,
     #[data] data: AppState,
     #[filter = "LoggedUser::filter"] _: LoggedUser,
 ) -> WarpResult<impl Reply> {
     let payload = payload.into_inner();
     let mut inserts = 0;
-    for entry in payload {
+    for entry in payload.updates {
         inserts += entry
             .insert_host_country(&data.pool)
             .await
