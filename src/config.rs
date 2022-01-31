@@ -18,6 +18,10 @@ pub struct ConfigInner {
     pub s3_bucket: StackString,
     #[serde(default = "default_cache_dir")]
     pub cache_dir: PathBuf,
+    #[serde(default = "default_secret_path")]
+    pub secret_path: PathBuf,
+    #[serde(default = "default_secret_path")]
+    pub jwt_secret_path: PathBuf,
 }
 
 fn default_username() -> StackString {
@@ -31,6 +35,12 @@ fn default_home_dir() -> PathBuf {
 }
 fn default_cache_dir() -> PathBuf {
     default_home_dir().join(".security-log-cache")
+}
+fn default_secret_path() -> PathBuf {
+    dirs::config_dir()
+        .unwrap()
+        .join("aws_app_rust")
+        .join("secret.bin")
 }
 
 #[derive(Default, Debug, Clone)]

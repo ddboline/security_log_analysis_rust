@@ -16,8 +16,10 @@
 #![allow(clippy::missing_panics_doc)]
 
 pub mod config;
+pub mod errors;
 pub mod host_country_metadata;
 pub mod iso_8601_datetime;
+pub mod logged_user;
 pub mod models;
 pub mod parse_logs;
 pub mod parse_opts;
@@ -35,8 +37,9 @@ use rand::{
     thread_rng,
 };
 use rweb::Schema;
+use serde::{Deserialize, Serialize};
 use stack_string::StackString;
-use std::{fmt, future::Future, path::Path, str::FromStr, time::Duration};
+use std::{convert::TryFrom, fmt, future::Future, path::Path, str::FromStr, time::Duration};
 use tokio::{process::Command, time::sleep};
 
 pub async fn exponential_retry<T, U, F>(closure: T) -> Result<U, Error>
@@ -87,7 +90,8 @@ pub struct CountryCount {
     pub count: i64,
 }
 
-#[derive(Debug, Clone, Copy, Schema)]
+#[derive(Debug, Clone, Copy, Schema, Serialize, Deserialize)]
+#[serde(into = "StackString", try_from = "StackString")]
 pub enum Host {
     Home,
     Cloud,
@@ -102,6 +106,26 @@ impl FromStr for Host {
             "cloud" | "cloud.ddboline.net" => Ok(Self::Cloud),
             _ => Err(format_err!("Not a valid Host")),
         }
+    }
+}
+
+impl From<Host> for StackString {
+    fn from(item: Host) -> Self {
+        item.to_str().into()
+    }
+}
+
+impl TryFrom<&str> for Host {
+    type Error = Error;
+    fn try_from(s: &str) -> Result<Self, Self::Error> {
+        Self::from_str(s)
+    }
+}
+
+impl TryFrom<StackString> for Host {
+    type Error = Error;
+    fn try_from(s: StackString) -> Result<Self, Self::Error> {
+        Self::from_str(s.as_str())
     }
 }
 
@@ -127,7 +151,8 @@ impl fmt::Display for Host {
     }
 }
 
-#[derive(Debug, Clone, Copy, Schema)]
+#[derive(Debug, Clone, Copy, Schema, Serialize, Deserialize)]
+#[serde(into = "StackString", try_from = "StackString")]
 pub enum Service {
     Apache,
     Nginx,
@@ -159,6 +184,26 @@ impl Service {
 impl fmt::Display for Service {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.write_str(self.to_str())
+    }
+}
+
+impl From<Service> for StackString {
+    fn from(item: Service) -> Self {
+        item.to_str().into()
+    }
+}
+
+impl TryFrom<&str> for Service {
+    type Error = Error;
+    fn try_from(s: &str) -> Result<Self, Self::Error> {
+        Self::from_str(s)
+    }
+}
+
+impl TryFrom<StackString> for Service {
+    type Error = Error;
+    fn try_from(s: StackString) -> Result<Self, Self::Error> {
+        Self::from_str(s.as_str())
     }
 }
 

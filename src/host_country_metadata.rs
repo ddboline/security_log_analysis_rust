@@ -1,4 +1,5 @@
 use anyhow::{format_err, Error};
+use chrono::Utc;
 use log::{debug, error};
 use parking_lot::RwLock;
 use postgres_query::query;
@@ -53,7 +54,7 @@ impl HostCountryMetadata {
                     .collect(),
             )),
             host_country_map: Arc::new(RwLock::new(
-                HostCountry::get_host_country(pool)
+                HostCountry::get_host_country(pool, None, None, false)
                     .await?
                     .into_iter()
                     .map(|item| (item.host.clone(), item))
@@ -80,6 +81,7 @@ impl HostCountryMetadata {
                 host: host.into(),
                 code: code.into(),
                 ipaddr,
+                created_at: Utc::now(),
             };
             let host_exists = { (*self.host_country_map.read()).contains_key(host) };
             if !host_exists {

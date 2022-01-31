@@ -5,6 +5,7 @@ use derive_more::Into;
 use futures::{future::try_join_all, TryFutureExt};
 use log::debug;
 use postgres_query::{client::GenericClient, query, query_dyn, FromSqlRow, Parameter};
+use rweb::Schema;
 use serde::{Deserialize, Serialize};
 use stack_string::{format_sstr, StackString};
 use std::{fmt::Write, fs::File, path::Path};
@@ -45,16 +46,32 @@ impl CountryCode {
     }
 }
 
-#[derive(FromSqlRow, Clone, Debug)]
+#[derive(FromSqlRow, Clone, Debug, Serialize, Deserialize, Schema)]
 pub struct HostCountry {
     pub host: StackString,
     pub code: StackString,
     pub ipaddr: Option<StackString>,
+    pub created_at: DateTime<Utc>,
 }
 
 impl HostCountry {
-    pub async fn get_host_country(pool: &PgPool) -> Result<Vec<Self>, Error> {
-        let query = query!("SELECT * FROM host_country");
+    pub async fn get_host_country(
+        pool: &PgPool,
+        offset: Option<usize>,
+        limit: Option<usize>,
+        order: bool,
+    ) -> Result<Vec<Self>, Error> {
+        let mut query = format_sstr!("SELECT * FROM host_country");
+        if order {
+            query.push_str(" ORDER BY created_at DESC");
+        }
+        if let Some(offset) = offset {
+            query.push_str(&format_sstr!(" OFFSET {offset}"));
+        }
+        if let Some(limit) = limit {
+            query.push_str(&format_sstr!(" LIMIT {limit}"));
+        }
+        let query = query_dyn!(&query)?;
         let conn = pool.get().await?;
         query.fetch(&conn).await.map_err(Into::into)
     }
@@ -112,14 +129,32 @@ impl HostCountry {
         query.execute(conn).await?;
         Ok(())
     }
+
+    pub async fn get_dangling_hosts(pool: &PgPool) -> Result<Vec<StackString>, Error> {
+        #[derive(FromSqlRow)]
+        struct Wrapper {
+            host: StackString,
+        }
+
+        let query = query!(
+            r#"
+                SELECT distinct a.host
+                FROM intrusion_log a
+                LEFT JOIN host_country b ON a.host = b.host
+                WHERE b.host IS NULL
+            "#
+        );
+        let conn = pool.get().await?;
+        let rows: Vec<Wrapper> = query.fetch(&conn).await?;
+        Ok(rows.into_iter().map(|x| x.host).collect())
+    }
 }
 
-#[derive(FromSqlRow, Clone, Debug, Serialize, Deserialize, PartialEq, Eq, Hash)]
+#[derive(FromSqlRow, Clone, Debug, Serialize, Deserialize, PartialEq, Eq, Hash, Schema)]
 pub struct IntrusionLog {
     pub id: i32,
     pub service: StackString,
     pub server: StackString,
-    #[serde(with = "iso_8601_datetime")]
     pub datetime: DateTime<Utc>,
     pub host: StackString,
     pub username: Option<StackString>,
@@ -216,21 +251,14 @@ impl IntrusionLog {
 
     pub async fn get_intrusion_log_filtered(
         pool: &PgPool,
-        service: Service,
-        server: Host,
+        service: Option<Service>,
+        server: Option<Host>,
         min_datetime: Option<DateTime<Utc>>,
         max_datetime: Option<DateTime<Utc>>,
-        max_entries: Option<usize>,
+        limit: Option<usize>,
+        offset: Option<usize>,
     ) -> Result<Vec<Self>, Error> {
         let conn = pool.get().await?;
-
-        let min_datetime = match min_datetime {
-            Some(d) => d,
-            None => Self::_get_min_datetime(&conn, service, server)
-                .await?
-                .unwrap_or_else(Utc::now),
-        };
-        let max_datetime = max_datetime.unwrap_or_else(Utc::now);
 
         Self::get_intrusion_log_filtered_conn(
             &conn,
@@ -238,7 +266,8 @@ impl IntrusionLog {
             server,
             min_datetime,
             max_datetime,
-            max_entries,
+            limit,
+            offset,
         )
         .await
         .map_err(Into::into)
@@ -246,44 +275,64 @@ impl IntrusionLog {
 
     async fn get_intrusion_log_filtered_conn<C>(
         conn: &C,
-        service: Service,
-        server: Host,
-        min_datetime: DateTime<Utc>,
-        max_datetime: DateTime<Utc>,
-        max_entries: Option<usize>,
+        service: Option<Service>,
+        server: Option<Host>,
+        min_datetime: Option<DateTime<Utc>>,
+        max_datetime: Option<DateTime<Utc>>,
+        limit: Option<usize>,
+        offset: Option<usize>,
     ) -> Result<Vec<Self>, Error>
     where
         C: GenericClient + Sync,
     {
+        let mut bindings = Vec::new();
+        let mut constraints = Vec::new();
+        let service = service.map(Service::to_str);
+        let server = server.map(Host::to_str);
+        if let Some(service) = &service {
+            constraints.push(format_sstr!("service=$service"));
+            bindings.push(("service", service as Parameter));
+        }
+        if let Some(server) = &server {
+            constraints.push(format_sstr!("server=$server"));
+            bindings.push(("server", server as Parameter));
+        }
+        if let Some(min_datetime) = &min_datetime {
+            constraints.push(format_sstr!("datetime >= $min_datetime"));
+            bindings.push(("min_datetime", min_datetime as Parameter));
+        }
+        if let Some(max_datetime) = &max_datetime {
+            constraints.push(format_sstr!("datetine <= $max_datetime"));
+            bindings.push(("max_datetime", max_datetime as Parameter));
+        }
+        let where_str = if constraints.is_empty() {
+            "".into()
+        } else {
+            format_sstr!("WHERE {}", constraints.join(" AND "))
+        };
+        let limit = if let Some(limit) = limit {
+            format_sstr!("LIMIT {limit}")
+        } else {
+            "".into()
+        };
+        let offset = if let Some(offset) = offset {
+            format_sstr!("OFFSET {offset}")
+        } else {
+            "".into()
+        };
         let query = format_sstr!(
             r#"
                 SELECT * FROM intrusion_log
-                WHERE service=$service
-                  AND server=$server
-                  AND datetime >= $min_datetime
-                  AND datetime <= $max_datetime
-                {}
+                {where_str}
+                ORDER BY datetime DESC
+                {limit} {offset}
             "#,
-            if let Some(max_entries) = max_entries {
-                format_sstr!("LIMIT {max_entries}")
-            } else {
-                "".into()
-            },
         );
-        let service = service.to_str();
-        let server = server.to_str();
-
-        let bindings = vec![
-            ("service", &service as Parameter),
-            ("server", &server as Parameter),
-            ("min_datetime", &min_datetime as Parameter),
-            ("max_datetime", &max_datetime as Parameter),
-        ];
         let query = query_dyn!(&query, ..bindings)?;
         query.fetch(conn).await.map_err(Into::into)
     }
 
-    pub async fn insert_single<C>(&self, conn: &C) -> Result<(), Error>
+    pub async fn insert_single<C>(&self, conn: &C) -> Result<u64, Error>
     where
         C: GenericClient + Sync,
     {
@@ -301,21 +350,34 @@ impl IntrusionLog {
             host = self.host,
             username = self.username,
         );
-        query.execute(conn).await?;
-        Ok(())
+        query.execute(conn).await.map_err(Into::into)
     }
 
-    pub async fn insert(pool: &PgPool, il: &[IntrusionLog]) -> Result<(), Error> {
+    pub async fn insert(pool: &PgPool, il: &[IntrusionLog]) -> Result<u64, Error> {
         let mut conn = pool.get().await?;
         let tran = conn.transaction().await?;
         let conn: &PgTransaction = &tran;
+        let mut inserts = 0;
         for i_chunk in il.chunks(100) {
             for i in i_chunk {
-                i.insert_single(conn).await?;
+                inserts += i.insert_single(conn).await?;
             }
         }
         tran.commit().await?;
-        Ok(())
+        Ok(inserts)
+    }
+}
+
+#[derive(FromSqlRow, Clone, Debug)]
+pub struct AuthorizedUsers {
+    pub email: StackString,
+}
+
+impl AuthorizedUsers {
+    pub async fn get_authorized_users(pool: &PgPool) -> Result<Vec<Self>, Error> {
+        let query = query!("SELECT * FROM authorized_users");
+        let conn = pool.get().await?;
+        query.fetch(&conn).await.map_err(Into::into)
     }
 }
 
