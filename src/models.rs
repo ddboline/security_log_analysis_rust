@@ -129,6 +129,23 @@ impl HostCountry {
         query.execute(conn).await?;
         Ok(())
     }
+
+    pub async fn get_dangling_hosts(pool: &PgPool) -> Result<Vec<StackString>, Error> {
+        #[derive(FromSqlRow)]
+        struct Wrapper{
+            host: StackString,
+        }
+
+        let query = query!(r#"
+            SELECT distinct a.host
+            FROM intrusion_log a
+            LEFT JOIN host_country b ON a.host = b.host
+            WHERE b.host IS NULL
+        "#);
+        let conn = pool.get().await?;
+        let rows: Vec<Wrapper> = query.fetch(&conn).await?;
+        Ok(rows.into_iter().map(|x| x.host).collect())
+    }
 }
 
 #[derive(FromSqlRow, Clone, Debug, Serialize, Deserialize, PartialEq, Eq, Hash, Schema)]
