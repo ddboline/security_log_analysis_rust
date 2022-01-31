@@ -199,7 +199,7 @@ async fn host_country_get(
     #[filter = "LoggedUser::filter"] _: LoggedUser,
 ) -> WarpResult<impl Reply> {
     let query = query.into_inner();
-    let limit = query.limit.unwrap_or(100);
+    let limit = query.limit.unwrap_or(1000);
     let results = HostCountry::get_host_country(&data.pool, query.offset, Some(limit), true)
         .await
         .map_err(Into::<ServiceError>::into)?;
