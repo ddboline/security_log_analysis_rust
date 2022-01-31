@@ -52,6 +52,8 @@ pub enum ParseOpts {
         #[structopt(short = "s", long = "server", parse(try_from_str))]
         server: Host,
     },
+    /// Cleanup
+    Cleanup,
     /// Create plot
     Plot,
     /// Add hosts
@@ -130,6 +132,15 @@ impl ParseOpts {
                     metadata.get_country_info(&host).await?;
                 }
                 IntrusionLog::insert(&pool, &inserts).await?;
+            }
+            ParseOpts::Cleanup => {
+                let config = Config::init_config()?;
+                let pool = PgPool::new(&config.database_url);
+                let metadata = HostCountryMetadata::from_pool(&pool).await?;
+                for host in HostCountry::get_dangling_hosts(&pool).await? {
+                    println!("get host {host}");
+                    metadata.get_country_info(&host).await?;
+                }
             }
             ParseOpts::Sync { directory } => {
                 let sync = S3Sync::new();
