@@ -199,7 +199,8 @@ async fn host_country_get(
     #[filter = "LoggedUser::filter"] _: LoggedUser,
 ) -> WarpResult<impl Reply> {
     let query = query.into_inner();
-    let results = HostCountry::get_host_country(&data.pool, query.offset, query.limit, true)
+    let limit = query.limit.unwrap_or(100);
+    let results = HostCountry::get_host_country(&data.pool, query.offset, Some(limit), true)
         .await
         .map_err(Into::<ServiceError>::into)?;
     Ok(rweb::reply::json(&results))
