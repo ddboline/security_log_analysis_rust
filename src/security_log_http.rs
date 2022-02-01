@@ -231,11 +231,6 @@ async fn host_country_post(
     Ok(rweb::reply::html(format_sstr!("Inserts {inserts}")))
 }
 
-#[derive(Serialize, Schema)]
-struct CleanupOutput {
-    host: StackString,
-}
-
 #[get("/security_log/cleanup")]
 async fn host_country_cleanup(
     #[data] data: AppState,
@@ -249,8 +244,13 @@ async fn host_country_cleanup(
         .await
         .map_err(Into::<ServiceError>::into)?;
     for host in &hosts {
-        if metadata.get_whois_country_info_ipwhois(host).await.is_ok() {
-            lines.push(CleanupOutput { host: host.into() });
+        if let Ok(code) = metadata.get_whois_country_info_ipwhois(host).await {
+            let host_country =
+                HostCountry::from_host_code(host, &code).map_err(Into::<ServiceError>::into)?;
+            HostCountry::insert_host_country(&host_country, &data.pool)
+                .await
+                .map_err(Into::<ServiceError>::into)?;
+            lines.push(host_country);
         }
     }
     Ok(rweb::reply::json(&lines))

@@ -68,21 +68,7 @@ impl HostCountryMetadata {
     pub async fn insert_host_code(&self, host: &str, code: &str) -> Result<StackString, Error> {
         let ccmap = self.country_code_map.read();
         if (*ccmap).contains_key(code) {
-            let ipaddr = (host, 22).to_socket_addrs()?.next().and_then(|s| {
-                let ip = s.ip();
-                if ip.is_ipv4() {
-                    let ip_str = StackString::from_display(ip);
-                    Some(ip_str)
-                } else {
-                    None
-                }
-            });
-            let host_country = HostCountry {
-                host: host.into(),
-                code: code.into(),
-                ipaddr,
-                created_at: Utc::now(),
-            };
+            let host_country = HostCountry::from_host_code(host, code)?;
             let host_exists = { (*self.host_country_map.read()).contains_key(host) };
             if !host_exists {
                 let mut lock = self.host_country_map.write();

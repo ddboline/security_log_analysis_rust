@@ -8,7 +8,7 @@ use postgres_query::{client::GenericClient, query, query_dyn, FromSqlRow, Parame
 use rweb::Schema;
 use serde::{Deserialize, Serialize};
 use stack_string::{format_sstr, StackString};
-use std::{fmt::Write, fs::File, path::Path};
+use std::{fmt::Write, fs::File, net::ToSocketAddrs, path::Path};
 use tokio::{fs::create_dir_all, task::spawn_blocking};
 
 use crate::{
@@ -55,6 +55,24 @@ pub struct HostCountry {
 }
 
 impl HostCountry {
+    pub fn from_host_code(host: &str, code: &str) -> Result<Self, Error> {
+        let ipaddr = (host, 22).to_socket_addrs()?.next().and_then(|s| {
+            let ip = s.ip();
+            if ip.is_ipv4() {
+                let ip_str = StackString::from_display(ip);
+                Some(ip_str)
+            } else {
+                None
+            }
+        });
+        Ok(Self {
+            host: host.into(),
+            code: code.into(),
+            ipaddr,
+            created_at: Utc::now(),
+        })
+    }
+
     pub async fn get_host_country(
         pool: &PgPool,
         offset: Option<usize>,
