@@ -249,11 +249,9 @@ async fn host_country_cleanup(
         .await
         .map_err(Into::<ServiceError>::into)?;
     for host in &hosts {
-        metadata
-            .get_whois_country_info_ipwhois(host)
-            .await
-            .map_err(Into::<ServiceError>::into)?;
-        lines.push(CleanupOutput { host: host.into() });
+        if metadata.get_whois_country_info_ipwhois(host).await.is_ok() {
+            lines.push(CleanupOutput { host: host.into() });
+        }
     }
     Ok(rweb::reply::json(&lines))
 }
