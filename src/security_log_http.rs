@@ -28,6 +28,7 @@ use tokio::{
     task::{spawn, spawn_blocking, JoinError},
     time::{interval, sleep},
 };
+use futures::future::try_join_all;
 
 use security_log_analysis_rust::{
     config::Config,
@@ -39,6 +40,7 @@ use security_log_analysis_rust::{
     polars_analysis::read_parquet_files,
     reports::get_country_count_recent,
     Host, Service,
+    host_country_metadata::HostCountryMetadata,
 };
 
 type WarpResult<T> = Result<T, Rejection>;
@@ -229,6 +231,21 @@ async fn host_country_post(
     Ok(rweb::reply::html(format_sstr!("Inserts {inserts}")))
 }
 
+#[get("/security_log/cleanup")]
+async fn host_country_cleanup(
+    #[data] data: AppState,
+    #[filter = "LoggedUser::filter"] _: LoggedUser,
+) -> WarpResult<impl Reply> {
+    let hosts = HostCountry::get_dangling_hosts(&data.pool).await.map_err(Into::<ServiceError>::into)?;
+    let mut lines = Vec::new();
+    let metadata = HostCountryMetadata::from_pool(&data.pool).await.map_err(Into::<ServiceError>::into)?;
+    for host in &hosts {
+        metadata.get_whois_country_info_ipwhois(host).await.map_err(Into::<ServiceError>::into)?;
+        lines.push(format_sstr!("get host {host}"));
+    }
+    Ok(rweb::reply::html(lines.join("\n")))
+}
+
 #[allow(clippy::unused_async)]
 #[get("/security_log/user")]
 async fn user(#[filter = "LoggedUser::filter"] user: LoggedUser) -> WarpResult<impl Reply> {
@@ -276,6 +293,7 @@ async fn start_app() -> Result<(), AnyhowError> {
         .or(intrusion_log_post(app.clone()))
         .or(host_country_get(app.clone()))
         .or(host_country_post(app.clone()))
+        .or(host_country_cleanup(app.clone()))
         .or(user());
 
     let cors = rweb::cors()
