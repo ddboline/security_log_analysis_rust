@@ -65,7 +65,7 @@ impl HostCountryMetadata {
         Ok(result)
     }
 
-    pub async fn insert_host_code(&self, host: &str, code: &str) -> Result<StackString, Error> {
+    pub async fn insert_host_code(&self, host: &str, code: &str) -> Result<HostCountry, Error> {
         let ccmap = self.country_code_map.read();
         if (*ccmap).contains_key(code) {
             let host_country = HostCountry::from_host_code(host, code)?;
@@ -76,17 +76,17 @@ impl HostCountryMetadata {
                     if let Some(pool) = self.pool.as_ref() {
                         host_country.insert_host_country(pool).await?;
                     }
-                    (*lock).insert(host.into(), host_country);
+                    (*lock).insert(host.into(), host_country.clone());
                 }
             }
-            return Ok(code.into());
+            return Ok(host_country);
         }
         Err(format_err!("Failed to insert {code}"))
     }
 
-    pub async fn get_country_info(&self, host: &str) -> Result<StackString, Error> {
+    pub async fn get_country_info(&self, host: &str) -> Result<HostCountry, Error> {
         if let Some(entry) = (*self.host_country_map.read()).get(host) {
-            return Ok(entry.code.clone());
+            return Ok(entry.clone());
         }
         let whois_code = self.get_whois_country_info(host).await?;
         self.insert_host_code(host, &whois_code).await

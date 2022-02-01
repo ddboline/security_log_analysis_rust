@@ -138,17 +138,17 @@ impl ParseOpts {
                 let pool = PgPool::new(&config.database_url);
                 let metadata = HostCountryMetadata::from_pool(&pool).await?;
                 for host in HostCountry::get_dangling_hosts(&pool).await? {
-                    println!("get host {host}");
-                    metadata.get_country_info(&host).await?;
+                    let host_country = metadata.get_country_info(&host).await?;
+                    let output = serde_json::to_string(&host_country)?;
+                    stdout.send(output);
                 }
             }
             ParseOpts::Sync { directory } => {
                 let sync = S3Sync::new();
                 let directory = directory.unwrap_or_else(|| config.cache_dir.clone());
-                println!(
-                    "{}",
-                    sync.sync_dir("security-log-analysis", &directory, &config.s3_bucket, true,)
-                        .await?
+                stdout.send(
+                    sync.sync_dir("security-log-analysis", &directory, &config.s3_bucket, true)
+                        .await?,
                 );
             }
             ParseOpts::AddHost { host_codes } => {
