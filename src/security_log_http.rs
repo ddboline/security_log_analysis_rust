@@ -15,6 +15,7 @@
 #![allow(clippy::default_trait_access)]
 
 use anyhow::Error as AnyhowError;
+use futures::future::try_join_all;
 use http::StatusCode;
 use itertools::Itertools;
 use log::error;
@@ -28,11 +29,11 @@ use tokio::{
     task::{spawn, spawn_blocking, JoinError},
     time::{interval, sleep},
 };
-use futures::future::try_join_all;
 
 use security_log_analysis_rust::{
     config::Config,
     errors::ServiceError,
+    host_country_metadata::HostCountryMetadata,
     logged_user::{fill_from_db, get_secrets, LoggedUser, TRIGGER_DB_UPDATE},
     models::{HostCountry, IntrusionLog},
     parse_logs::parse_systemd_logs_sshd_daemon,
@@ -40,7 +41,6 @@ use security_log_analysis_rust::{
     polars_analysis::read_parquet_files,
     reports::get_country_count_recent,
     Host, Service,
-    host_country_metadata::HostCountryMetadata,
 };
 
 type WarpResult<T> = Result<T, Rejection>;
@@ -231,19 +231,31 @@ async fn host_country_post(
     Ok(rweb::reply::html(format_sstr!("Inserts {inserts}")))
 }
 
+#[derive(Serialize, Schema)]
+struct CleanupOutput {
+    host: StackString,
+}
+
 #[get("/security_log/cleanup")]
 async fn host_country_cleanup(
     #[data] data: AppState,
     #[filter = "LoggedUser::filter"] _: LoggedUser,
 ) -> WarpResult<impl Reply> {
-    let hosts = HostCountry::get_dangling_hosts(&data.pool).await.map_err(Into::<ServiceError>::into)?;
+    let hosts = HostCountry::get_dangling_hosts(&data.pool)
+        .await
+        .map_err(Into::<ServiceError>::into)?;
     let mut lines = Vec::new();
-    let metadata = HostCountryMetadata::from_pool(&data.pool).await.map_err(Into::<ServiceError>::into)?;
+    let metadata = HostCountryMetadata::from_pool(&data.pool)
+        .await
+        .map_err(Into::<ServiceError>::into)?;
     for host in &hosts {
-        metadata.get_whois_country_info_ipwhois(host).await.map_err(Into::<ServiceError>::into)?;
-        lines.push(format_sstr!("get host {host}"));
+        metadata
+            .get_whois_country_info_ipwhois(host)
+            .await
+            .map_err(Into::<ServiceError>::into)?;
+        lines.push(CleanupOutput { host: host.into() });
     }
-    Ok(rweb::reply::html(lines.join("\n")))
+    Ok(rweb::reply::json(&lines))
 }
 
 #[allow(clippy::unused_async)]
