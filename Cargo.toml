@@ -1,6 +1,6 @@
 [package]
 name = "security_log_analysis_rust"
-version = "0.7.13"
+version = "0.7.14"
 authors = ["Daniel Boline <ddboline@gmail.com>"]
 edition = "2018"
 
@@ -56,6 +56,7 @@ stack-string = { version="0.6", features=["postgres_types", "rweb-openapi"] }
 polars = {version="0.19", features=["temporal", "parquet"]}
 authorized_users = { git = "https://github.com/ddboline/auth_server_rust.git", tag="0.7.26"}
 uuid = "0.8"
+cached = "0.30"
 
 [[bin]]
 name = "security-log-parse-rust"
