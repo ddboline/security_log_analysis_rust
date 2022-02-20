@@ -137,6 +137,13 @@ impl Host {
         }
     }
 
+    pub fn abbreviation(self) -> &'static str {
+        match self {
+            Self::Home => "h",
+            Self::Cloud => "c",
+        }
+    }
+
     pub fn to_str(self) -> &'static str {
         match self {
             Self::Home => "home.ddboline.net",
@@ -177,6 +184,14 @@ impl Service {
             Self::Apache => "apache",
             Self::Nginx => "nginx",
             Self::Ssh => "ssh",
+        }
+    }
+
+    pub fn abbreviation(self) -> &'static str {
+        match self {
+            Self::Apache => "a",
+            Self::Nginx => "n",
+            Self::Ssh => "s",
         }
     }
 }
