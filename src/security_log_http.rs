@@ -29,6 +29,8 @@ use tokio::{
     task::{spawn, spawn_blocking, JoinError},
     time::{interval, sleep},
 };
+use std::fmt;
+use cached::{proc_macro::cached, Cached, TimedSizedCache};
 
 use security_log_analysis_rust::{
     config::Config,
@@ -87,11 +89,46 @@ pub struct AppState {
     pub config: Config,
 }
 
-#[derive(Serialize, Deserialize, Schema)]
+#[derive(Serialize, Deserialize, Schema, Debug)]
 struct AttemptsQuery {
     service: Option<Service>,
     location: Option<Host>,
     ndays: Option<i32>,
+}
+
+impl fmt::Display for AttemptsQuery {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> Result<(), fmt::Error> {
+        write!(f, "q:\n")?;
+        if let Some(service) = self.service {
+            write!(f, "s={}\n", service.abbreviation())?;
+        }
+        if let Some(location) = self.location {
+            write!(f, "l={}\n", location.abbreviation())?;
+        }
+        if let Some(ndays) = self.ndays {
+            write!(f, "n={}\n", ndays)?;
+        }
+        Ok(())
+    }
+}
+
+#[cached(
+    type = "TimedSizedCache<StackString, StackString>",
+    create = "{ TimedSizedCache::with_size_and_lifespan(100, 3600) }",
+    convert = r#"{ format_sstr!("{}", query) }"#,
+    result = true
+)]
+async fn get_cached_country_count(pool: &PgPool, query: AttemptsQuery) -> Result<StackString, ServiceError> {
+    let ndays = query.ndays.unwrap_or(30);
+    let service = query.service.unwrap_or(Service::Ssh);
+    let location = query.location.unwrap_or(Host::Home);
+    let results = get_country_count_recent(&pool, service, location, ndays)
+        .await
+        .map_err(Into::<ServiceError>::into)?
+        .into_iter()
+        .map(|cc| format_sstr!(r#"["{}", {}]"#, cc.country, cc.count))
+        .join(",");
+    Ok(results.into())
 }
 
 #[get("/security_log/intrusion_attempts")]
@@ -101,27 +138,18 @@ async fn intrusion_attempts(
 ) -> WarpResult<impl Reply> {
     let template = include_str!("../templates/COUNTRY_TEMPLATE.html");
     let query = query.into_inner();
-    let ndays = query.ndays.unwrap_or(30);
-    let service = query.service.unwrap_or(Service::Ssh);
-    let location = query.location.unwrap_or(Host::Home);
-    let results = get_country_count_recent(&data.pool, service, location, ndays)
-        .await
-        .map_err(Into::<ServiceError>::into)?
-        .into_iter()
-        .map(|cc| format_sstr!(r#"["{}", {}]"#, cc.country, cc.count))
-        .join(",");
+    let results = get_cached_country_count(&data.pool, query).await?;
     let body = template.replace("PUTLISTOFCOUNTRIESANDATTEMPTSHERE", &results);
     Ok(rweb::reply::html(body))
 }
 
-#[get("/security_log/intrusion_attempts/all")]
-async fn intrusion_attempts_all(
-    query: Query<AttemptsQuery>,
-    #[data] data: AppState,
-) -> WarpResult<impl Reply> {
-    let template = include_str!("../templates/COUNTRY_TEMPLATE.html");
-    let query = query.into_inner();
-    let config = data.config.clone();
+#[cached(
+    type = "TimedSizedCache<StackString, StackString>",
+    create = "{ TimedSizedCache::with_size_and_lifespan(100, 3600) }",
+    convert = r#"{ format_sstr!("{}", query) }"#,
+    result = true
+)]
+async fn get_cached_country_count_all(config: Config, query: AttemptsQuery) -> Result<StackString, ServiceError> {
     let results = spawn_blocking(move || {
         read_parquet_files(
             &config.cache_dir,
@@ -136,6 +164,18 @@ async fn intrusion_attempts_all(
     .into_iter()
     .map(|cc| format_sstr!(r#"["{}", {}]"#, cc.country, cc.count))
     .join(",");
+    Ok(results.into())
+}
+
+#[get("/security_log/intrusion_attempts/all")]
+async fn intrusion_attempts_all(
+    query: Query<AttemptsQuery>,
+    #[data] data: AppState,
+) -> WarpResult<impl Reply> {
+    let template = include_str!("../templates/COUNTRY_TEMPLATE.html");
+    let query = query.into_inner();
+    let config = data.config.clone();
+    let results = get_cached_country_count_all(config, query).await?;
     let body = template.replace("PUTLISTOFCOUNTRIESANDATTEMPTSHERE", &results);
     Ok(rweb::reply::html(body))
 }
@@ -321,4 +361,26 @@ async fn start_app() -> Result<(), AnyhowError> {
 #[tokio::main]
 async fn main() -> Result<(), AnyhowError> {
     start_app().await
+}
+
+#[cfg(test)]
+mod test {
+    use anyhow::Error;
+
+    use security_log_analysis_rust::{Service, Host};
+
+    use crate::AttemptsQuery;
+
+    #[test]
+    fn test_attempt_query_display() -> Result<(), Error> {
+        let q = AttemptsQuery {
+            service: Some(Service::Nginx),
+            location: Some(Host::Cloud),
+            ndays: Some(15),
+        };
+        let q_str = format!("{}", q);
+        assert_eq!(16, q_str.len());
+        assert_eq!(q_str, format!("q:\ns=n\nl=c\nn=15\n"));
+        Ok(())
+    }
 }
