@@ -98,15 +98,15 @@ struct AttemptsQuery {
 
 impl fmt::Display for AttemptsQuery {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> Result<(), fmt::Error> {
-        write!(f, "q:\n")?;
+        writeln!(f, "q:")?;
         if let Some(service) = self.service {
-            write!(f, "s={}\n", service.abbreviation())?;
+            writeln!(f, "s={}", service.abbreviation())?;
         }
         if let Some(location) = self.location {
-            write!(f, "l={}\n", location.abbreviation())?;
+            writeln!(f, "l={}", location.abbreviation())?;
         }
         if let Some(ndays) = self.ndays {
-            write!(f, "n={}\n", ndays)?;
+            writeln!(f, "n={}", ndays)?;
         }
         Ok(())
     }
@@ -122,7 +122,7 @@ async fn get_cached_country_count(pool: &PgPool, query: AttemptsQuery) -> Result
     let ndays = query.ndays.unwrap_or(30);
     let service = query.service.unwrap_or(Service::Ssh);
     let location = query.location.unwrap_or(Host::Home);
-    let results = get_country_count_recent(&pool, service, location, ndays)
+    let results = get_country_count_recent(pool, service, location, ndays)
         .await
         .map_err(Into::<ServiceError>::into)?
         .into_iter()
@@ -296,8 +296,8 @@ async fn host_country_cleanup(
     Ok(rweb::reply::json(&lines))
 }
 
-#[allow(clippy::unused_async)]
 #[get("/security_log/user")]
+#[allow(clippy::unused_async)]
 async fn user(#[filter = "LoggedUser::filter"] user: LoggedUser) -> WarpResult<impl Reply> {
     Ok(rweb::reply::json(&user))
 }
