@@ -15,6 +15,7 @@
 #![allow(clippy::default_trait_access)]
 
 use anyhow::Error as AnyhowError;
+use cached::{proc_macro::cached, Cached, TimedSizedCache};
 use futures::future::try_join_all;
 use http::StatusCode;
 use itertools::Itertools;
@@ -22,15 +23,13 @@ use log::error;
 use rweb::{get, post, reject::Reject, Filter, Json, Query, Rejection, Reply, Schema};
 use serde::{Deserialize, Serialize};
 use stack_string::{format_sstr, StackString};
-use std::{convert::Infallible, env::var, fmt::Write, net::SocketAddr, time::Duration};
+use std::{convert::Infallible, env::var, fmt, fmt::Write, net::SocketAddr, time::Duration};
 use structopt::clap::AppSettings;
 use thiserror::Error;
 use tokio::{
     task::{spawn, spawn_blocking, JoinError},
     time::{interval, sleep},
 };
-use std::fmt;
-use cached::{proc_macro::cached, Cached, TimedSizedCache};
 
 use security_log_analysis_rust::{
     config::Config,
@@ -118,7 +117,10 @@ impl fmt::Display for AttemptsQuery {
     convert = r#"{ format_sstr!("{}", query) }"#,
     result = true
 )]
-async fn get_cached_country_count(pool: &PgPool, query: AttemptsQuery) -> Result<StackString, ServiceError> {
+async fn get_cached_country_count(
+    pool: &PgPool,
+    query: AttemptsQuery,
+) -> Result<StackString, ServiceError> {
     let ndays = query.ndays.unwrap_or(30);
     let service = query.service.unwrap_or(Service::Ssh);
     let location = query.location.unwrap_or(Host::Home);
@@ -149,7 +151,10 @@ async fn intrusion_attempts(
     convert = r#"{ format_sstr!("{}", query) }"#,
     result = true
 )]
-async fn get_cached_country_count_all(config: Config, query: AttemptsQuery) -> Result<StackString, ServiceError> {
+async fn get_cached_country_count_all(
+    config: Config,
+    query: AttemptsQuery,
+) -> Result<StackString, ServiceError> {
     let results = spawn_blocking(move || {
         read_parquet_files(
             &config.cache_dir,
@@ -367,7 +372,7 @@ async fn main() -> Result<(), AnyhowError> {
 mod test {
     use anyhow::Error;
 
-    use security_log_analysis_rust::{Service, Host};
+    use security_log_analysis_rust::{Host, Service};
 
     use crate::AttemptsQuery;
 
