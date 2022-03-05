@@ -13,6 +13,7 @@
 #![allow(clippy::upper_case_acronyms)]
 #![allow(clippy::case_sensitive_file_extension_comparisons)]
 #![allow(clippy::default_trait_access)]
+#![allow(clippy::unused_async)]
 
 use anyhow::Error as AnyhowError;
 use cached::{proc_macro::cached, Cached, TimedSizedCache};

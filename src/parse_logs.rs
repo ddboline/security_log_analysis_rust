@@ -179,9 +179,9 @@ pub fn parse_log_line_apache(_: i32, line: &str) -> Result<Option<LogLineSSH>, E
     if !host.contains('.') {
         return Ok(None);
     }
-    let offset: i32 = tokens[4].replace("]", "").parse()?;
+    let offset: i32 = tokens[4].replace(']', "").parse()?;
     let offset = FixedOffset::east((offset / 100) * 60 * 60 + (offset % 100) * 60);
-    let timestr = tokens[3..5].join("").replace("[", "").replace("]", "");
+    let timestr = tokens[3..5].join("").replace('[', "").replace(']', "");
     let timestamp = offset.datetime_from_str(&timestr, "%e/%B/%Y:%H:%M:%S%z")?;
     let result = LogLineSSH {
         host: host.into(),
