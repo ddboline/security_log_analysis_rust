@@ -1,6 +1,6 @@
 [package]
 name = "security_log_analysis_rust"
-version = "0.7.14"
+version = "0.7.15"
 authors = ["Daniel Boline <ddboline@gmail.com>"]
 edition = "2018"
 
@@ -42,21 +42,20 @@ reqwest = {version="0.11", features=["json", "rustls-tls"], default_features=fal
 futures = "0.3"
 tokio = {version="1.17", features=["full"]}
 derive_more = "0.99"
-smartstring = "0.2"
 bytes = "1.0"
 envy = "0.4"
 smallvec = "1.6"
 avro-rs = {version = "0.13", features = ["snappy"]}
 deadqueue = "0.2"
 itertools = "0.10"
-stdout-channel = "0.4"
+stdout-channel = "0.5"
 refinery = {version="0.8", features=["tokio-postgres"]}
 postgres_query = {git = "https://github.com/ddboline/rust-postgres-query", tag = "0.3.4", features=["deadpool"]}
-stack-string = { version="0.6", features=["postgres_types", "rweb-openapi"] }
+stack-string = { version="0.7", features=["postgres_types", "rweb-openapi"] }
 polars = {version="0.19", features=["temporal", "parquet"]}
-authorized_users = { git = "https://github.com/ddboline/auth_server_rust.git", tag="0.7.26"}
+authorized_users = { git = "https://github.com/ddboline/auth_server_rust.git", tag="0.7.28"}
 uuid = "0.8"
-cached = "0.30"
+cached = "0.33"
 
 [[bin]]
 name = "security-log-parse-rust"
