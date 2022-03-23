@@ -4,13 +4,7 @@
 #![allow(clippy::cast_sign_loss)]
 #![allow(clippy::cast_possible_truncation)]
 #![allow(clippy::cast_possible_wrap)]
-#![allow(clippy::similar_names)]
-#![allow(clippy::shadow_unrelated)]
-#![allow(clippy::used_underscore_binding)]
-#![allow(clippy::upper_case_acronyms)]
 #![allow(clippy::case_sensitive_file_extension_comparisons)]
-#![allow(clippy::default_trait_access)]
-#![allow(clippy::missing_panics_doc)]
 
 pub mod config;
 pub mod errors;
