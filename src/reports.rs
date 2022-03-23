@@ -1,11 +1,11 @@
-use anyhow::{format_err, Error};
-use postgres_query::FromSqlRow;
-use rweb::Schema;
-use stack_string::{format_sstr, StackString};
-use std::{fmt, fmt::Write, str::FromStr};
+use anyhow::Error;
+use stack_string::format_sstr;
+use std::fmt::Write;
 
 use crate::{pgpool::PgPool, CountryCount, Host, Service};
 
+/// # Errors
+/// Return error if db query fails
 pub async fn get_country_count_recent(
     pool: &PgPool,
     service: Service,

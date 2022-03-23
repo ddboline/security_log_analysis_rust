@@ -2,7 +2,6 @@ use anyhow::{format_err, Error};
 use serde::Deserialize;
 use stack_string::StackString;
 use std::{
-    env::{var, var_os},
     ops::Deref,
     path::{Path, PathBuf},
     sync::Arc,
@@ -47,10 +46,13 @@ fn default_secret_path() -> PathBuf {
 pub struct Config(Arc<ConfigInner>);
 
 impl Config {
+    #[must_use]
     pub fn new() -> Self {
         Self::default()
     }
 
+    /// # Errors
+    /// Return error if initialization fails
     pub fn init_config() -> Result<Self, Error> {
         let fname = Path::new("config.env");
         let config_dir = dirs::config_dir().ok_or_else(|| format_err!("No Config directory"))?;

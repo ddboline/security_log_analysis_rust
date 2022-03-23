@@ -1,46 +1,31 @@
-use anyhow::{format_err, Error};
-use chrono::{DateTime, Utc};
-use futures::future::try_join_all;
+use anyhow::Error;
 use itertools::Itertools;
 use log::debug;
-use rayon::iter::{IntoParallelIterator, ParallelIterator};
 use refinery::embed_migrations;
-use rweb::Schema;
-use serde::{Deserialize, Serialize};
 use smallvec::SmallVec;
 use stack_string::{format_sstr, StackString};
 use std::{
     collections::HashSet,
-    env::var,
-    fmt,
     fmt::Write,
-    net::ToSocketAddrs,
     path::{Path, PathBuf},
-    process::Stdio,
-    str::FromStr,
 };
 use stdout_channel::StdoutChannel;
 use structopt::StructOpt;
 use tokio::{
     fs::{read_to_string, File},
-    io::{stdin, AsyncBufReadExt, AsyncReadExt, AsyncWrite, AsyncWriteExt, BufReader},
-    process::Command,
-    task::spawn_blocking,
+    io::{stdin, AsyncReadExt, AsyncWrite, AsyncWriteExt},
 };
 
 use crate::{
     config::Config,
     host_country_metadata::HostCountryMetadata,
-    iso_8601_datetime::convert_datetime_to_str,
-    models::{get_max_datetime, HostCountry, IntrusionLog},
-    parse_logs::{
-        parse_all_log_files, parse_log_line_apache, parse_log_line_ssh, parse_systemd_logs_sshd_all,
-    },
+    models::{HostCountry, IntrusionLog},
+    parse_logs::parse_systemd_logs_sshd_all,
     pgpool::PgPool,
     polars_analysis::{insert_db_into_parquet, read_parquet_files, read_tsv_file},
     reports::get_country_count_recent,
     s3_sync::S3Sync,
-    DateTimeInput, Host, Service,
+    Host, Service,
 };
 
 embed_migrations!("migrations");
@@ -108,6 +93,8 @@ pub enum ParseOpts {
 }
 
 impl ParseOpts {
+    /// # Errors
+    /// Return error if db query fails
     pub async fn process_args() -> Result<(), Error> {
         let default_input = Path::new(
             "/media/seagate4000/dilepton_tower_backup/intrusion_log_backup_20211216.sql.gz",

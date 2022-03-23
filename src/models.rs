@@ -1,18 +1,13 @@
-use anyhow::{format_err, Error};
-use avro_rs::{from_value, Codec, Reader, Schema, Writer};
-use chrono::{DateTime, Datelike, NaiveDate, NaiveDateTime, NaiveTime, Utc};
+use anyhow::Error;
+use chrono::{DateTime, Utc};
 use derive_more::Into;
-use futures::{future::try_join_all, TryFutureExt};
-use log::debug;
 use postgres_query::{client::GenericClient, query, query_dyn, FromSqlRow, Parameter};
 use rweb::Schema;
 use serde::{Deserialize, Serialize};
 use stack_string::{format_sstr, StackString};
-use std::{fmt::Write, fs::File, net::ToSocketAddrs, path::Path};
-use tokio::{fs::create_dir_all, task::spawn_blocking};
+use std::{fmt::Write, net::ToSocketAddrs};
 
 use crate::{
-    iso_8601_datetime,
     pgpool::{PgPool, PgTransaction},
     Host, Service,
 };
@@ -39,6 +34,8 @@ pub struct CountryCode {
 }
 
 impl CountryCode {
+    /// # Errors
+    /// Return error if db query fails
     pub async fn get_country_code_list(pool: &PgPool) -> Result<Vec<Self>, Error> {
         let query = query!("SELECT * FROM country_code");
         let conn = pool.get().await?;
@@ -55,6 +52,8 @@ pub struct HostCountry {
 }
 
 impl HostCountry {
+    /// # Errors
+    /// Return error if db query fails
     pub fn from_host_code(host: &str, code: &str) -> Result<Self, Error> {
         let ipaddr = (host, 22).to_socket_addrs()?.next().and_then(|s| {
             let ip = s.ip();
@@ -73,6 +72,8 @@ impl HostCountry {
         })
     }
 
+    /// # Errors
+    /// Return error if db query fails
     pub async fn get_host_country(
         pool: &PgPool,
         offset: Option<usize>,
@@ -94,6 +95,8 @@ impl HostCountry {
         query.fetch(&conn).await.map_err(Into::into)
     }
 
+    /// # Errors
+    /// Return error if db query fails
     pub async fn insert_host_country(&self, pool: &PgPool) -> Result<Option<Self>, Error> {
         let mut conn = pool.get().await?;
         let tran = conn.transaction().await?;
@@ -148,6 +151,8 @@ impl HostCountry {
         Ok(())
     }
 
+    /// # Errors
+    /// Return error if db query fails
     pub async fn get_dangling_hosts(pool: &PgPool) -> Result<Vec<StackString>, Error> {
         #[derive(FromSqlRow)]
         struct Wrapper {
@@ -202,6 +207,8 @@ impl IntrusionLog {
         query.fetch(conn).await.map_err(Into::into)
     }
 
+    /// # Errors
+    /// Return error if db query fails
     pub async fn get_max_datetime(
         pool: &PgPool,
         service: Service,
@@ -267,6 +274,8 @@ impl IntrusionLog {
         Ok(result.map(Into::into))
     }
 
+    /// # Errors
+    /// Return error if db query fails
     pub async fn get_intrusion_log_filtered(
         pool: &PgPool,
         service: Option<Service>,
@@ -350,6 +359,8 @@ impl IntrusionLog {
         query.fetch(conn).await.map_err(Into::into)
     }
 
+    /// # Errors
+    /// Return error if db query fails
     pub async fn insert_single<C>(&self, conn: &C) -> Result<u64, Error>
     where
         C: GenericClient + Sync,
@@ -371,6 +382,8 @@ impl IntrusionLog {
         query.execute(conn).await.map_err(Into::into)
     }
 
+    /// # Errors
+    /// Return error if db query fails
     pub async fn insert(pool: &PgPool, il: &[IntrusionLog]) -> Result<u64, Error> {
         let mut conn = pool.get().await?;
         let tran = conn.transaction().await?;
@@ -392,6 +405,8 @@ pub struct AuthorizedUsers {
 }
 
 impl AuthorizedUsers {
+    /// # Errors
+    /// Return error if db query fails
     pub async fn get_authorized_users(pool: &PgPool) -> Result<Vec<Self>, Error> {
         let query = query!("SELECT * FROM authorized_users");
         let conn = pool.get().await?;
@@ -399,6 +414,8 @@ impl AuthorizedUsers {
     }
 }
 
+/// # Errors
+/// Return error if db query fails
 pub async fn get_max_datetime(pool: &PgPool, server: Host) -> Result<DateTime<Utc>, Error> {
     let result = if let Some(dt) = IntrusionLog::get_max_datetime(pool, Service::Ssh, server)
         .await?
@@ -422,10 +439,8 @@ pub async fn get_max_datetime(pool: &PgPool, server: Host) -> Result<DateTime<Ut
 #[cfg(test)]
 mod tests {
     use anyhow::Error;
-    use chrono::{DateTime, Datelike, NaiveDate, NaiveDateTime, NaiveTime, Utc};
     use log::debug;
     use postgres_query::query;
-    use std::path::Path;
 
     use crate::{
         config::Config,

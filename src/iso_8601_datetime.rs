@@ -3,22 +3,28 @@ use chrono::{DateTime, TimeZone, Utc};
 use serde::{self, Deserialize, Deserializer, Serializer};
 use stack_string::StackString;
 
+#[must_use]
 pub fn sentinel_datetime() -> DateTime<Utc> {
     Utc.ymd(0, 1, 1).and_hms(0, 0, 0)
 }
 
+#[must_use]
 pub fn convert_datetime_to_str(datetime: DateTime<Utc>) -> StackString {
     use chrono::format::{Fixed, Item};
     const ITEMS: &[Item<'static>] = &[Item::Fixed(Fixed::RFC3339)];
     StackString::from_display(datetime.format_with_items(ITEMS.iter()))
 }
 
+/// # Errors
+/// Return error if parsing fails
 pub fn convert_str_to_datetime(s: &str) -> Result<DateTime<Utc>, Error> {
     DateTime::parse_from_rfc3339(s)
         .map(|x| x.with_timezone(&Utc))
         .map_err(Into::into)
 }
 
+/// # Errors
+/// Return error if serialization fails
 pub fn serialize<S>(date: &DateTime<Utc>, serializer: S) -> Result<S::Ok, S::Error>
 where
     S: Serializer,
@@ -26,6 +32,8 @@ where
     serializer.serialize_str(&convert_datetime_to_str(*date))
 }
 
+/// # Errors
+/// Return error if deserialization fails
 pub fn deserialize<'de, D>(deserializer: D) -> Result<DateTime<Utc>, D::Error>
 where
     D: Deserializer<'de>,

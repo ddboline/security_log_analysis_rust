@@ -24,6 +24,8 @@ pub struct LoggedUser {
 }
 
 impl LoggedUser {
+    /// # Errors
+    /// Return error if `session_id` matches `LoggedUser`
     pub fn verify_session_id(&self, session_id: Uuid) -> Result<(), Error> {
         if self.session == session_id {
             Ok(())
@@ -32,6 +34,7 @@ impl LoggedUser {
         }
     }
 
+    #[must_use]
     pub fn filter() -> impl Filter<Extract = (Self,), Error = Rejection> + Copy {
         cookie("session-id")
             .and(cookie("jwt"))
@@ -75,6 +78,8 @@ impl FromStr for LoggedUser {
     }
 }
 
+/// # Errors
+/// Return error if db query fails
 pub async fn fill_from_db(pool: &PgPool) -> Result<(), Error> {
     debug!("{:?}", *TRIGGER_DB_UPDATE);
     let users: Vec<_> = if TRIGGER_DB_UPDATE.check() {

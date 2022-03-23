@@ -9,7 +9,6 @@ use rand::{
     distributions::{Alphanumeric, DistString},
     thread_rng,
 };
-use rayon::iter::{IntoParallelIterator, ParallelIterator};
 use rusoto_core::Region;
 use rusoto_s3::{GetObjectRequest, Object as S3Object, PutObjectRequest, S3Client};
 use s3_ext::S3Ext;
@@ -25,10 +24,10 @@ use std::{
     time::SystemTime,
 };
 use sts_profile_auth::get_client_sts;
-use tokio::task::spawn_blocking;
 
 use crate::{exponential_retry, get_md5sum};
 
+#[must_use]
 pub fn get_s3_client() -> S3Client {
     get_client_sts!(S3Client, Region::UsEast1).expect("Failed to obtain client")
 }
@@ -91,18 +90,22 @@ fn process_s3_item(mut item: S3Object) -> Option<KeyItem> {
 }
 
 impl S3Sync {
+    #[must_use]
     pub fn new() -> Self {
         Self {
             s3_client: get_s3_client(),
         }
     }
 
+    #[must_use]
     pub fn from_client(s3client: S3Client) -> Self {
         Self {
             s3_client: s3client,
         }
     }
 
+    /// # Errors
+    /// Return error if db query fails
     pub async fn get_list_of_keys(&self, bucket: &str) -> Result<Vec<KeyItem>, Error> {
         let results: Result<Vec<_>, _> = exponential_retry(|| async move {
             self.s3_client
@@ -117,6 +120,8 @@ impl S3Sync {
         Ok(list_of_keys)
     }
 
+    /// # Errors
+    /// Return error if db query fails
     pub async fn sync_dir(
         &self,
         title: &str,
@@ -227,6 +232,8 @@ impl S3Sync {
         Ok(msg)
     }
 
+    /// # Errors
+    /// Return error if db query fails
     pub async fn download_file(
         &self,
         local_file: &Path,
@@ -262,6 +269,8 @@ impl S3Sync {
         etag
     }
 
+    /// # Errors
+    /// Return error if db query fails
     pub async fn upload_file(
         &self,
         local_file: &Path,
@@ -271,6 +280,8 @@ impl S3Sync {
         self.upload_file_acl(local_file, s3_bucket, s3_key).await
     }
 
+    /// # Errors
+    /// Return error if db query fails
     pub async fn upload_file_acl(
         &self,
         local_file: &Path,

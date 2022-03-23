@@ -1,33 +1,18 @@
 use anyhow::{format_err, Error};
 use chrono::{DateTime, Datelike, Duration, Utc};
 use flate2::read::GzDecoder;
-use futures::future::try_join_all;
-use itertools::Itertools;
 use log::debug;
 use polars::{
     datatypes::TimeUnit,
-    prelude::{ChunkCompare, DistinctKeepStrategy, GroupsProxy, Utf8Chunked},
+    prelude::{DistinctKeepStrategy, Utf8Chunked},
 };
 use postgres_query::{query, FromSqlRow};
-use refinery::embed_migrations;
-use rweb::Schema;
-use smallvec::SmallVec;
 use stack_string::{format_sstr, StackString};
 use std::{
-    collections::HashSet,
-    fmt,
     fmt::Write,
-    io::Cursor,
-    path::{Path, PathBuf},
-    process::Stdio,
-    str::FromStr,
-};
-use stdout_channel::StdoutChannel;
-use structopt::StructOpt;
-use tokio::{
     fs::File,
-    io::{AsyncBufReadExt, AsyncWriteExt, BufReader},
-    process::Command,
+    io::{BufRead, BufReader, Cursor},
+    path::Path,
 };
 
 use polars::{
@@ -39,27 +24,14 @@ use polars::{
         parquet::{ParquetReader, ParquetWriter},
         SerReader,
     },
-    series::{IntoSeries, Series},
+    series::IntoSeries,
 };
 
-use crate::{
-    config::Config,
-    host_country_metadata::HostCountryMetadata,
-    models::{get_max_datetime, IntrusionLog},
-    parse_logs::{
-        parse_all_log_files, parse_log_line_apache, parse_log_line_ssh, parse_systemd_logs_sshd_all,
-    },
-    pgpool::PgPool,
-    reports::get_country_count_recent,
-    CountryCount, DateTimeInput, Host, Service,
-};
+use crate::{pgpool::PgPool, CountryCount, Host, Service};
 
+/// # Errors
+/// Return error if db query fails
 pub fn read_tsv_file(input: &Path, outdir: &Path) -> Result<(), Error> {
-    use std::{
-        fs::File,
-        io::{BufRead, BufReader, Read},
-    };
-
     let gz = GzDecoder::new(File::open(input)?);
     let mut buf = Vec::new();
     let mut gzbuf = BufReader::new(gz);
@@ -82,8 +54,6 @@ pub fn read_tsv_file(input: &Path, outdir: &Path) -> Result<(), Error> {
 }
 
 fn write_to_parquet(buf: &[u8], outdir: &Path) -> Result<(), Error> {
-    use std::fs::File;
-
     let cursor = Cursor::new(&buf);
     let mut csv = CsvReader::new(cursor)
         .with_null_values(Some(NullValues::AllColumns("\\N".into())))
@@ -176,9 +146,9 @@ fn write_to_parquet(buf: &[u8], outdir: &Path) -> Result<(), Error> {
     Ok(())
 }
 
+/// # Errors
+/// Return error if db query fails
 pub async fn insert_db_into_parquet(pool: &PgPool, outdir: &Path) -> Result<(), Error> {
-    use std::fs::File;
-
     #[derive(FromSqlRow)]
     struct Wrap {
         year: i32,
@@ -260,6 +230,8 @@ pub async fn insert_db_into_parquet(pool: &PgPool, outdir: &Path) -> Result<(), 
     Ok(())
 }
 
+/// # Errors
+/// Return error if db query fails
 pub fn read_parquet_files(
     input: &Path,
     service: Option<Service>,
@@ -314,8 +286,6 @@ fn get_country_count(
     server: Option<Host>,
     ndays: Option<i32>,
 ) -> Result<DataFrame, Error> {
-    use std::fs::File;
-
     let mut df = ParquetReader::new(File::open(&input)?).finish()?;
     if let Some(service) = service {
         let mask: Vec<_> = df

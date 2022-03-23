@@ -8,8 +8,6 @@ use serde::{Deserialize, Serialize};
 use smallvec::SmallVec;
 use stack_string::{format_sstr, StackString};
 use std::{
-    collections::HashSet,
-    convert::{TryFrom, TryInto},
     fmt,
     fmt::Write,
     fs::File,
@@ -17,9 +15,9 @@ use std::{
     process::Stdio,
 };
 use tokio::{
-    io::{self, AsyncBufReadExt, AsyncRead, AsyncReadExt},
+    io::{self, AsyncBufReadExt, AsyncRead},
     process::Command,
-    task::{spawn, spawn_blocking, JoinHandle},
+    task::{spawn, JoinHandle},
 };
 
 use crate::{
@@ -34,6 +32,8 @@ pub struct LogLineSSH {
     pub timestamp: DateTime<Utc>,
 }
 
+/// # Errors
+/// Return error if db query fails
 pub fn parse_log_message(line: &str) -> Result<Option<(&str, &str)>, Error> {
     let user = match line.split("Invalid user ").nth(1) {
         Some(x) => x,
@@ -63,6 +63,8 @@ pub fn parse_log_message(line: &str) -> Result<Option<(&str, &str)>, Error> {
     }
 }
 
+/// # Errors
+/// Return error if db query fails
 pub fn parse_log_line_ssh(year: i32, line: &str) -> Result<Option<LogLineSSH>, Error> {
     if !line.contains("sshd") || !line.contains("Invalid user") {
         return Ok(None);
@@ -85,6 +87,8 @@ pub fn parse_log_line_ssh(year: i32, line: &str) -> Result<Option<LogLineSSH>, E
     }
 }
 
+/// # Errors
+/// Return error if db query fails
 pub fn parse_log_file<T, U>(year: i32, infile: T, parse_func: &U) -> Result<Vec<LogLineSSH>, Error>
 where
     T: Read,
@@ -106,6 +110,8 @@ where
     Ok(lines)
 }
 
+/// # Errors
+/// Return error if db query fails
 pub async fn parse_all_log_files<T>(
     hc: &HostCountryMetadata,
     service: Service,
@@ -169,6 +175,8 @@ where
     Ok(inserts)
 }
 
+/// # Errors
+/// Return error if db query fails
 pub fn parse_log_line_apache(_: i32, line: &str) -> Result<Option<LogLineSSH>, Error> {
     let tokens: SmallVec<[&str; 5]> = line.split_whitespace().take(5).collect();
     if tokens.len() < 5 {
@@ -191,6 +199,8 @@ pub fn parse_log_line_apache(_: i32, line: &str) -> Result<Option<LogLineSSH>, E
     Ok(Some(result))
 }
 
+/// # Errors
+/// Return error if db query fails
 pub async fn parse_systemd_logs_sshd_all(
     hc: &HostCountryMetadata,
     server: Host,
@@ -214,6 +224,8 @@ pub async fn parse_systemd_logs_sshd_all(
     Ok(inserts)
 }
 
+/// # Errors
+/// Return error if db query fails
 pub async fn parse_systemd_logs_sshd(server: Host) -> Result<Vec<IntrusionLog>, Error> {
     let command = Command::new("journalctl")
         .args(&[
@@ -257,6 +269,8 @@ pub async fn parse_systemd_logs_sshd(server: Host) -> Result<Vec<IntrusionLog>, 
         .collect()
 }
 
+/// # Errors
+/// Return error if db query fails
 pub async fn parse_systemd_logs_sshd_daemon(config: &Config, pool: &PgPool) -> Result<(), Error> {
     let mut p = Command::new("journalctl")
         .args(&[
@@ -394,7 +408,6 @@ mod tests {
     use anyhow::Error;
     use chrono::{Datelike, Timelike, Utc};
     use log::debug;
-    use stack_string::StackString;
     use std::fs::File;
 
     use crate::{

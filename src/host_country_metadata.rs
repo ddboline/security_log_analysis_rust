@@ -1,17 +1,13 @@
 use anyhow::{format_err, Error};
-use chrono::Utc;
-use log::{debug, error};
+use log::debug;
 use parking_lot::RwLock;
 use postgres_query::query;
 use reqwest::{Client, Url};
 use serde::{Deserialize, Serialize};
 use smallvec::SmallVec;
-use stack_string::{format_sstr, StackString};
-use std::{collections::HashMap, fmt::Write, net::ToSocketAddrs, process::Stdio, sync::Arc};
-use tokio::{
-    io::{AsyncBufReadExt, BufReader},
-    process::Command,
-};
+use stack_string::StackString;
+use std::{collections::HashMap, net::ToSocketAddrs, sync::Arc};
+use tokio::process::Command;
 
 use crate::{
     exponential_retry,
@@ -34,6 +30,7 @@ impl Default for HostCountryMetadata {
 }
 
 impl HostCountryMetadata {
+    #[must_use]
     pub fn new() -> Self {
         Self {
             pool: None,
@@ -43,6 +40,8 @@ impl HostCountryMetadata {
         }
     }
 
+    /// # Errors
+    /// Return error db queries fail
     pub async fn from_pool(pool: &PgPool) -> Result<Self, Error> {
         let result = Self {
             pool: Some(pool.clone()),
@@ -65,6 +64,8 @@ impl HostCountryMetadata {
         Ok(result)
     }
 
+    /// # Errors
+    /// Return error db queries fail
     pub async fn insert_host_code(&self, host: &str, code: &str) -> Result<HostCountry, Error> {
         let ccmap = self.country_code_map.read();
         if (*ccmap).contains_key(code) {
@@ -84,6 +85,8 @@ impl HostCountryMetadata {
         Err(format_err!("Failed to insert {code}"))
     }
 
+    /// # Errors
+    /// Return error db queries fail
     pub async fn get_country_info(&self, host: &str) -> Result<HostCountry, Error> {
         if let Some(entry) = (*self.host_country_map.read()).get(host) {
             return Ok(entry.clone());
@@ -92,6 +95,8 @@ impl HostCountryMetadata {
         self.insert_host_code(host, &whois_code).await
     }
 
+    /// # Errors
+    /// Return error db queries fail
     pub async fn get_whois_country_info(&self, host: &str) -> Result<StackString, Error> {
         if let Ok(country) = self.get_whois_country_info_ipwhois(host).await {
             return Ok(country);
@@ -99,6 +104,8 @@ impl HostCountryMetadata {
         Self::get_whois_country_info_cmd(host).await
     }
 
+    /// # Errors
+    /// Return error db queries fail
     pub async fn get_whois_country_info_ipwhois(&self, host: &str) -> Result<StackString, Error> {
         #[derive(Serialize, Deserialize)]
         struct IpWhoIsOutput {
@@ -125,6 +132,8 @@ impl HostCountryMetadata {
         Ok(output.country_code)
     }
 
+    /// # Errors
+    /// Return error db queries fail
     pub async fn get_whois_country_info_cmd(host: &str) -> Result<StackString, Error> {
         async fn _get_whois_country_info(args: &[&str]) -> Result<StackString, Error> {
             let output = Command::new("whois").args(args).output().await?;
@@ -153,6 +162,8 @@ impl HostCountryMetadata {
         }
     }
 
+    /// # Errors
+    /// Return error db queries fail
     pub async fn cleanup_intrusion_log(&self) -> Result<(), Error> {
         let dedupe_query0 = query!(
             r#"

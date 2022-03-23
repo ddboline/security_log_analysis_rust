@@ -1,5 +1,3 @@
-#![allow(unused_imports)]
-#![allow(clippy::must_use_candidate)]
 #![allow(clippy::too_many_lines)]
 #![allow(clippy::module_name_repetitions)]
 #![allow(clippy::cast_precision_loss)]
@@ -8,7 +6,6 @@
 #![allow(clippy::cast_possible_wrap)]
 #![allow(clippy::similar_names)]
 #![allow(clippy::shadow_unrelated)]
-#![allow(clippy::missing_errors_doc)]
 #![allow(clippy::used_underscore_binding)]
 #![allow(clippy::upper_case_acronyms)]
 #![allow(clippy::case_sensitive_file_extension_comparisons)]
@@ -30,10 +27,9 @@ pub mod s3_sync;
 
 use anyhow::{format_err, Error};
 use chrono::{DateTime, Utc};
-use log::error;
 use postgres_query::FromSqlRow;
 use rand::{
-    distributions::{Alphanumeric, Distribution, Uniform},
+    distributions::{Distribution, Uniform},
     thread_rng,
 };
 use rweb::Schema;
@@ -42,6 +38,8 @@ use stack_string::StackString;
 use std::{convert::TryFrom, fmt, future::Future, path::Path, str::FromStr, time::Duration};
 use tokio::{process::Command, time::sleep};
 
+/// # Errors
+/// Return error after timeout
 pub async fn exponential_retry<T, U, F>(closure: T) -> Result<U, Error>
 where
     T: Fn() -> F,
@@ -63,6 +61,8 @@ where
     }
 }
 
+/// # Errors
+/// Return error if `md5sum` fails
 pub async fn get_md5sum(filename: &Path) -> Result<StackString, Error> {
     if !Path::new("/usr/bin/md5sum").exists() {
         return Err(format_err!(
@@ -130,6 +130,7 @@ impl TryFrom<StackString> for Host {
 }
 
 impl Host {
+    #[must_use]
     pub fn get_prefix(self) -> &'static str {
         match self {
             Self::Home => "home",
@@ -137,6 +138,7 @@ impl Host {
         }
     }
 
+    #[must_use]
     pub fn abbreviation(self) -> &'static str {
         match self {
             Self::Home => "h",
@@ -144,6 +146,7 @@ impl Host {
         }
     }
 
+    #[must_use]
     pub fn to_str(self) -> &'static str {
         match self {
             Self::Home => "home.ddboline.net",
@@ -179,6 +182,7 @@ impl FromStr for Service {
 }
 
 impl Service {
+    #[must_use]
     pub fn to_str(self) -> &'static str {
         match self {
             Self::Apache => "apache",
@@ -187,6 +191,7 @@ impl Service {
         }
     }
 
+    #[must_use]
     pub fn abbreviation(self) -> &'static str {
         match self {
             Self::Apache => "a",
