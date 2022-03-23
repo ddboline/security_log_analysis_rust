@@ -52,10 +52,10 @@ stdout-channel = "0.5"
 refinery = {version="0.8", features=["tokio-postgres"]}
 postgres_query = {git = "https://github.com/ddboline/rust-postgres-query", tag = "0.3.4", features=["deadpool"]}
 stack-string = { version="0.7", features=["postgres_types", "rweb-openapi"] }
-polars = {version="0.19", features=["temporal", "parquet"]}
-authorized_users = { git = "https://github.com/ddboline/auth_server_rust.git", tag="0.7.28"}
+polars = {version="0.20", features=["temporal", "parquet"]}
+authorized_users = { git = "https://github.com/ddboline/auth_server_rust.git", tag="0.7.29"}
 uuid = "0.8"
-cached = "0.33"
+cached = "0.34"
 
 [[bin]]
 name = "security-log-parse-rust"
