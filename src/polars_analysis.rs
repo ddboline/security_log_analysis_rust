@@ -6,7 +6,7 @@ use itertools::Itertools;
 use log::debug;
 use polars::{
     datatypes::TimeUnit,
-    prelude::{ChunkCompare, GroupsProxy, Utf8Chunked},
+    prelude::{ChunkCompare, DistinctKeepStrategy, GroupsProxy, Utf8Chunked},
 };
 use postgres_query::{query, FromSqlRow};
 use refinery::embed_migrations;
@@ -31,7 +31,7 @@ use tokio::{
 };
 
 use polars::{
-    chunked_array::{builder::NewChunkedArray, temporal::naive_datetime_to_datetime_ms},
+    chunked_array::builder::NewChunkedArray,
     datatypes::{AnyValue, BooleanChunked, DataType, DatetimeChunked, Int32Chunked, UInt32Chunked},
     frame::DataFrame,
     io::{
@@ -123,16 +123,16 @@ fn write_to_parquet(buf: &[u8], outdir: &Path) -> Result<(), Error> {
     let _drop = csv.drop_in_place("id")?;
     let _drop = csv.drop_in_place("datetime_str")?;
 
-    let dt = DatetimeChunked::new_from_naive_datetime("datetime", &v, TimeUnit::Milliseconds)
-        .into_series();
-    csv.with_column(dt)?;
-
     let y: Vec<_> = v.iter().map(Datelike::year).collect();
-    let y = Int32Chunked::new_from_slice("year", &y).into_series();
-    csv.with_column(y)?;
+    let y = Int32Chunked::from_slice("year", &y).into_series();
 
     let m: Vec<_> = v.iter().map(Datelike::month).collect();
-    let m = UInt32Chunked::new_from_slice("month", &m).into_series();
+    let m = UInt32Chunked::from_slice("month", &m).into_series();
+
+    let dt =
+        DatetimeChunked::from_naive_datetime("datetime", v, TimeUnit::Milliseconds).into_series();
+    csv.with_column(dt)?;
+    csv.with_column(y)?;
     csv.with_column(m)?;
 
     let year_month_group = csv.groupby(["year", "month"])?;
@@ -150,9 +150,9 @@ fn write_to_parquet(buf: &[u8], outdir: &Path) -> Result<(), Error> {
             let indicies = year_month_group
                 .get_groups()
                 .idx_ref()
+                .all()
                 .get(idx)
                 .unwrap()
-                .1
                 .iter()
                 .map(|i| *i as usize);
             let mut new_csv = csv.take_iter(indicies)?;
@@ -160,15 +160,16 @@ fn write_to_parquet(buf: &[u8], outdir: &Path) -> Result<(), Error> {
             let _drop = new_csv.drop_in_place("month")?;
             let filename = format_sstr!("intrusion_log_{year:04}_{month:02}.parquet");
             let file = outdir.join(&filename);
-            let df = if file.exists() {
+            let mut df = if file.exists() {
                 ParquetReader::new(File::open(&file)?)
                     .finish()?
                     .vstack(&new_csv)?
-                    .drop_duplicates(true, None)?
+                    .distinct(None, DistinctKeepStrategy::First)?
+                // .drop_duplicates(true, None)?
             } else {
                 new_csv
             };
-            ParquetWriter::new(File::create(&file)?).finish(&df)?;
+            ParquetWriter::new(File::create(&file)?).finish(&mut df)?;
             debug!("wrote {} {:?}", filename, df.shape());
         }
     }
@@ -223,20 +224,20 @@ pub async fn insert_db_into_parquet(pool: &PgPool, outdir: &Path) -> Result<(), 
 
         let mut columns = Vec::new();
         let v: Vec<_> = rows.iter().map(|x| &x.service).collect();
-        columns.push(Utf8Chunked::new_from_slice("service", &v).into_series());
+        columns.push(Utf8Chunked::from_slice("service", &v).into_series());
         let v: Vec<_> = rows.iter().map(|x| &x.server).collect();
-        columns.push(Utf8Chunked::new_from_slice("server", &v).into_series());
+        columns.push(Utf8Chunked::from_slice("server", &v).into_series());
         let v: Vec<_> = rows.iter().map(|x| &x.host).collect();
-        columns.push(Utf8Chunked::new_from_slice("host", &v).into_series());
+        columns.push(Utf8Chunked::from_slice("host", &v).into_series());
         let v: Vec<_> = rows.iter().map(|x| x.username.as_ref()).collect();
-        columns.push(Utf8Chunked::new_from_opt_slice("username", &v).into_series());
+        columns.push(Utf8Chunked::from_slice_options("username", &v).into_series());
         let v: Vec<_> = rows.iter().map(|x| x.code.as_ref()).collect();
-        columns.push(Utf8Chunked::new_from_opt_slice("code", &v).into_series());
+        columns.push(Utf8Chunked::from_slice_options("code", &v).into_series());
         let v: Vec<_> = rows.iter().map(|x| x.country.as_ref()).collect();
-        columns.push(Utf8Chunked::new_from_opt_slice("country", &v).into_series());
+        columns.push(Utf8Chunked::from_slice_options("country", &v).into_series());
         let v: Vec<_> = rows.iter().map(|x| x.datetime.naive_utc()).collect();
         columns.push(
-            DatetimeChunked::new_from_naive_datetime("datetime", &v, TimeUnit::Milliseconds)
+            DatetimeChunked::from_naive_datetime("datetime", v, TimeUnit::Milliseconds)
                 .into_series(),
         );
 
@@ -245,14 +246,15 @@ pub async fn insert_db_into_parquet(pool: &PgPool, outdir: &Path) -> Result<(), 
 
         let filename = format_sstr!("intrusion_log_{year:04}_{month:02}.parquet");
         let file = outdir.join(&filename);
-        let df = if file.exists() {
+        let mut df = if file.exists() {
             let df = ParquetReader::new(File::open(&file)?).finish()?;
             println!("{:?}", df.shape());
-            df.vstack(&new_df)?.drop_duplicates(true, None)?
+            df.vstack(&new_df)?
+                .distinct(None, DistinctKeepStrategy::First)?
         } else {
             new_df
         };
-        ParquetWriter::new(File::create(&file)?).finish(&df)?;
+        ParquetWriter::new(File::create(&file)?).finish(&mut df)?;
         println!("wrote {} {:?}", filename, df.shape());
     }
     Ok(())
@@ -281,8 +283,8 @@ pub fn read_parquet_files(
         vec![input.to_path_buf()]
     };
     let country: Vec<&str> = Vec::new();
-    let country = Utf8Chunked::new_from_slice("country", &country).into_series();
-    let country_count = UInt32Chunked::new_from_slice("country_count", &[]).into_series();
+    let country = Utf8Chunked::from_slice("country", &country).into_series();
+    let country_count = UInt32Chunked::from_slice("country_count", &[]).into_series();
     let mut df = DataFrame::new(vec![country, country_count])?;
     for input_file in input_files {
         let new_df = get_country_count(&input_file, service, server, ndays)?;
@@ -290,7 +292,7 @@ pub fn read_parquet_files(
     }
     let mut df = df.groupby(["country"])?.sum()?;
     df.rename("country_count_sum", "count")?;
-    df.sort_in_place("count", true)?;
+    df.sort_in_place(&["count"], true)?;
     let country_iter = df.column("country")?.utf8()?.into_iter();
     let count_iter = df.column("count")?.u32()?.into_iter();
     let code_count: Vec<_> = country_iter
@@ -322,7 +324,7 @@ fn get_country_count(
             .into_iter()
             .map(|x| x == Some(service.to_str()))
             .collect();
-        let mask = BooleanChunked::new_from_slice("service_mask", &mask);
+        let mask = BooleanChunked::from_slice("service_mask", &mask);
         df = df.filter(&mask)?;
     }
     if let Some(server) = server {
@@ -332,20 +334,20 @@ fn get_country_count(
             .into_iter()
             .map(|x| x == Some(server.to_str()))
             .collect();
-        let mask = BooleanChunked::new_from_slice("server_mask", &mask);
+        let mask = BooleanChunked::from_slice("server_mask", &mask);
         df = df.filter(&mask)?;
     }
     if let Some(ndays) = ndays {
-        let begin_timestamp = naive_datetime_to_datetime_ms(
-            &(Utc::now() - Duration::days(i64::from(ndays))).naive_utc(),
-        );
+        let begin_timestamp = (Utc::now() - Duration::days(i64::from(ndays)))
+            .naive_utc()
+            .timestamp_millis();
         let mask: Vec<_> = df
             .column("datetime")?
             .datetime()?
             .into_iter()
             .map(|x| x.map(|d| d > begin_timestamp))
             .collect();
-        let mask = BooleanChunked::new_from_opt_slice("datetime_mask", &mask);
+        let mask = BooleanChunked::from_slice_options("datetime_mask", &mask);
         df = df.filter(&mask)?;
     }
     let df = df.groupby(["country"])?.select(["country"]).count()?;
