@@ -5,7 +5,7 @@ use postgres_query::{client::GenericClient, query, query_dyn, FromSqlRow, Parame
 use rweb::Schema;
 use serde::{Deserialize, Serialize};
 use stack_string::{format_sstr, StackString};
-use std::{net::ToSocketAddrs};
+use std::net::ToSocketAddrs;
 
 use crate::{
     pgpool::{PgPool, PgTransaction},
