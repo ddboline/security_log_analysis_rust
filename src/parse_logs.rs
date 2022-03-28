@@ -9,7 +9,6 @@ use smallvec::SmallVec;
 use stack_string::{format_sstr, StackString};
 use std::{
     fmt,
-    fmt::Write,
     fs::File,
     io::{BufRead, BufReader, Read},
     process::Stdio,

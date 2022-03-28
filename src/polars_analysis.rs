@@ -9,7 +9,6 @@ use polars::{
 use postgres_query::{query, FromSqlRow};
 use stack_string::{format_sstr, StackString};
 use std::{
-    fmt::Write,
     fs::File,
     io::{BufRead, BufReader, Cursor},
     path::Path,
