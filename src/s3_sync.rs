@@ -1,5 +1,4 @@
 use anyhow::Error;
-use chrono::DateTime;
 use futures::{
     future::{join_all, try_join_all},
     stream::{StreamExt, TryStreamExt},
@@ -23,6 +22,7 @@ use std::{
     time::SystemTime,
 };
 use sts_profile_auth::get_client_sts;
+use time::{format_description::well_known::Rfc3339, OffsetDateTime};
 
 use crate::{exponential_retry, get_md5sum};
 
@@ -75,12 +75,12 @@ fn process_s3_item(mut item: S3Object) -> Option<KeyItem> {
     item.key.take().and_then(|key| {
         item.e_tag.take().and_then(|etag| {
             item.last_modified.as_ref().and_then(|last_mod| {
-                DateTime::parse_from_rfc3339(last_mod)
+                OffsetDateTime::parse(last_mod, &Rfc3339)
                     .ok()
                     .map(|lm| KeyItem {
                         key: key.into(),
                         etag: etag.trim_matches('"').into(),
-                        timestamp: lm.timestamp(),
+                        timestamp: lm.unix_timestamp(),
                         size: item.size.unwrap_or(0) as u64,
                     })
             })

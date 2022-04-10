@@ -1,15 +1,15 @@
 use anyhow::Error;
-use chrono::{DateTime, Utc};
 use derive_more::Into;
 use postgres_query::{client::GenericClient, query, query_dyn, FromSqlRow, Parameter};
 use rweb::Schema;
 use serde::{Deserialize, Serialize};
 use stack_string::{format_sstr, StackString};
 use std::net::ToSocketAddrs;
+use time::OffsetDateTime;
 
 use crate::{
     pgpool::{PgPool, PgTransaction},
-    Host, Service,
+    DateTimeType, Host, Service,
 };
 
 pub const INTRUSION_LOG_AVRO_SCHEMA: &str = r#"
@@ -48,7 +48,7 @@ pub struct HostCountry {
     pub host: StackString,
     pub code: StackString,
     pub ipaddr: Option<StackString>,
-    pub created_at: DateTime<Utc>,
+    pub created_at: DateTimeType,
 }
 
 impl HostCountry {
@@ -68,7 +68,7 @@ impl HostCountry {
             host: host.into(),
             code: code.into(),
             ipaddr,
-            created_at: Utc::now(),
+            created_at: OffsetDateTime::now_utc().into(),
         })
     }
 
@@ -178,7 +178,7 @@ pub struct IntrusionLog {
     pub id: i32,
     pub service: StackString,
     pub server: StackString,
-    pub datetime: DateTime<Utc>,
+    pub datetime: DateTimeType,
     pub host: StackString,
     pub username: Option<StackString>,
 }
@@ -186,7 +186,7 @@ pub struct IntrusionLog {
 impl IntrusionLog {
     async fn _get_by_datetime_service_server<C>(
         conn: &C,
-        datetime: DateTime<Utc>,
+        datetime: OffsetDateTime,
         service: &str,
         server: &str,
     ) -> Result<Vec<Self>, Error>
@@ -213,7 +213,7 @@ impl IntrusionLog {
         pool: &PgPool,
         service: Service,
         server: Host,
-    ) -> Result<Option<DateTime<Utc>>, Error> {
+    ) -> Result<Option<OffsetDateTime>, Error> {
         let conn = pool.get().await?;
         Self::_get_max_datetime(&conn, service, server)
             .await
@@ -224,12 +224,12 @@ impl IntrusionLog {
         conn: &C,
         service: Service,
         server: Host,
-    ) -> Result<Option<DateTime<Utc>>, Error>
+    ) -> Result<Option<OffsetDateTime>, Error>
     where
         C: GenericClient + Sync,
     {
         #[derive(FromSqlRow, Into)]
-        struct Wrap(DateTime<Utc>);
+        struct Wrap(OffsetDateTime);
 
         let service = service.to_str();
         let server = server.to_str();
@@ -251,12 +251,12 @@ impl IntrusionLog {
         conn: &C,
         service: Service,
         server: Host,
-    ) -> Result<Option<DateTime<Utc>>, Error>
+    ) -> Result<Option<OffsetDateTime>, Error>
     where
         C: GenericClient + Sync,
     {
         #[derive(FromSqlRow, Into)]
-        struct Wrap(DateTime<Utc>);
+        struct Wrap(OffsetDateTime);
 
         let service = service.to_str();
         let server = server.to_str();
@@ -280,8 +280,8 @@ impl IntrusionLog {
         pool: &PgPool,
         service: Option<Service>,
         server: Option<Host>,
-        min_datetime: Option<DateTime<Utc>>,
-        max_datetime: Option<DateTime<Utc>>,
+        min_datetime: Option<OffsetDateTime>,
+        max_datetime: Option<OffsetDateTime>,
         limit: Option<usize>,
         offset: Option<usize>,
     ) -> Result<Vec<Self>, Error> {
@@ -304,8 +304,8 @@ impl IntrusionLog {
         conn: &C,
         service: Option<Service>,
         server: Option<Host>,
-        min_datetime: Option<DateTime<Utc>>,
-        max_datetime: Option<DateTime<Utc>>,
+        min_datetime: Option<OffsetDateTime>,
+        max_datetime: Option<OffsetDateTime>,
         limit: Option<usize>,
         offset: Option<usize>,
     ) -> Result<Vec<Self>, Error>
@@ -416,7 +416,7 @@ impl AuthorizedUsers {
 
 /// # Errors
 /// Return error if db query fails
-pub async fn get_max_datetime(pool: &PgPool, server: Host) -> Result<DateTime<Utc>, Error> {
+pub async fn get_max_datetime(pool: &PgPool, server: Host) -> Result<OffsetDateTime, Error> {
     let result = if let Some(dt) = IntrusionLog::get_max_datetime(pool, Service::Ssh, server)
         .await?
         .as_ref()
@@ -431,7 +431,7 @@ pub async fn get_max_datetime(pool: &PgPool, server: Host) -> Result<DateTime<Ut
             *dt
         }
     } else {
-        Utc::now()
+        OffsetDateTime::now_utc()
     };
     Ok(result)
 }
