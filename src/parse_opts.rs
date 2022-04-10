@@ -158,6 +158,7 @@ impl ParseOpts {
                 let config = Config::init_config()?;
                 let pool = PgPool::new(&config.database_url);
                 let template = include_str!("../templates/COUNTRY_TEMPLATE.html");
+                let mut written = 0;
                 for service in [Service::Ssh, Service::Apache, Service::Nginx] {
                     for server in [Host::Home, Host::Cloud] {
                         let results = get_country_count_recent(&pool, service, server, 30)
@@ -176,10 +177,11 @@ impl ParseOpts {
                             );
                             let outpath = export_dir.join(&outfname);
                             let mut output = File::create(&outpath).await?;
-                            output.write(results.as_bytes()).await?;
+                            written += output.write(results.as_bytes()).await?;
                         }
                     }
                 }
+                debug!("{written} bytes written");
             }
             ParseOpts::RunMigrations => {
                 let config = Config::init_config()?;

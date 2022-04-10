@@ -1,5 +1,4 @@
 use anyhow::{format_err, Error};
-use chrono::{DateTime, Datelike, FixedOffset, Local, NaiveDateTime, TimeZone, Utc};
 use flate2::read::GzDecoder;
 use glob::glob;
 use itertools::Itertools;
@@ -13,6 +12,8 @@ use std::{
     io::{BufRead, BufReader, Read},
     process::Stdio,
 };
+use time::{macros::format_description, Duration, OffsetDateTime, PrimitiveDateTime};
+use time_tz::{timezones::db::UTC, OffsetDateTimeExt, PrimitiveDateTimeExt};
 use tokio::{
     io::{self, AsyncBufReadExt, AsyncRead},
     process::Command,
@@ -21,14 +22,14 @@ use tokio::{
 
 use crate::{
     config::Config, host_country_metadata::HostCountryMetadata, models::IntrusionLog,
-    pgpool::PgPool, Host, Service,
+    pgpool::PgPool, DateTimeType, Host, Service,
 };
 
 #[derive(Debug, PartialEq, Eq, Hash)]
 pub struct LogLineSSH {
     pub host: StackString,
     pub user: Option<StackString>,
-    pub timestamp: DateTime<Utc>,
+    pub timestamp: DateTimeType,
 }
 
 /// # Errors
@@ -65,6 +66,7 @@ pub fn parse_log_message(line: &str) -> Result<Option<(&str, &str)>, Error> {
 /// # Errors
 /// Return error if db query fails
 pub fn parse_log_line_ssh(year: i32, line: &str) -> Result<Option<LogLineSSH>, Error> {
+    let local = time_tz::system::get_timezone().unwrap_or(UTC);
     if !line.contains("sshd") || !line.contains("Invalid user") {
         return Ok(None);
     }
@@ -73,12 +75,18 @@ pub fn parse_log_line_ssh(year: i32, line: &str) -> Result<Option<LogLineSSH>, E
         return Ok(None);
     }
     let timestr = format_sstr!("{} {} {} {}", tokens[0], tokens[1], year, tokens[2]);
-    let timestamp = Local.datetime_from_str(&timestr, "%B %e %Y %H:%M:%S")?;
+    let timestamp = PrimitiveDateTime::parse(
+        &timestr,
+        format_description!(
+            "[month repr:short] [day padding:space] [year] [hour]:[minute]:[second]"
+        ),
+    )?
+    .assume_timezone(local);
     if let Some((host, user)) = parse_log_message(line)? {
         let result = LogLineSSH {
             host: host.into(),
             user: Some(user.into()),
-            timestamp: timestamp.with_timezone(&Utc),
+            timestamp: timestamp.to_timezone(UTC).into(),
         };
         Ok(Some(result))
     } else {
@@ -125,7 +133,7 @@ where
     for entry in glob(&format_sstr!("{log_prefix}*"))? {
         let fname = entry?;
         let metadata = fname.metadata()?;
-        let modified: DateTime<Utc> = metadata.modified()?.into();
+        let modified: OffsetDateTime = metadata.modified()?.into();
         let year = modified.year();
         let ext = match fname.extension() {
             Some(x) => x.to_string_lossy(),
@@ -141,7 +149,7 @@ where
         }
     }
 
-    let max_datetime: Option<DateTime<Utc>> = match hc.pool.as_ref() {
+    let max_datetime: Option<OffsetDateTime> = match hc.pool.as_ref() {
         Some(pool) => IntrusionLog::get_max_datetime(pool, service, server).await?,
         None => None,
     };
@@ -150,7 +158,7 @@ where
         .into_iter()
         .filter_map(|log_line| {
             let cond = match max_datetime.as_ref() {
-                Some(maxdt) => log_line.timestamp > *maxdt,
+                Some(maxdt) => log_line.timestamp > (*maxdt).into(),
                 None => true,
             };
             if cond {
@@ -186,14 +194,18 @@ pub fn parse_log_line_apache(_: i32, line: &str) -> Result<Option<LogLineSSH>, E
     if !host.contains('.') {
         return Ok(None);
     }
-    let offset: i32 = tokens[4].replace(']', "").parse()?;
-    let offset = FixedOffset::east((offset / 100) * 60 * 60 + (offset % 100) * 60);
     let timestr = tokens[3..5].join("").replace('[', "").replace(']', "");
-    let timestamp = offset.datetime_from_str(&timestr, "%e/%B/%Y:%H:%M:%S%z")?;
+    let timestamp = OffsetDateTime::parse(
+        &timestr,
+        format_description!(
+            "[day padding:none]/[month repr:short]/[year]:[hour]:[minute]:[second][offset_hour \
+             sign:mandatory][offset_minute]"
+        ),
+    )?;
     let result = LogLineSSH {
         host: host.into(),
         user: None,
-        timestamp: timestamp.with_timezone(&Utc),
+        timestamp: timestamp.to_timezone(UTC).into(),
     };
     Ok(Some(result))
 }
@@ -204,7 +216,7 @@ pub async fn parse_systemd_logs_sshd_all(
     hc: &HostCountryMetadata,
     server: Host,
 ) -> Result<Vec<IntrusionLog>, Error> {
-    let max_datetime: Option<DateTime<Utc>> = match hc.pool.as_ref() {
+    let max_datetime: Option<OffsetDateTime> = match hc.pool.as_ref() {
         Some(pool) => {
             let pool = pool.clone();
             IntrusionLog::get_max_datetime(&pool, Service::Ssh, server).await?
@@ -216,7 +228,7 @@ pub async fn parse_systemd_logs_sshd_all(
         .await?
         .into_iter()
         .filter(|log_line| match max_datetime.as_ref() {
-            Some(maxdt) => log_line.datetime > *maxdt,
+            Some(maxdt) => log_line.datetime > (*maxdt).into(),
             None => true,
         })
         .collect();
@@ -350,11 +362,10 @@ struct ServiceLogLine<'a> {
 impl ServiceLogLine<'_> {
     fn parse_sshd(self) -> Result<LogLineSSH, Error> {
         let timestamp: i64 = self.timestamp.parse()?;
-        let timestamp = NaiveDateTime::from_timestamp(
-            (timestamp / 1_000_000) as i64,
-            (timestamp % 1_000_000 * 1000) as u32,
-        );
-        let timestamp = DateTime::from_utc(timestamp, Utc);
+        let nanoseconds = (timestamp % 1_000_000 * 1000) as i64;
+        let timestamp = (OffsetDateTime::from_unix_timestamp((timestamp / 1_000_000) as i64)?
+            + Duration::nanoseconds(nanoseconds))
+        .into();
         let (host, user) = parse_log_message(&self.message)?
             .ok_or_else(|| format_err!("Failed to parse {}", self.message))?;
 
@@ -367,11 +378,10 @@ impl ServiceLogLine<'_> {
 
     fn parse_nginx(self) -> Result<Option<LogLineSSH>, Error> {
         let timestamp: i64 = self.timestamp.parse()?;
-        let timestamp = NaiveDateTime::from_timestamp(
-            (timestamp / 1_000_000) as i64,
-            (timestamp % 1_000_000 * 1000) as u32,
-        );
-        let timestamp = DateTime::from_utc(timestamp, Utc);
+        let nanoseconds = (timestamp % 1_000_000 * 1000) as i64;
+        let timestamp = (OffsetDateTime::from_unix_timestamp((timestamp / 1_000_000) as i64)?
+            + Duration::nanoseconds(nanoseconds))
+        .into();
         let tokens: SmallVec<[&str; 3]> = self.message.split_whitespace().take(3).collect();
         if tokens.len() < 3 {
             return Ok(None);
@@ -391,7 +401,7 @@ impl ServiceLogLine<'_> {
 
 #[derive(Debug, Clone)]
 pub struct ServiceLogEntry {
-    timestamp: DateTime<Utc>,
+    timestamp: DateTimeType,
     message: StackString,
     hostname: StackString,
 }
@@ -405,9 +415,9 @@ impl fmt::Display for ServiceLogEntry {
 #[cfg(test)]
 mod tests {
     use anyhow::Error;
-    use chrono::{Datelike, Timelike, Utc};
     use log::debug;
     use std::fs::File;
+    use time::OffsetDateTime;
 
     use crate::{
         config::Config,
@@ -472,7 +482,7 @@ mod tests {
     fn test_parse_log_file_ssh() {
         let fname = "tests/data/test_auth.log";
         let infile = File::open(fname).unwrap();
-        let year = Utc::now().year();
+        let year = OffsetDateTime::now_utc().year();
         let results = parse_log_file(year, infile, &parse_log_line_ssh).unwrap();
         println!("{}", results.len());
         assert!(results.len() == 20);

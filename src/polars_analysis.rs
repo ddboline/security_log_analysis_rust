@@ -1,5 +1,5 @@
 use anyhow::{format_err, Error};
-use chrono::{DateTime, Datelike, Duration, Utc};
+use chrono::{DateTime, Datelike, Duration, NaiveDateTime, Utc};
 use flate2::read::GzDecoder;
 use log::debug;
 use polars::{
@@ -13,6 +13,7 @@ use std::{
     io::{BufRead, BufReader, Cursor},
     path::Path,
 };
+use time::UtcOffset;
 
 use polars::{
     chunked_array::builder::NewChunkedArray,
@@ -26,7 +27,7 @@ use polars::{
     series::IntoSeries,
 };
 
-use crate::{pgpool::PgPool, CountryCount, Host, Service};
+use crate::{pgpool::PgPool, CountryCount, DateTimeType, Host, Service};
 
 /// # Errors
 /// Return error if db query fails
@@ -158,7 +159,7 @@ pub async fn insert_db_into_parquet(pool: &PgPool, outdir: &Path) -> Result<(), 
     struct IntrusionLogRow {
         service: StackString,
         server: StackString,
-        datetime: DateTime<Utc>,
+        datetime: DateTimeType,
         host: StackString,
         username: Option<StackString>,
         code: Option<StackString>,
@@ -204,7 +205,13 @@ pub async fn insert_db_into_parquet(pool: &PgPool, outdir: &Path) -> Result<(), 
         columns.push(Utf8Chunked::from_slice_options("code", &v).into_series());
         let v: Vec<_> = rows.iter().map(|x| x.country.as_ref()).collect();
         columns.push(Utf8Chunked::from_slice_options("country", &v).into_series());
-        let v: Vec<_> = rows.iter().map(|x| x.datetime.naive_utc()).collect();
+        let v: Vec<_> = rows
+            .iter()
+            .map(|x| {
+                let d = x.datetime.to_offset(UtcOffset::UTC);
+                NaiveDateTime::from_timestamp(d.unix_timestamp(), d.nanosecond())
+            })
+            .collect();
         columns.push(
             DatetimeChunked::from_naive_datetime("datetime", v, TimeUnit::Milliseconds)
                 .into_series(),

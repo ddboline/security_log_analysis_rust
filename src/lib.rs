@@ -20,16 +20,23 @@ pub mod reports;
 pub mod s3_sync;
 
 use anyhow::{format_err, Error};
-use chrono::{DateTime, Utc};
+use derive_more::{Deref, From, Into};
 use postgres_query::FromSqlRow;
+use postgres_types::{FromSql, ToSql};
 use rand::{
     distributions::{Distribution, Uniform},
     thread_rng,
 };
-use rweb::Schema;
+use rweb::{
+    openapi::{ComponentDescriptor, ComponentOrInlineSchema, Entity, Schema, Type},
+    Schema,
+};
 use serde::{Deserialize, Serialize};
 use stack_string::StackString;
-use std::{convert::TryFrom, fmt, future::Future, path::Path, str::FromStr, time::Duration};
+use std::{
+    borrow::Cow, convert::TryFrom, fmt, future::Future, path::Path, str::FromStr, time::Duration,
+};
+use time::{format_description::well_known::Rfc3339, OffsetDateTime, UtcOffset};
 use tokio::{process::Command, time::sleep};
 
 /// # Errors
@@ -221,16 +228,54 @@ impl TryFrom<StackString> for Service {
     }
 }
 
-#[derive(Debug)]
-pub struct DateTimeInput(pub DateTime<Utc>);
+#[derive(
+    Into,
+    From,
+    Serialize,
+    Deserialize,
+    Deref,
+    Clone,
+    Copy,
+    Debug,
+    PartialEq,
+    Eq,
+    Hash,
+    ToSql,
+    FromSql,
+    PartialOrd,
+    Ord,
+)]
+pub struct DateTimeType(OffsetDateTime);
 
-impl FromStr for DateTimeInput {
+impl FromStr for DateTimeType {
     type Err = Error;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        DateTime::parse_from_rfc3339(s)
-            .map(|d| d.with_timezone(&Utc))
-            .map(Self)
+        OffsetDateTime::parse(s, &Rfc3339)
+            .map(|d| Self(d.to_offset(UtcOffset::UTC)))
             .map_err(Into::into)
+    }
+}
+
+impl Entity for DateTimeType {
+    fn type_name() -> Cow<'static, str> {
+        Cow::Borrowed("date-time")
+    }
+
+    fn describe(_: &mut ComponentDescriptor) -> ComponentOrInlineSchema {
+        ComponentOrInlineSchema::Inline(Schema {
+            schema_type: Some(Type::String),
+            format: Self::type_name(),
+            ..Schema::default()
+        })
+    }
+}
+
+impl fmt::Display for DateTimeType {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        if let Ok(s) = self.0.format(&Rfc3339) {
+            write!(f, "{s}")?;
+        }
+        Ok(())
     }
 }
