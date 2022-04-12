@@ -9,7 +9,6 @@
 pub mod config;
 pub mod errors;
 pub mod host_country_metadata;
-pub mod iso_8601_datetime;
 pub mod logged_user;
 pub mod models;
 pub mod parse_logs;
@@ -20,9 +19,10 @@ pub mod reports;
 pub mod s3_sync;
 
 use anyhow::{format_err, Error};
+use bytes::BytesMut;
 use derive_more::{Deref, From, Into};
 use postgres_query::FromSqlRow;
-use postgres_types::{FromSql, ToSql};
+use postgres_types::{FromSql, IsNull, ToSql};
 use rand::{
     distributions::{Distribution, Uniform},
     thread_rng,
@@ -240,12 +240,10 @@ impl TryFrom<StackString> for Service {
     PartialEq,
     Eq,
     Hash,
-    ToSql,
-    FromSql,
     PartialOrd,
     Ord,
 )]
-pub struct DateTimeType(OffsetDateTime);
+pub struct DateTimeType(#[serde(with = "iso8601")] OffsetDateTime);
 
 impl FromStr for DateTimeType {
     type Err = Error;
@@ -277,5 +275,94 @@ impl fmt::Display for DateTimeType {
             write!(f, "{s}")?;
         }
         Ok(())
+    }
+}
+
+mod iso8601 {
+    use anyhow::Error;
+    use serde::{de, Deserialize, Deserializer, Serializer};
+    use stack_string::StackString;
+    use std::borrow::Cow;
+    use time::{
+        format_description::well_known::Rfc3339, macros::format_description, OffsetDateTime,
+        UtcOffset,
+    };
+
+    #[must_use]
+    pub fn convert_datetime_to_str(datetime: OffsetDateTime) -> StackString {
+        datetime
+            .to_offset(UtcOffset::UTC)
+            .format(format_description!(
+                "[year]-[month]-[day]T[hour]:[minute]:[second]Z"
+            ))
+            .unwrap_or_else(|_| "".into())
+            .into()
+    }
+
+    /// # Errors
+    /// Return error if `parse_from_rfc3339` fails
+    pub fn convert_str_to_datetime(s: &str) -> Result<OffsetDateTime, Error> {
+        let s: Cow<str> = if s.contains('Z') {
+            s.replace('Z', "+00:00").into()
+        } else {
+            s.into()
+        };
+        OffsetDateTime::parse(&s, &Rfc3339)
+            .map(|x| x.to_offset(UtcOffset::UTC))
+            .map_err(Into::into)
+    }
+
+    /// # Errors
+    /// Returns error if serialization fails
+    pub fn serialize<S>(date: &OffsetDateTime, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        serializer.serialize_str(&convert_datetime_to_str(*date))
+    }
+
+    /// # Errors
+    /// Returns error if deserialization fails
+    pub fn deserialize<'de, D>(deserializer: D) -> Result<OffsetDateTime, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let s = String::deserialize(deserializer)?;
+        convert_str_to_datetime(&s).map_err(de::Error::custom)
+    }
+}
+
+impl<'a> FromSql<'a> for DateTimeType {
+    fn from_sql(
+        type_: &postgres_types::Type,
+        raw: &[u8],
+    ) -> Result<DateTimeType, Box<dyn std::error::Error + Sync + Send>> {
+        OffsetDateTime::from_sql(type_, raw).map(Into::into)
+    }
+
+    fn accepts(ty: &postgres_types::Type) -> bool {
+        <OffsetDateTime as FromSql>::accepts(ty)
+    }
+}
+
+impl ToSql for DateTimeType {
+    fn to_sql(
+        &self,
+        type_: &postgres_types::Type,
+        w: &mut BytesMut,
+    ) -> Result<IsNull, Box<dyn std::error::Error + Sync + Send>> {
+        OffsetDateTime::to_sql(&self.0, type_, w)
+    }
+
+    fn accepts(ty: &postgres_types::Type) -> bool {
+        <OffsetDateTime as ToSql>::accepts(ty)
+    }
+
+    fn to_sql_checked(
+        &self,
+        ty: &postgres_types::Type,
+        out: &mut BytesMut,
+    ) -> Result<IsNull, Box<dyn std::error::Error + Sync + Send>> {
+        OffsetDateTime::to_sql_checked(&self.0, ty, out)
     }
 }
