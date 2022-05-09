@@ -57,7 +57,7 @@ stack-string = { version="0.7", features=["postgres_types", "rweb-openapi"] }
 chrono = "0.4"
 polars = {version="0.21", features=["temporal", "parquet"]}
 authorized_users = { git = "https://github.com/ddboline/auth_server_rust.git", tag="0.8.3"}
-rweb-helper = { git = "https://github.com/ddboline/rweb_helper.git", tag="0.4.12" }
+rweb-helper = { git = "https://github.com/ddboline/rweb_helper.git", tag="0.4.13" }
 uuid = "1.0"
 cached = "0.34"
 
