@@ -4,7 +4,7 @@ use flate2::read::GzDecoder;
 use log::debug;
 use polars::{
     datatypes::TimeUnit,
-    prelude::{DistinctKeepStrategy, Utf8Chunked},
+    prelude::{UniqueKeepStrategy, Utf8Chunked},
 };
 use postgres_query::{query, FromSqlRow};
 use stack_string::{format_sstr, StackString};
@@ -134,7 +134,7 @@ fn write_to_parquet(buf: &[u8], outdir: &Path) -> Result<(), Error> {
                 ParquetReader::new(File::open(&file)?)
                     .finish()?
                     .vstack(&new_csv)?
-                    .distinct(None, DistinctKeepStrategy::First)?
+                    .unique(None, UniqueKeepStrategy::First)?
                 // .drop_duplicates(true, None)?
             } else {
                 new_csv
@@ -226,7 +226,7 @@ pub async fn insert_db_into_parquet(pool: &PgPool, outdir: &Path) -> Result<(), 
             let df = ParquetReader::new(File::open(&file)?).finish()?;
             println!("{:?}", df.shape());
             df.vstack(&new_df)?
-                .distinct(None, DistinctKeepStrategy::First)?
+                .unique(None, UniqueKeepStrategy::First)?
         } else {
             new_df
         };

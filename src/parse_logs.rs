@@ -81,7 +81,8 @@ pub fn parse_log_line_ssh(year: i32, line: &str) -> Result<Option<LogLineSSH>, E
             "[month repr:short] [day padding:space] [year] [hour]:[minute]:[second]"
         ),
     )?
-    .assume_timezone(local).unwrap();
+    .assume_timezone(local)
+    .unwrap();
     if let Some((host, user)) = parse_log_message(line)? {
         let result = LogLineSSH {
             host: host.into(),
