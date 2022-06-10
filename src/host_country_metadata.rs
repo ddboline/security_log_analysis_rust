@@ -1,13 +1,12 @@
 use anyhow::{format_err, Error};
 use log::debug;
-use parking_lot::RwLock;
 use postgres_query::query;
 use reqwest::{Client, Url};
 use serde::{Deserialize, Serialize};
 use smallvec::SmallVec;
 use stack_string::StackString;
 use std::{collections::HashMap, net::ToSocketAddrs, sync::Arc};
-use tokio::process::Command;
+use tokio::{process::Command, sync::RwLock};
 
 use crate::{
     exponential_retry,
@@ -67,12 +66,12 @@ impl HostCountryMetadata {
     /// # Errors
     /// Return error db queries fail
     pub async fn insert_host_code(&self, host: &str, code: &str) -> Result<HostCountry, Error> {
-        let ccmap = self.country_code_map.read();
+        let ccmap = self.country_code_map.read().await;
         if (*ccmap).contains_key(code) {
             let host_country = HostCountry::from_host_code(host, code)?;
-            let host_exists = { (*self.host_country_map.read()).contains_key(host) };
+            let host_exists = { (*self.host_country_map.read().await).contains_key(host) };
             if !host_exists {
-                let mut lock = self.host_country_map.write();
+                let mut lock = self.host_country_map.write().await;
                 if !(*lock).contains_key(host) {
                     if let Some(pool) = self.pool.as_ref() {
                         host_country.insert_host_country(pool).await?;
@@ -88,7 +87,7 @@ impl HostCountryMetadata {
     /// # Errors
     /// Return error db queries fail
     pub async fn get_country_info(&self, host: &str) -> Result<HostCountry, Error> {
-        if let Some(entry) = (*self.host_country_map.read()).get(host) {
+        if let Some(entry) = (*self.host_country_map.read().await).get(host) {
             return Ok(entry.clone());
         }
         let whois_code = self.get_whois_country_info(host).await?;

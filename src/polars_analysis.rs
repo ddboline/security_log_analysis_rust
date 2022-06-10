@@ -1,26 +1,19 @@
 use anyhow::{format_err, Error};
-use chrono::{DateTime, Datelike, Duration, NaiveDateTime, Utc};
-use flate2::read::GzDecoder;
-use log::debug;
+use chrono::{Duration, NaiveDateTime, Utc};
 use polars::{
     datatypes::TimeUnit,
     prelude::{UniqueKeepStrategy, Utf8Chunked},
 };
 use postgres_query::{query, FromSqlRow};
 use stack_string::{format_sstr, StackString};
-use std::{
-    fs::File,
-    io::{BufRead, BufReader, Cursor},
-    path::Path,
-};
+use std::{fs::File, path::Path};
 use time::UtcOffset;
 
 use polars::{
     chunked_array::builder::NewChunkedArray,
-    datatypes::{AnyValue, BooleanChunked, DataType, DatetimeChunked, Int32Chunked, UInt32Chunked},
+    datatypes::{BooleanChunked, DatetimeChunked, UInt32Chunked},
     frame::DataFrame,
     io::{
-        csv::{CsvReader, NullValues},
         parquet::{ParquetReader, ParquetWriter},
         SerReader,
     },
@@ -28,123 +21,6 @@ use polars::{
 };
 
 use crate::{pgpool::PgPool, CountryCount, DateTimeType, Host, Service};
-
-/// # Errors
-/// Return error if db query fails
-pub fn read_tsv_file(input: &Path, outdir: &Path) -> Result<(), Error> {
-    let gz = GzDecoder::new(File::open(input)?);
-    let mut buf = Vec::new();
-    let mut gzbuf = BufReader::new(gz);
-    let mut line = Vec::new();
-    let mut nlines = 0;
-    while gzbuf.read_until(b'\n', &mut line)? > 0 {
-        buf.extend_from_slice(&line);
-        line.clear();
-        nlines += 1;
-        if nlines >= 1_000_000 {
-            write_to_parquet(&buf, outdir)?;
-            buf.clear();
-            nlines = 0;
-        }
-    }
-    if !buf.is_empty() {
-        write_to_parquet(&buf, outdir)?;
-    }
-    Ok(())
-}
-
-fn write_to_parquet(buf: &[u8], outdir: &Path) -> Result<(), Error> {
-    let cursor = Cursor::new(&buf);
-    let mut csv = CsvReader::new(cursor)
-        .with_null_values(Some(NullValues::AllColumns("\\N".into())))
-        .with_delimiter(b'\t')
-        .has_header(false)
-        .with_parse_dates(true)
-        .with_dtypes_slice(Some(&[
-            DataType::Int64,
-            DataType::Utf8,
-            DataType::Utf8,
-            DataType::Utf8,
-            DataType::Utf8,
-            DataType::Utf8,
-            DataType::Utf8,
-        ]))
-        .finish()?;
-    csv.set_column_names(&[
-        "id",
-        "service",
-        "server",
-        "datetime_str",
-        "host",
-        "username",
-        "code",
-        "country",
-    ])?;
-    let s = csv.get_columns().get(3).unwrap();
-    let v: Vec<_> = s
-        .utf8()?
-        .into_iter()
-        .map(|x| {
-            let x = x.unwrap();
-            let d = DateTime::parse_from_str(x, "%Y-%m-%d %H:%M:%S%.f%#z").unwrap();
-            d.naive_utc()
-        })
-        .collect();
-    let _drop = csv.drop_in_place("id")?;
-    let _drop = csv.drop_in_place("datetime_str")?;
-
-    let y: Vec<_> = v.iter().map(Datelike::year).collect();
-    let y = Int32Chunked::from_slice("year", &y).into_series();
-
-    let m: Vec<_> = v.iter().map(Datelike::month).collect();
-    let m = UInt32Chunked::from_slice("month", &m).into_series();
-
-    let dt =
-        DatetimeChunked::from_naive_datetime("datetime", v, TimeUnit::Milliseconds).into_series();
-    csv.with_column(dt)?;
-    csv.with_column(y)?;
-    csv.with_column(m)?;
-
-    let year_month_group = csv.groupby(["year", "month"])?;
-    let ymg = year_month_group.groups()?;
-    for idx in 0..ymg.shape().0 {
-        if let Some(row) = ymg.get(idx) {
-            let year = match row.get(0) {
-                Some(AnyValue::Int32(y)) => y,
-                _ => panic!("Unexpected"),
-            };
-            let month = match row.get(1) {
-                Some(AnyValue::UInt32(m)) => m,
-                _ => panic!("Unexpected"),
-            };
-            let indicies = year_month_group
-                .get_groups()
-                .idx_ref()
-                .all()
-                .get(idx)
-                .unwrap()
-                .iter()
-                .map(|i| *i as usize);
-            let mut new_csv = csv.take_iter(indicies)?;
-            let _drop = new_csv.drop_in_place("year")?;
-            let _drop = new_csv.drop_in_place("month")?;
-            let filename = format_sstr!("intrusion_log_{year:04}_{month:02}.parquet");
-            let file = outdir.join(&filename);
-            let mut df = if file.exists() {
-                ParquetReader::new(File::open(&file)?)
-                    .finish()?
-                    .vstack(&new_csv)?
-                    .unique(None, UniqueKeepStrategy::First)?
-                // .drop_duplicates(true, None)?
-            } else {
-                new_csv
-            };
-            ParquetWriter::new(File::create(&file)?).finish(&mut df)?;
-            debug!("wrote {} {:?}", filename, df.shape());
-        }
-    }
-    Ok(())
-}
 
 /// # Errors
 /// Return error if db query fails

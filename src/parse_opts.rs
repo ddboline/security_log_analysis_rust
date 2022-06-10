@@ -4,10 +4,7 @@ use log::debug;
 use refinery::embed_migrations;
 use smallvec::SmallVec;
 use stack_string::{format_sstr, StackString};
-use std::{
-    collections::HashSet,
-    path::{Path, PathBuf},
-};
+use std::{collections::HashSet, path::PathBuf};
 use stdout_channel::StdoutChannel;
 use structopt::StructOpt;
 use tokio::{
@@ -21,7 +18,7 @@ use crate::{
     models::{HostCountry, IntrusionLog},
     parse_logs::parse_systemd_logs_sshd_all,
     pgpool::PgPool,
-    polars_analysis::{insert_db_into_parquet, read_parquet_files, read_tsv_file},
+    polars_analysis::{insert_db_into_parquet, read_parquet_files},
     reports::get_country_count_recent,
     s3_sync::S3Sync,
     Host, Service,
@@ -49,13 +46,6 @@ pub enum ParseOpts {
     RunMigrations,
     /// Sync files with S3
     Sync {
-        #[structopt(short = "d", long = "directory")]
-        directory: Option<PathBuf>,
-    },
-    /// Extract/transform/load TSV DB Data File
-    Etl {
-        #[structopt(short = "i", long = "input")]
-        input: Option<PathBuf>,
         #[structopt(short = "d", long = "directory")]
         directory: Option<PathBuf>,
     },
@@ -95,11 +85,6 @@ impl ParseOpts {
     /// # Errors
     /// Return error if db query fails
     pub async fn process_args() -> Result<(), Error> {
-        let default_input = Path::new(
-            "/media/seagate4000/dilepton_tower_backup/intrusion_log_backup_20211216.sql.gz",
-        )
-        .to_path_buf();
-
         let opts = ParseOpts::from_args();
         let config = Config::init_config()?;
         let stdout = StdoutChannel::<StackString>::new();
@@ -188,11 +173,6 @@ impl ParseOpts {
                 let pool = PgPool::new(&config.database_url);
                 let mut client = pool.get().await?;
                 migrations::runner().run_async(&mut **client).await?;
-            }
-            ParseOpts::Etl { input, directory } => {
-                let input = input.unwrap_or(default_input);
-                let directory = directory.unwrap_or_else(|| config.cache_dir.clone());
-                read_tsv_file(&input, &directory)?;
             }
             ParseOpts::Db { directory } => {
                 let directory = directory.unwrap_or_else(|| config.cache_dir.clone());
