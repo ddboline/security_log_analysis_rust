@@ -345,7 +345,7 @@ async fn start_app() -> Result<(), AnyhowError> {
         .and_then(|s| s.parse().ok())
         .unwrap_or(4086);
 
-    let intrusion_attemps_path = intrusion_attempts(app.clone())
+    let intrusion_attempts_path = intrusion_attempts(app.clone())
         .or(intrusion_attempts_all(app.clone()))
         .or(intursion_log_get(app.clone()))
         .or(intrusion_log_post(app.clone()))
@@ -360,7 +360,7 @@ async fn start_app() -> Result<(), AnyhowError> {
         .allow_any_origin()
         .build();
 
-    let routes = intrusion_attemps_path.recover(error_response).with(cors);
+    let routes = intrusion_attempts_path.recover(error_response).with(cors);
     let addr: SocketAddr = format_sstr!("127.0.0.1:{port}").parse()?;
     rweb::serve(routes).bind(addr).await;
     Ok(())

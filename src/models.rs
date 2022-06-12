@@ -1,31 +1,18 @@
-use anyhow::Error;
+use anyhow::{format_err, Error};
+use bytes::BytesMut;
 use derive_more::Into;
 use postgres_query::{client::GenericClient, query, query_dyn, FromSqlRow, Parameter};
 use rweb::Schema;
 use serde::{Deserialize, Serialize};
 use stack_string::{format_sstr, StackString};
-use std::net::ToSocketAddrs;
+use std::{cmp::Ordering, fmt, net::ToSocketAddrs, str::FromStr};
 use time::OffsetDateTime;
+use tokio_postgres::types::{FromSql, IsNull, ToSql, Type};
 
 use crate::{
     pgpool::{PgPool, PgTransaction},
     DateTimeType, Host, Service,
 };
-
-pub const INTRUSION_LOG_AVRO_SCHEMA: &str = r#"
-    {
-        "namespace": "security_log_analysis.avro",
-        "type": "record",
-        "name": "IntrusionLog",
-        "fields": [
-            {"name": "service", "type": "string"},
-            {"name": "server", "type": "string"},
-            {"name": "datetime", "type": "string"},
-            {"name": "host", "type": "string"},
-            {"name": "username", "type": ["string", "null"]}
-        ]
-    }
-"#;
 
 #[derive(FromSqlRow, Clone, Debug)]
 pub struct CountryCode {
@@ -434,6 +421,277 @@ pub async fn get_max_datetime(pool: &PgPool, server: Host) -> Result<OffsetDateT
         OffsetDateTime::now_utc()
     };
     Ok(result)
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone, Eq, Copy, PartialEq)]
+pub enum LogLevel {
+    Debug,
+    Info,
+    Warning,
+    Error,
+}
+
+impl LogLevel {
+    #[inline]
+    fn ordering(self) -> u8 {
+        match self {
+            Self::Debug => 0,
+            Self::Info => 1,
+            Self::Warning => 2,
+            Self::Error => 3,
+        }
+    }
+
+    #[must_use]
+    pub fn to_str(self) -> &'static str {
+        match self {
+            Self::Debug => "debug",
+            Self::Info => "info",
+            Self::Warning => "warn",
+            Self::Error => "error",
+        }
+    }
+
+    #[must_use]
+    pub fn line_contains_level(line: &str, level: Option<Self>) -> Option<Self> {
+        let level = level.unwrap_or(Self::Debug).ordering();
+        if line.contains("err") || line.contains("ERR") {
+            return Some(Self::Error);
+        }
+        if level < 3 {
+            if line.contains("warn") || line.contains("WARN") {
+                return Some(Self::Warning);
+            }
+            if level < 2 {
+                if line.contains("info") || line.contains("INFO") {
+                    return Some(Self::Info);
+                }
+                if level < 1 && line.contains("debug") || line.contains("DEBUG") {
+                    return Some(Self::Debug);
+                }
+            }
+        }
+        None
+    }
+}
+
+impl fmt::Display for LogLevel {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{}", self.to_str(),)
+    }
+}
+
+impl Ord for LogLevel {
+    fn cmp(&self, other: &Self) -> Ordering {
+        self.ordering().cmp(&other.ordering())
+    }
+}
+
+impl PartialOrd for LogLevel {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl FromStr for LogLevel {
+    type Err = Error;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "debug" | "DEBUG" => Ok(Self::Debug),
+            "info" | "INFO" => Ok(Self::Info),
+            "warn" | "warning" | "WARN" | "WARNING" => Ok(Self::Warning),
+            "error" | "err" | "ERR" | "ERROR" => Ok(Self::Error),
+            _ => Err(format_err!("Not a valid log level")),
+        }
+    }
+}
+
+impl<'a> FromSql<'a> for LogLevel {
+    fn from_sql(
+        ty: &Type,
+        raw: &'a [u8],
+    ) -> Result<Self, Box<dyn std::error::Error + 'static + Send + Sync>> {
+        let s = String::from_sql(ty, raw)?.parse()?;
+        Ok(s)
+    }
+
+    fn accepts(ty: &Type) -> bool {
+        <String as FromSql>::accepts(ty)
+    }
+}
+
+impl ToSql for LogLevel {
+    fn to_sql(
+        &self,
+        ty: &Type,
+        out: &mut BytesMut,
+    ) -> Result<IsNull, Box<dyn std::error::Error + Sync + Send>>
+    where
+        Self: Sized,
+    {
+        self.to_str().to_sql(ty, out)
+    }
+
+    fn accepts(ty: &Type) -> bool
+    where
+        Self: Sized,
+    {
+        <String as ToSql>::accepts(ty)
+    }
+
+    fn to_sql_checked(
+        &self,
+        ty: &Type,
+        out: &mut BytesMut,
+    ) -> Result<IsNull, Box<dyn std::error::Error + Sync + Send>> {
+        self.to_str().to_sql_checked(ty, out)
+    }
+}
+
+#[derive(FromSqlRow, Clone, Debug, Serialize, Deserialize)]
+pub struct SystemdLogMessages {
+    pub id: i32,
+    pub log_level: LogLevel,
+    pub log_unit: Option<StackString>,
+    pub log_message: StackString,
+    pub log_timestamp: DateTimeType,
+}
+
+impl SystemdLogMessages {
+    #[must_use]
+    pub fn new(
+        log_level: LogLevel,
+        log_unit: Option<&str>,
+        log_message: &str,
+        log_timestamp: DateTimeType,
+    ) -> Self {
+        Self {
+            id: -1,
+            log_level,
+            log_unit: log_unit.map(Into::into),
+            log_message: log_message.into(),
+            log_timestamp,
+        }
+    }
+
+    /// # Errors
+    /// Return error if db query fails
+    pub async fn get_by_id(pool: &PgPool, id: i32) -> Result<Option<Self>, Error> {
+        let query = query!("SELECT * FROM systemd_log_messages WHERE id=$id", id = id);
+        let conn = pool.get().await?;
+        query.fetch_opt(&conn).await.map_err(Into::into)
+    }
+
+    /// # Errors
+    /// Return error if db query fails
+    pub async fn get_and_delete_oldest(pool: &PgPool) -> Result<Option<Self>, Error> {
+        let mut conn = pool.get().await?;
+        let tran = conn.transaction().await?;
+        let conn: &PgTransaction = &tran;
+        let query = query!(
+            r#"
+                SELECT * FROM systemd_log_messages
+                WHERE id = (
+                    SELECT min(id) FROM systemd_log_messages
+                )
+            "#
+        );
+        let entry: Option<Self> = query.fetch_opt(&conn).await?;
+        if let Some(entry) = &entry {
+            let query = query!(
+                "DELETE FROM systemd_log_messages WHERE id=$id",
+                id = entry.id
+            );
+            query.execute(&conn).await?;
+        }
+        Ok(entry)
+    }
+
+    /// # Errors
+    /// Return error if db query fails
+    pub async fn insert(&self, pool: &PgPool) -> Result<u64, Error> {
+        let query = query!(
+            r#"
+                INSERT INTO systemd_log_messages (
+                    log_level, log_unit, log_message, log_timestamp
+                ) VALUES (
+                    $log_level, $log_unit, $log_message, $log_timestamp
+                )
+            "#,
+            log_level = self.log_level,
+            log_unit = self.log_unit,
+            log_message = self.log_message,
+            log_timestamp = self.log_timestamp,
+        );
+        let conn = pool.get().await?;
+        query.execute(&conn).await.map_err(Into::into)
+    }
+
+    /// # Errors
+    /// Return error if db query fails
+    pub async fn delete(pool: &PgPool, id: i32) -> Result<u64, Error> {
+        let query = query!("DELETE FROM systemd_log_messages WHERE id=$id", id = id);
+        let conn = pool.get().await?;
+        query.execute(&conn).await.map_err(Into::into)
+    }
+
+    /// # Errors
+    /// Return error if db query fails
+    pub async fn get_systemd_messages(
+        pool: &PgPool,
+        log_level: Option<LogLevel>,
+        log_unit: Option<&str>,
+        min_timestamp: Option<DateTimeType>,
+        max_timestamp: Option<DateTimeType>,
+        limit: Option<usize>,
+        offset: Option<usize>,
+    ) -> Result<Vec<Self>, Error> {
+        let mut constraints = Vec::new();
+        let mut bindings = Vec::new();
+        if let Some(log_level) = &log_level {
+            constraints.push(format_sstr!("log_level=$log_level"));
+            bindings.push(("log_level", log_level as Parameter));
+        }
+        if let Some(log_unit) = &log_unit {
+            constraints.push(format_sstr!("log_unit=$log_unit"));
+            bindings.push(("log_unit", log_unit as Parameter));
+        }
+        if let Some(min_timestamp) = &min_timestamp {
+            constraints.push(format_sstr!("log_timestamp > $min_timestamp"));
+            bindings.push(("min_timestamp", min_timestamp as Parameter));
+        }
+        if let Some(max_timestamp) = &max_timestamp {
+            constraints.push(format_sstr!("log_timestamp > $max_timestamp"));
+            bindings.push(("max_timestamp", max_timestamp as Parameter));
+        }
+        let where_str = if constraints.is_empty() {
+            "".into()
+        } else {
+            format_sstr!("WHERE {}", constraints.join(" AND "))
+        };
+        let limit = if let Some(limit) = limit {
+            format_sstr!("LIMIT {limit}")
+        } else {
+            "".into()
+        };
+        let offset = if let Some(offset) = offset {
+            format_sstr!("OFFSET {offset}")
+        } else {
+            "".into()
+        };
+        let query = format_sstr!(
+            r#"
+                SELECT * FROM systemd_log_messages
+                {where_str}
+                ORDER BY log_timestamp
+                {limit} {offset}
+            "#,
+        );
+        let query = query_dyn!(&query, ..bindings)?;
+        let conn = pool.get().await?;
+        query.fetch(&conn).await.map_err(Into::into)
+    }
 }
 
 #[cfg(test)]

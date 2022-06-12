@@ -21,8 +21,11 @@ use tokio::{
 };
 
 use crate::{
-    config::Config, host_country_metadata::HostCountryMetadata, models::IntrusionLog,
-    pgpool::PgPool, DateTimeType, Host, Service,
+    config::Config,
+    host_country_metadata::HostCountryMetadata,
+    models::{IntrusionLog, LogLevel, SystemdLogMessages},
+    pgpool::PgPool,
+    DateTimeType, Host, Service,
 };
 
 #[derive(Debug, PartialEq, Eq, Hash)]
@@ -30,6 +33,20 @@ pub struct LogLineSSH {
     pub host: StackString,
     pub user: Option<StackString>,
     pub timestamp: DateTimeType,
+}
+
+impl LogLineSSH {
+    #[must_use]
+    pub fn into_intrusion_log(self, service: &str, server: &str) -> IntrusionLog {
+        IntrusionLog {
+            id: -1,
+            service: service.into(),
+            server: server.into(),
+            datetime: self.timestamp,
+            host: self.host,
+            username: self.user,
+        }
+    }
 }
 
 /// # Errors
@@ -243,14 +260,14 @@ pub async fn parse_systemd_logs_sshd(server: Host) -> Result<Vec<IntrusionLog>, 
         .args(&[
             "-o",
             "json",
-            "--output-fields=MESSAGE,_SOURCE_REALTIME_TIMESTAMP",
+            "--output-fields=UNIT,MESSAGE,__REALTIME_TIMESTAMP",
         ])
         .output()
         .await?;
     let stdout = String::from_utf8_lossy(&command.stdout);
     stdout
         .split('\n')
-        .filter(|line| line.contains("_SOURCE_REALTIME_TIMESTAMP"))
+        .filter(|line| line.contains("__REALTIME_TIMESTAMP"))
         .map(|line| {
             if line.contains("Invalid user") {
                 let log: ServiceLogLine = serde_json::from_str(line)?;
@@ -288,7 +305,7 @@ pub async fn parse_systemd_logs_sshd_daemon(config: &Config, pool: &PgPool) -> R
         .args(&[
             "-o",
             "json",
-            "--output-fields=MESSAGE,_SOURCE_REALTIME_TIMESTAMP",
+            "--output-fields=UNIT,MESSAGE,__REALTIME_TIMESTAMP",
             "-f",
         ])
         .stdout(Stdio::piped())
@@ -314,34 +331,30 @@ async fn process_systemd_sshd_output(
     while let Ok(bytes) = reader.read_until(b'\n', &mut buf).await {
         if bytes > 0 {
             let line = String::from_utf8_lossy(&buf);
-            if line.contains("_SOURCE_REALTIME_TIMESTAMP") && line.contains("Invalid user") {
+            if line.contains("__REALTIME_TIMESTAMP") && line.contains("Invalid user") {
                 let log: ServiceLogLine = serde_json::from_str(&line)?;
                 let log_line = log.parse_sshd()?;
-                let log_entry = IntrusionLog {
-                    id: -1,
-                    service: "ssh".into(),
-                    server: config.server.clone(),
-                    datetime: log_line.timestamp,
-                    host: log_line.host,
-                    username: log_line.user,
-                };
+                let log_entry = log_line.into_intrusion_log("ssh", &config.server);
                 let conn = pool.get().await?;
                 debug!("proc sshd {:?}", log_entry);
                 log_entry.insert_single(&conn).await?;
-            } else if line.contains("_SOURCE_REALTIME_TIMESTAMP") && line.contains("nginx") {
+            } else if line.contains("__REALTIME_TIMESTAMP") && line.contains("nginx") {
                 let log: ServiceLogLine = serde_json::from_str(&line)?;
                 if let Some(log_line) = log.parse_nginx()? {
-                    let log_entry = IntrusionLog {
-                        id: -1,
-                        service: "nginx".into(),
-                        server: config.server.clone(),
-                        datetime: log_line.timestamp,
-                        host: log_line.host,
-                        username: log_line.user,
-                    };
+                    let log_entry = log_line.into_intrusion_log("nginx", &config.server);
                     let conn = pool.get().await?;
                     debug!("proc nginx {:?}", log_entry);
                     log_entry.insert_single(&conn).await?;
+                }
+            }
+            if line.contains("__REALTIME_TIMESTAMP") && line.contains("UNIT") {
+                if let Some(log_level) = LogLevel::line_contains_level(&line, None) {
+                    let log: ServiceLogLine = serde_json::from_str(&line)?;
+                    let log_time = log.get_datetime()?;
+                    let log_message =
+                        SystemdLogMessages::new(log_level, log.unit, &log.message, log_time);
+                    debug!("proc level {log_level} {:?}", log_message);
+                    log_message.insert(pool).await?;
                 }
             }
         } else {
@@ -354,19 +367,26 @@ async fn process_systemd_sshd_output(
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct ServiceLogLine<'a> {
-    #[serde(alias = "_SOURCE_REALTIME_TIMESTAMP")]
+    #[serde(alias = "UNIT")]
+    unit: Option<&'a str>,
+    #[serde(alias = "__REALTIME_TIMESTAMP")]
     timestamp: &'a str,
     #[serde(alias = "MESSAGE")]
     message: StackString,
 }
 
 impl ServiceLogLine<'_> {
-    fn parse_sshd(self) -> Result<LogLineSSH, Error> {
+    pub fn get_datetime(&self) -> Result<DateTimeType, Error> {
         let timestamp: i64 = self.timestamp.parse()?;
         let nanoseconds = (timestamp % 1_000_000 * 1000) as i64;
         let timestamp = (OffsetDateTime::from_unix_timestamp((timestamp / 1_000_000) as i64)?
             + Duration::nanoseconds(nanoseconds))
         .into();
+        Ok(timestamp)
+    }
+
+    fn parse_sshd(self) -> Result<LogLineSSH, Error> {
+        let timestamp = self.get_datetime()?;
         let (host, user) = parse_log_message(&self.message)?
             .ok_or_else(|| format_err!("Failed to parse {}", self.message))?;
 
@@ -378,11 +398,7 @@ impl ServiceLogLine<'_> {
     }
 
     fn parse_nginx(self) -> Result<Option<LogLineSSH>, Error> {
-        let timestamp: i64 = self.timestamp.parse()?;
-        let nanoseconds = (timestamp % 1_000_000 * 1000) as i64;
-        let timestamp = (OffsetDateTime::from_unix_timestamp((timestamp / 1_000_000) as i64)?
-            + Duration::nanoseconds(nanoseconds))
-        .into();
+        let timestamp = self.get_datetime()?;
         let tokens: SmallVec<[&str; 3]> = self.message.split_whitespace().take(3).collect();
         if tokens.len() < 3 {
             return Ok(None);
@@ -417,15 +433,17 @@ impl fmt::Display for ServiceLogEntry {
 mod tests {
     use anyhow::Error;
     use log::debug;
+    use stack_string::StackString;
     use std::fs::File;
     use time::OffsetDateTime;
 
     use crate::{
         config::Config,
         host_country_metadata::HostCountryMetadata,
+        models::LogLevel,
         parse_logs::{
             parse_all_log_files, parse_log_file, parse_log_line_apache, parse_log_line_ssh,
-            parse_systemd_logs_sshd,
+            parse_systemd_logs_sshd, ServiceLogLine, SystemdLogMessages,
         },
         pgpool::PgPool,
         Host, Service,
@@ -515,6 +533,44 @@ mod tests {
         let logs = parse_systemd_logs_sshd(Host::Home).await?;
         println!("{:?}", logs[0]);
         assert!(logs.len() > 0);
+        Ok(())
+    }
+
+    #[test]
+    fn test_process_systemd_sshd_log_line() -> Result<(), Error> {
+        let line = r#"{"__REALTIME_TIMESTAMP":"1655046591494032","_SOURCE_REALTIME_TIMESTAMP":"1655046591493997","__CURSOR":"s=5726468a2162439e9e18a191202b1a7b;i=28e9c;b=e8ee305cff53408da12356a3876792ba;m=370bd562e;t=5e141902c3790;x=ec3c36f10424aa47","__MONOTONIC_TIMESTAMP":"14776358446","MESSAGE":"Invalid user ark from 43.154.144.211 port 42608","_BOOT_ID":"e8ee305cff53408da12356a3876792ba"}"#;
+        let log: ServiceLogLine = serde_json::from_str(line)?;
+        let log_line = log.parse_sshd()?;
+        let log_entry = log_line.into_intrusion_log("ssh", "home.ddboline.net");
+        println!("{log_entry:?}");
+        assert_eq!(log_entry.id, -1);
+        assert_eq!(&log_entry.service, "ssh");
+        assert_eq!(&log_entry.server, "home.ddboline.net");
+        assert_eq!(&log_entry.host, "43.154.144.211");
+        assert_eq!(
+            log_entry.username.as_ref().map(StackString::as_str),
+            Some("ark")
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn test_process_systemd_unit() -> Result<(), Error> {
+        let lines = include_str!("../tests/data/test_systemd.json");
+        let mut logs = Vec::new();
+        for line in lines.split('\n') {
+            let line = line.trim();
+            if line.is_empty() {
+                continue;
+            }
+            let log: ServiceLogLine = serde_json::from_str(line)?;
+            let log_level = LogLevel::line_contains_level(line, None).unwrap();
+            assert_eq!(log_level, LogLevel::Error);
+            let log_time = log.get_datetime()?;
+            let log_message = SystemdLogMessages::new(log_level, log.unit, &log.message, log_time);
+            logs.push(log_message);
+        }
+        assert_eq!(logs.len(), 24);
         Ok(())
     }
 }
