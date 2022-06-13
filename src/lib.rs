@@ -17,6 +17,7 @@ pub mod pgpool;
 pub mod polars_analysis;
 pub mod reports;
 pub mod s3_sync;
+pub mod ses_client;
 
 use anyhow::{format_err, Error};
 use bytes::BytesMut;
