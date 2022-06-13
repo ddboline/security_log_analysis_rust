@@ -21,12 +21,14 @@ use futures::future::try_join_all;
 use http::StatusCode;
 use itertools::Itertools;
 use log::error;
-use rweb::{get, post, reject::Reject, Filter, Json, Query, Rejection, Reply, Schema};
+use rweb::{delete, get, post, reject::Reject, Filter, Json, Query, Rejection, Reply, Schema};
+use rweb_helper::DateTimeType;
 use serde::{Deserialize, Serialize};
 use stack_string::{format_sstr, StackString};
 use std::{convert::Infallible, env::var, fmt, fmt::Write, net::SocketAddr, time::Duration};
 use structopt::clap::AppSettings;
 use thiserror::Error;
+use time::OffsetDateTime;
 use tokio::{
     task::{spawn, spawn_blocking, JoinError},
     time::{interval, sleep},
@@ -37,8 +39,8 @@ use security_log_analysis_rust::{
     errors::ServiceError,
     host_country_metadata::HostCountryMetadata,
     logged_user::{fill_from_db, get_secrets, LoggedUser, TRIGGER_DB_UPDATE},
-    models::{HostCountry, IntrusionLog},
-    parse_logs::parse_systemd_logs_sshd_daemon,
+    models::{HostCountry, IntrusionLog, LogLevel, SystemdLogMessages},
+    parse_logs::{parse_systemd_logs_sshd_daemon, process_systemd_logs},
     pgpool::PgPool,
     polars_analysis::read_parquet_files,
     reports::get_country_count_recent,
@@ -200,7 +202,7 @@ struct SyncQuery {
 async fn intursion_log_get(
     query: Query<SyncQuery>,
     #[data] data: AppState,
-    #[filter = "LoggedUser::filter"] _: LoggedUser,
+    _: LoggedUser,
 ) -> WarpResult<impl Reply> {
     let query = query.into_inner();
     let limit = query.limit.unwrap_or(1000);
@@ -227,7 +229,7 @@ struct IntrusionLogUpdate {
 async fn intrusion_log_post(
     payload: Json<IntrusionLogUpdate>,
     #[data] data: AppState,
-    #[filter = "LoggedUser::filter"] _: LoggedUser,
+    _: LoggedUser,
 ) -> WarpResult<impl Reply> {
     let payload = payload.into_inner();
     let inserts = IntrusionLog::insert(&data.pool, &payload.updates)
@@ -246,7 +248,7 @@ struct HostCountryQuery {
 async fn host_country_get(
     query: Query<HostCountryQuery>,
     #[data] data: AppState,
-    #[filter = "LoggedUser::filter"] _: LoggedUser,
+    _: LoggedUser,
 ) -> WarpResult<impl Reply> {
     let query = query.into_inner();
     let limit = query.limit.unwrap_or(1000);
@@ -265,7 +267,7 @@ struct HostCountryUpdate {
 async fn host_country_post(
     payload: Json<HostCountryUpdate>,
     #[data] data: AppState,
-    #[filter = "LoggedUser::filter"] _: LoggedUser,
+    _: LoggedUser,
 ) -> WarpResult<impl Reply> {
     let payload = payload.into_inner();
     let mut inserts = 0;
@@ -280,10 +282,7 @@ async fn host_country_post(
 }
 
 #[get("/security_log/cleanup")]
-async fn host_country_cleanup(
-    #[data] data: AppState,
-    #[filter = "LoggedUser::filter"] _: LoggedUser,
-) -> WarpResult<impl Reply> {
+async fn host_country_cleanup(#[data] data: AppState, _: LoggedUser) -> WarpResult<impl Reply> {
     let hosts = HostCountry::get_dangling_hosts(&data.pool)
         .await
         .map_err(Into::<ServiceError>::into)?;
@@ -306,8 +305,55 @@ async fn host_country_cleanup(
 
 #[get("/security_log/user")]
 #[allow(clippy::unused_async)]
-async fn user(#[filter = "LoggedUser::filter"] user: LoggedUser) -> WarpResult<impl Reply> {
+async fn user(user: LoggedUser) -> WarpResult<impl Reply> {
     Ok(rweb::reply::json(&user))
+}
+
+#[derive(Serialize, Deserialize, Schema)]
+struct LogMessageQuery {
+    log_level: Option<LogLevel>,
+    log_unit: Option<StackString>,
+    min_date: Option<DateTimeType>,
+    max_date: Option<DateTimeType>,
+    limit: Option<usize>,
+    offset: Option<usize>,
+}
+
+#[get("/security_log/log_messages")]
+async fn get_log_messages(
+    #[data] data: AppState,
+    _: LoggedUser,
+    query: Query<LogMessageQuery>,
+) -> WarpResult<impl Reply> {
+    let query = query.into_inner();
+    let min_date: Option<OffsetDateTime> = query.min_date.map(Into::into);
+    let max_date: Option<OffsetDateTime> = query.max_date.map(Into::into);
+    let messages = SystemdLogMessages::get_systemd_messages(
+        &data.pool,
+        query.log_level,
+        query.log_unit.as_ref().map(Into::into),
+        min_date.map(Into::into),
+        max_date.map(Into::into),
+        query.limit,
+        query.offset,
+    )
+    .await
+    .map_err(Into::<ServiceError>::into)?;
+    Ok(rweb::reply::json(&messages))
+}
+
+#[delete("/security_log/log_messages/{id}")]
+async fn delete_log_message(
+    #[data] data: AppState,
+    _: LoggedUser,
+    id: i32,
+) -> WarpResult<impl Reply> {
+    let bytes = SystemdLogMessages::delete(&data.pool, id)
+        .await
+        .map_err(Into::<ServiceError>::into)?;
+    Ok(rweb::reply::html(format_sstr!(
+        "deleted {id}, {bytes} modified"
+    )))
 }
 
 async fn start_app() -> Result<(), AnyhowError> {
@@ -328,6 +374,13 @@ async fn start_app() -> Result<(), AnyhowError> {
         }
     }
 
+    async fn run_alert_daemon(config: Config, pool: PgPool) {
+        loop {
+            process_systemd_logs(&config, &pool).await.unwrap_or(());
+            sleep(Duration::from_secs(1)).await;
+        }
+    }
+
     TRIGGER_DB_UPDATE.set();
 
     let config = Config::init_config()?;
@@ -335,8 +388,9 @@ async fn start_app() -> Result<(), AnyhowError> {
 
     let pool = PgPool::new(&config.database_url);
 
-    spawn(run_daemon(config.clone(), pool.clone()));
     spawn(update_db(pool.clone()));
+    spawn(run_daemon(config.clone(), pool.clone()));
+    spawn(run_alert_daemon(config.clone(), pool.clone()));
 
     let app = AppState { pool, config };
 
@@ -352,10 +406,12 @@ async fn start_app() -> Result<(), AnyhowError> {
         .or(host_country_get(app.clone()))
         .or(host_country_post(app.clone()))
         .or(host_country_cleanup(app.clone()))
-        .or(user());
+        .or(user())
+        .or(get_log_messages(app.clone()))
+        .or(delete_log_message(app.clone()));
 
     let cors = rweb::cors()
-        .allow_methods(vec!["GET"])
+        .allow_methods(vec!["GET", "POST", "DELETE"])
         .allow_header("content-type")
         .allow_any_origin()
         .build();
