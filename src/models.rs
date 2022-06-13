@@ -607,6 +607,8 @@ impl SystemdLogMessages {
         query.fetch_opt(&conn).await.map_err(Into::into)
     }
 
+    /// # Errors
+    /// Return error if db query fails
     pub async fn set_message_processed(&self, pool: &PgPool) -> Result<u64, Error> {
         let query = query!(
             "UPDATE systemd_log_messages SET processed_time = now() WHERE id=$id",
