@@ -423,12 +423,18 @@ pub async fn get_max_datetime(pool: &PgPool, server: Host) -> Result<OffsetDateT
     Ok(result)
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone, Eq, Copy, PartialEq)]
+#[derive(Debug, Serialize, Deserialize, Clone, Eq, Copy, PartialEq, Schema)]
 pub enum LogLevel {
     Debug,
     Info,
     Warning,
     Error,
+}
+
+impl Default for LogLevel {
+    fn default() -> Self {
+        Self::Debug
+    }
 }
 
 impl LogLevel {
