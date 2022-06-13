@@ -390,7 +390,7 @@ async fn start_app() -> Result<(), AnyhowError> {
 
     spawn(update_db(pool.clone()));
     spawn(run_daemon(config.clone(), pool.clone()));
-    // spawn(run_alert_daemon(config.clone(), pool.clone()));
+    spawn(run_alert_daemon(config.clone(), pool.clone()));
 
     let app = AppState { pool, config };
 
