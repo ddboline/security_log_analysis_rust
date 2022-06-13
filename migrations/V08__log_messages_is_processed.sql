@@ -1,0 +1,1 @@
+ALTER TABLE systemd_log_messages ADD COLUMN processed_time TIMESTAMP WITH TIME ZONE;
