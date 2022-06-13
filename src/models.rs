@@ -562,6 +562,7 @@ pub struct SystemdLogMessages {
     pub log_unit: Option<StackString>,
     pub log_message: StackString,
     pub log_timestamp: DateTimeType,
+    pub processed_time: Option<DateTimeType>,
 }
 
 impl SystemdLogMessages {
@@ -578,6 +579,7 @@ impl SystemdLogMessages {
             log_unit: log_unit.map(Into::into),
             log_message: log_message.into(),
             log_timestamp,
+            processed_time: None,
         }
     }
 
@@ -591,27 +593,27 @@ impl SystemdLogMessages {
 
     /// # Errors
     /// Return error if db query fails
-    pub async fn get_and_delete_oldest(pool: &PgPool) -> Result<Option<Self>, Error> {
-        let mut conn = pool.get().await?;
-        let tran = conn.transaction().await?;
-        let conn: &PgTransaction = &tran;
+    pub async fn get_oldest_message(pool: &PgPool) -> Result<Option<Self>, Error> {
+        let conn = pool.get().await?;
         let query = query!(
             r#"
                 SELECT * FROM systemd_log_messages
                 WHERE id = (
                     SELECT min(id) FROM systemd_log_messages
+                    WHERE processed_time IS NULL
                 )
             "#
         );
-        let entry: Option<Self> = query.fetch_opt(&conn).await?;
-        if let Some(entry) = &entry {
-            let query = query!(
-                "DELETE FROM systemd_log_messages WHERE id=$id",
-                id = entry.id
-            );
-            query.execute(&conn).await?;
-        }
-        Ok(entry)
+        query.fetch_opt(&conn).await.map_err(Into::into)
+    }
+
+    pub async fn set_message_processed(&self, pool: &PgPool) -> Result<u64, Error> {
+        let query = query!(
+            "UPDATE systemd_log_messages SET processed_time = now() WHERE id=$id",
+            id=self.id
+        );
+        let conn = pool.get().await?;
+        query.execute(&conn).await.map_err(Into::into)
     }
 
     /// # Errors
