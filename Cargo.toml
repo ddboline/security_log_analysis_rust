@@ -1,6 +1,6 @@
 [package]
 name = "security_log_analysis_rust"
-version = "0.9.5"
+version = "0.9.6"
 authors = ["Daniel Boline <ddboline@gmail.com>"]
 edition = "2018"
 
@@ -19,6 +19,7 @@ deadpool = {version = "0.9", features=["serde", "rt_tokio_1"]}
 deadpool-postgres = {version="0.10", features=["serde"]}
 rusoto_core = {version = "0.48", default_features = false, features=["rustls"]}
 rusoto_s3 = {version = "0.48", default_features = false, features=["rustls"]}
+rusoto_ses = {version = "0.48", default_features = false, features=["rustls"]}
 s3-ext = "0.5"
 sts_profile_auth = "0.7"
 time = {version="0.3", features=["serde-human-readable", "macros", "formatting"]}
@@ -56,7 +57,7 @@ postgres_query = {git = "https://github.com/ddboline/rust-postgres-query", tag =
 stack-string = { version="0.7", features=["postgres_types", "rweb-openapi"] }
 chrono = "0.4"
 polars = {version="0.22", features=["temporal", "parquet"]}
-authorized_users = { git = "https://github.com/ddboline/auth_server_rust.git", tag="0.8.6"}
+authorized_users = { git = "https://github.com/ddboline/auth_server_rust.git", tag="0.8.9"}
 rweb-helper = { git = "https://github.com/ddboline/rweb_helper.git", tag="0.4.13" }
 uuid = "1.0"
 cached = "0.34"
