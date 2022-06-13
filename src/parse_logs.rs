@@ -449,7 +449,7 @@ pub async fn process_systemd_logs(config: &Config, pool: &PgPool) -> Result<(), 
         }
     };
     loop {
-        if let Some(message) = SystemdLogMessages::get_and_delete_oldest(pool).await? {
+        if let Some(message) = SystemdLogMessages::get_oldest_message(pool).await? {
             if message.log_level < config.alert_log_level {
                 continue;
             }
@@ -462,6 +462,7 @@ pub async fn process_systemd_logs(config: &Config, pool: &PgPool) -> Result<(), 
                     &message.log_message,
                 )
                 .await?;
+            message.set_message_processed(pool).await?;
         }
     }
 }
