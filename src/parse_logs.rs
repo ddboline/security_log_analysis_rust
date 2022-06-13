@@ -2,7 +2,7 @@ use anyhow::{format_err, Error};
 use flate2::read::GzDecoder;
 use glob::glob;
 use itertools::Itertools;
-use log::debug;
+use log::{debug, error};
 use serde::{Deserialize, Serialize};
 use smallvec::SmallVec;
 use stack_string::{format_sstr, StackString};
@@ -25,6 +25,7 @@ use crate::{
     host_country_metadata::HostCountryMetadata,
     models::{IntrusionLog, LogLevel, SystemdLogMessages},
     pgpool::PgPool,
+    ses_client::SesInstance,
     DateTimeType, Host, Service,
 };
 
@@ -331,23 +332,23 @@ async fn process_systemd_sshd_output(
     while let Ok(bytes) = reader.read_until(b'\n', &mut buf).await {
         if bytes > 0 {
             let line = String::from_utf8_lossy(&buf);
-            if line.contains("__REALTIME_TIMESTAMP") && line.contains("Invalid user") {
+            if line.contains("__REALTIME_TIMESTAMP") {
                 let log: ServiceLogLine = serde_json::from_str(&line)?;
-                let log_line = log.parse_sshd()?;
-                let log_entry = log_line.into_intrusion_log("ssh", &config.server);
-                let conn = pool.get().await?;
-                debug!("proc sshd {:?}", log_entry);
-                log_entry.insert_single(&conn).await?;
-            } else if line.contains("__REALTIME_TIMESTAMP") && line.contains("nginx") {
-                let log: ServiceLogLine = serde_json::from_str(&line)?;
-                if let Some(log_line) = log.parse_nginx()? {
-                    let log_entry = log_line.into_intrusion_log("nginx", &config.server);
+                if line.contains("Invalid user") {
+                    let log_line = log.parse_sshd()?;
+                    let log_entry = log_line.into_intrusion_log("ssh", &config.server);
                     let conn = pool.get().await?;
-                    debug!("proc nginx {:?}", log_entry);
+                    debug!("proc sshd {:?}", log_entry);
                     log_entry.insert_single(&conn).await?;
                 }
-            }
-            if line.contains("__REALTIME_TIMESTAMP") && line.contains("UNIT") {
+                if line.contains("nginx") {
+                    if let Some(log_line) = log.parse_nginx()? {
+                        let log_entry = log_line.into_intrusion_log("nginx", &config.server);
+                        let conn = pool.get().await?;
+                        debug!("proc nginx {:?}", log_entry);
+                        log_entry.insert_single(&conn).await?;
+                    }
+                }
                 if let Some(log_level) = LogLevel::line_contains_level(&line, None) {
                     let log: ServiceLogLine = serde_json::from_str(&line)?;
                     let log_time = log.get_datetime()?;
@@ -385,7 +386,7 @@ impl ServiceLogLine<'_> {
         Ok(timestamp)
     }
 
-    fn parse_sshd(self) -> Result<LogLineSSH, Error> {
+    fn parse_sshd(&self) -> Result<LogLineSSH, Error> {
         let timestamp = self.get_datetime()?;
         let (host, user) = parse_log_message(&self.message)?
             .ok_or_else(|| format_err!("Failed to parse {}", self.message))?;
@@ -397,7 +398,7 @@ impl ServiceLogLine<'_> {
         })
     }
 
-    fn parse_nginx(self) -> Result<Option<LogLineSSH>, Error> {
+    fn parse_nginx(&self) -> Result<Option<LogLineSSH>, Error> {
         let timestamp = self.get_datetime()?;
         let tokens: SmallVec<[&str; 3]> = self.message.split_whitespace().take(3).collect();
         if tokens.len() < 3 {
@@ -426,6 +427,42 @@ pub struct ServiceLogEntry {
 impl fmt::Display for ServiceLogEntry {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{} {} {}", self.timestamp, self.hostname, self.message)
+    }
+}
+
+/// # Errors
+/// Returns error on db query failure
+pub async fn process_systemd_logs(config: &Config, pool: &PgPool) -> Result<(), Error> {
+    let ses_instance = SesInstance::new(None);
+    let sending_email_address = match &config.sending_email_address {
+        Some(e) => e,
+        None => {
+            error!("No sending email given");
+            return Err(format_err!("No sending email given"));
+        }
+    };
+    let alert_email_address = match &config.alert_email_address {
+        Some(e) => e,
+        None => {
+            error!("No alert email given");
+            return Err(format_err!("No alert email given"));
+        }
+    };
+    loop {
+        if let Some(message) = SystemdLogMessages::get_and_delete_oldest(pool).await? {
+            if message.log_level < config.alert_log_level {
+                continue;
+            }
+            let subject = format_sstr!("Systemd Alert {}", message.log_level);
+            ses_instance
+                .send_email(
+                    sending_email_address.as_str(),
+                    alert_email_address.as_str(),
+                    &subject,
+                    &message.log_message,
+                )
+                .await?;
+        }
     }
 }
 
