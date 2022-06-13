@@ -6,6 +6,9 @@ use std::{
     path::{Path, PathBuf},
     sync::Arc,
 };
+
+use crate::models::LogLevel;
+
 #[derive(Default, Debug, Deserialize)]
 pub struct ConfigInner {
     pub database_url: StackString,
@@ -21,6 +24,10 @@ pub struct ConfigInner {
     pub secret_path: PathBuf,
     #[serde(default = "default_secret_path")]
     pub jwt_secret_path: PathBuf,
+    #[serde(default = "default_alert_log_level")]
+    pub alert_log_level: LogLevel,
+    pub sending_email_address: Option<StackString>,
+    pub alert_email_address: Option<StackString>,
 }
 
 fn default_username() -> StackString {
@@ -40,6 +47,9 @@ fn default_secret_path() -> PathBuf {
         .unwrap()
         .join("aws_app_rust")
         .join("secret.bin")
+}
+fn default_alert_log_level() -> LogLevel {
+    LogLevel::Error
 }
 
 #[derive(Default, Debug, Clone)]
