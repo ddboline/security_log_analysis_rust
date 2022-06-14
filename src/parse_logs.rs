@@ -339,6 +339,12 @@ async fn process_systemd_sshd_output(
                     || line.contains(
                         "error: maximum authentication attempts exceeded for invalid user",
                     )
+                    || line.contains(
+                        "Disconnected from invalid user"
+                    )
+                    || line.contains(
+                        "Failed password for invalid user"
+                    )
                 {
                     continue;
                 }
