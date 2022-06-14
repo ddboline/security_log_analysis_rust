@@ -335,7 +335,7 @@ async fn process_systemd_sshd_output(
             let line = String::from_utf8_lossy(&buf);
             if line.contains("__REALTIME_TIMESTAMP") {
                 let log: ServiceLogLine = serde_json::from_str(&line)?;
-                if line.contains("kex_exchange_identification") {
+                if line.contains("kex_exchange_identification") || line.contains("invalid user") {
                     continue;
                 }
                 if line.contains("Invalid user") {
@@ -344,6 +344,7 @@ async fn process_systemd_sshd_output(
                     let conn = pool.get().await?;
                     debug!("proc sshd {:?}", log_entry);
                     log_entry.insert_single(&conn).await?;
+                    continue;
                 }
                 if line.contains("nginx") {
                     if let Some(log_line) = log.parse_nginx()? {
