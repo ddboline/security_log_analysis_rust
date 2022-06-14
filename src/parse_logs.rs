@@ -335,6 +335,9 @@ async fn process_systemd_sshd_output(
             let line = String::from_utf8_lossy(&buf);
             if line.contains("__REALTIME_TIMESTAMP") {
                 let log: ServiceLogLine = serde_json::from_str(&line)?;
+                if line.contains("kex_exchange_identification") {
+                    continue;
+                }
                 if line.contains("Invalid user") {
                     let log_line = log.parse_sshd()?;
                     let log_entry = log_line.into_intrusion_log("ssh", &config.server);
