@@ -335,7 +335,11 @@ async fn process_systemd_sshd_output(
             let line = String::from_utf8_lossy(&buf);
             if line.contains("__REALTIME_TIMESTAMP") {
                 let log: ServiceLogLine = serde_json::from_str(&line)?;
-                if line.contains("kex_exchange_identification") || line.contains("invalid user") {
+                if line.contains("kex_exchange_identification")
+                    || line.contains(
+                        "error: maximum authentication attempts exceeded for invalid user",
+                    )
+                {
                     continue;
                 }
                 if line.contains("Invalid user") {
