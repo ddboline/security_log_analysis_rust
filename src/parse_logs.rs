@@ -472,9 +472,11 @@ pub async fn process_systemd_logs(config: &Config, pool: &PgPool) -> Result<(), 
                         &message.log_message,
                     )
                     .await?;
-                sleep(std::time::Duration::from_secs(10)).await;
+                    sleep(std::time::Duration::from_secs(10)).await;
             }
             message.set_message_processed(pool).await?;
+        } else {
+            sleep(std::time::Duration::from_secs(1)).await;
         }
     }
 }
