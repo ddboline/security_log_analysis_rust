@@ -10,6 +10,7 @@ use std::{
     fmt,
     fs::File,
     io::{BufRead, BufReader, Read},
+    net::Ipv4Addr,
     process::Stdio,
 };
 use time::{macros::format_description, Duration, OffsetDateTime, PrimitiveDateTime};
@@ -417,7 +418,7 @@ impl ServiceLogLine<'_> {
         }
         let host = tokens[2];
         let host = if host.len() > 60 { &host[0..60] } else { host };
-        if !host.contains('.') {
+        if host.parse::<Ipv4Addr>().is_err() {
             return Ok(None);
         }
         Ok(Some(LogLineSSH {
@@ -472,7 +473,7 @@ pub async fn process_systemd_logs(config: &Config, pool: &PgPool) -> Result<(), 
                         &message.log_message,
                     )
                     .await?;
-                    sleep(std::time::Duration::from_secs(10)).await;
+                sleep(std::time::Duration::from_secs(10)).await;
             }
             message.set_message_processed(pool).await?;
         } else {

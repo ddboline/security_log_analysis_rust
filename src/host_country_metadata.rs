@@ -5,8 +5,12 @@ use reqwest::{Client, Url};
 use serde::{Deserialize, Serialize};
 use smallvec::SmallVec;
 use stack_string::StackString;
-use std::{collections::HashMap, net::ToSocketAddrs, sync::Arc};
-use tokio::{process::Command, sync::RwLock};
+use std::{
+    collections::HashMap,
+    net::{Ipv4Addr, ToSocketAddrs},
+    sync::Arc,
+};
+use tokio::{net::lookup_host, process::Command, sync::RwLock};
 
 use crate::{
     exponential_retry,
@@ -145,7 +149,12 @@ impl HostCountryMetadata {
                     }
                 }
             }
-            Err(format_err!("No Country Code Found"))
+            Err(format_err!("No Country Code Found {args:?}"))
+        }
+
+        if host.parse::<Ipv4Addr>().is_err() && lookup_host(host).await.is_err() {
+            println!("host {host}");
+            return Err(format_err!("Does not appear to be a valid host {host}"));
         }
 
         if let Ok(code) =
