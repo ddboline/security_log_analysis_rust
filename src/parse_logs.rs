@@ -18,6 +18,7 @@ use tokio::{
     io::{self, AsyncBufReadExt, AsyncRead},
     process::Command,
     task::{spawn, JoinHandle},
+    time::sleep,
 };
 
 use crate::{
@@ -448,20 +449,21 @@ pub async fn process_systemd_logs(config: &Config, pool: &PgPool) -> Result<(), 
             return Err(format_err!("No alert email given"));
         }
     };
+    debug!("{sending_email_address} {alert_email_address}");
     loop {
         if let Some(message) = SystemdLogMessages::get_oldest_message(pool).await? {
-            if message.log_level < config.alert_log_level {
-                continue;
+            if message.log_level >= config.alert_log_level {
+                let subject = format_sstr!("Systemd Alert {} {}", config.server, message.log_level);
+                ses_instance
+                    .send_email(
+                        sending_email_address.as_str(),
+                        alert_email_address.as_str(),
+                        &subject,
+                        &message.log_message,
+                    )
+                    .await?;
+                sleep(std::time::Duration::from_secs(10)).await;
             }
-            let subject = format_sstr!("Systemd Alert {}", message.log_level);
-            ses_instance
-                .send_email(
-                    sending_email_address.as_str(),
-                    alert_email_address.as_str(),
-                    &subject,
-                    &message.log_message,
-                )
-                .await?;
             message.set_message_processed(pool).await?;
         }
     }
