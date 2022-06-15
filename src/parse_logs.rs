@@ -342,6 +342,7 @@ async fn process_systemd_sshd_output(
                     )
                     || line.contains("Disconnected from invalid user")
                     || line.contains("Failed password for invalid user")
+                    || line.contains("SSL_read() failed (SSL: error:0A000126:SSL routines::unexpected eof while reading) while keepalive")
                 {
                     continue;
                 }
