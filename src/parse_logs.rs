@@ -336,16 +336,11 @@ async fn process_systemd_sshd_output(
             let line = String::from_utf8_lossy(&buf);
             if line.contains("__REALTIME_TIMESTAMP") {
                 let log: ServiceLogLine = serde_json::from_str(&line)?;
-                if line.contains("kex_exchange_identification")
-                    || line.contains(
-                        "error: maximum authentication attempts exceeded for invalid user",
-                    )
-                    || line.contains("Disconnected from invalid user")
-                    || line.contains("Failed password for invalid user")
-                    || line.contains(
-                        "SSL_read() failed (SSL: error:0A000126:SSL routines::unexpected eof \
-                         while reading) while keepalive",
-                    )
+                if config
+                    .systemd_log_filters
+                    .iter()
+                    .find(|m| line.contains(m.as_str()))
+                    .is_some()
                 {
                     continue;
                 }

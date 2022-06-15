@@ -28,6 +28,7 @@ pub struct ConfigInner {
     pub alert_log_level: LogLevel,
     pub sending_email_address: Option<StackString>,
     pub alert_email_address: Option<StackString>,
+    pub systemd_log_filters: Vec<StackString>,
 }
 
 fn default_username() -> StackString {
@@ -93,5 +94,47 @@ impl Deref for Config {
 
     fn deref(&self) -> &Self::Target {
         &self.0
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::config::Config;
+    use anyhow::Error;
+    use std::env::set_var;
+
+    #[test]
+    fn test_config_systemd_log_filters() -> Result<(), Error> {
+        set_var(
+            "SYSTEMD_LOG_FILTERS",
+            "kex_exchange_identification,error: maximum authentication attempts exceeded for \
+             invalid user,Disconnected from invalid user,Failed password for invalid \
+             user,SSL_read() failed (SSL: error:0A000126:SSL routines::unexpected eof while \
+             reading) while keepalive",
+        );
+        let config = Config::init_config()?;
+        assert_eq!(config.systemd_log_filters.len(), 5);
+        assert_eq!(
+            &config.systemd_log_filters[0],
+            "kex_exchange_identification"
+        );
+        assert_eq!(
+            &config.systemd_log_filters[1],
+            "error: maximum authentication attempts exceeded for invalid user"
+        );
+        assert_eq!(
+            &config.systemd_log_filters[2],
+            "Disconnected from invalid user"
+        );
+        assert_eq!(
+            &config.systemd_log_filters[3],
+            "Failed password for invalid user"
+        );
+        assert_eq!(
+            &config.systemd_log_filters[4],
+            "SSL_read() failed (SSL: error:0A000126:SSL routines::unexpected eof while reading) \
+             while keepalive"
+        );
+        Ok(())
     }
 }
