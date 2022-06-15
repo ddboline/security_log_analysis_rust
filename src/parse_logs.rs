@@ -339,8 +339,7 @@ async fn process_systemd_sshd_output(
                 if config
                     .systemd_log_filters
                     .iter()
-                    .find(|m| line.contains(m.as_str()))
-                    .is_some()
+                    .any(|m| line.contains(m.as_str()))
                 {
                     continue;
                 }

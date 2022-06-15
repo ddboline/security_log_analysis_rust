@@ -28,9 +28,18 @@ pub struct ConfigInner {
     pub alert_log_level: LogLevel,
     pub sending_email_address: Option<StackString>,
     pub alert_email_address: Option<StackString>,
+    #[serde(default = "default_system_log_filters")]
     pub systemd_log_filters: Vec<StackString>,
 }
 
+fn default_system_log_filters() -> Vec<StackString> {
+    vec![
+        "kex_exchange_identification".into(),
+        "error: maximum authentication attempts exceeded for invalid user".into(),
+        "Disconnected from invalid user".into(),
+        "Failed password for invalid user".into(),
+    ]
+}
 fn default_username() -> StackString {
     std::env::var("USER").expect("USER must be set").into()
 }
