@@ -459,23 +459,45 @@ pub async fn process_systemd_logs(config: &Config, pool: &PgPool) -> Result<(), 
         }
     };
     debug!("{sending_email_address} {alert_email_address}");
+    let mut subject = StackString::new();
+    let mut body = StackString::new();
     loop {
         if let Some(message) = SystemdLogMessages::get_oldest_message(pool).await? {
             if message.log_level >= config.alert_log_level {
-                let subject = format_sstr!("Systemd Alert {} {}", config.server, message.log_level);
+                subject = format_sstr!("Systemd Alert {} {}", config.server, message.log_level);
+                body.push_str(&subject);
+                body.push_str("\n");
+                body.push_str(&message.log_message);
+                let log_timestamp: OffsetDateTime = message.log_timestamp.into();
+                if (OffsetDateTime::now_utc() - log_timestamp).whole_seconds() > 120 {
+                    body.push_str("\n\n");
+                    continue;
+                }
                 ses_instance
                     .send_email(
                         sending_email_address.as_str(),
                         alert_email_address.as_str(),
                         &subject,
-                        &message.log_message,
+                        &body,
                     )
                     .await?;
                 sleep(std::time::Duration::from_secs(10)).await;
+                body.clear();
             }
             message.set_message_processed(pool).await?;
         } else {
-            sleep(std::time::Duration::from_secs(1)).await;
+            if !body.is_empty() {
+                ses_instance
+                    .send_email(
+                        sending_email_address.as_str(),
+                        alert_email_address.as_str(),
+                        &subject,
+                        &body,
+                    )
+                    .await?;
+                body.clear();
+            }
+            sleep(std::time::Duration::from_millis(100)).await;
         }
     }
 }

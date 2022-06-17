@@ -91,7 +91,6 @@ impl ParseOpts {
 
         match opts {
             ParseOpts::Parse { server } => {
-                let config = Config::init_config()?;
                 let pool = PgPool::new(&config.database_url);
                 let metadata = HostCountryMetadata::from_pool(&pool).await?;
                 debug!("got here {}", line!());
@@ -105,7 +104,7 @@ impl ParseOpts {
                 IntrusionLog::insert(&pool, &inserts).await?;
             }
             ParseOpts::Cleanup => {
-                let config = Config::init_config()?;
+                println!("{:?}", config.systemd_log_filters);
                 let pool = PgPool::new(&config.database_url);
                 let metadata = HostCountryMetadata::from_pool(&pool).await?;
                 for host in HostCountry::get_dangling_hosts(&pool).await? {
