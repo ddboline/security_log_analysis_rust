@@ -473,6 +473,7 @@ pub async fn process_systemd_logs(config: &Config, pool: &PgPool) -> Result<(), 
                     && body.len() < 10_000
                 {
                     body.push_str("\n\n<br><br>\n\n");
+                    message.set_message_processed(pool).await?;
                     continue;
                 }
                 ses_instance
