@@ -466,13 +466,13 @@ pub async fn process_systemd_logs(config: &Config, pool: &PgPool) -> Result<(), 
             if message.log_level >= config.alert_log_level {
                 subject = format_sstr!("Systemd Alert {} {}", config.server, message.log_level);
                 body.push_str(&subject);
-                body.push_str("\n");
+                body.push_str("\n<br>\n");
                 body.push_str(&message.log_message);
                 let log_timestamp: OffsetDateTime = message.log_timestamp.into();
                 if (OffsetDateTime::now_utc() - log_timestamp).whole_seconds() > 120
-                    && body.len() < 1000
+                    && body.len() < 10_000
                 {
-                    body.push_str("\n\n");
+                    body.push_str("\n\n<br><br>\n\n");
                     continue;
                 }
                 ses_instance
