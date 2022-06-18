@@ -469,7 +469,9 @@ pub async fn process_systemd_logs(config: &Config, pool: &PgPool) -> Result<(), 
                 body.push_str("\n");
                 body.push_str(&message.log_message);
                 let log_timestamp: OffsetDateTime = message.log_timestamp.into();
-                if (OffsetDateTime::now_utc() - log_timestamp).whole_seconds() > 120 {
+                if (OffsetDateTime::now_utc() - log_timestamp).whole_seconds() > 120
+                    && body.len() < 1000
+                {
                     body.push_str("\n\n");
                     continue;
                 }
@@ -497,7 +499,7 @@ pub async fn process_systemd_logs(config: &Config, pool: &PgPool) -> Result<(), 
                     .await?;
                 body.clear();
             }
-            sleep(std::time::Duration::from_millis(100)).await;
+            sleep(std::time::Duration::from_secs(1)).await;
         }
     }
 }
