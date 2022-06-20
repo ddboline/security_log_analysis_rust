@@ -30,6 +30,8 @@ pub struct ConfigInner {
     pub alert_email_address: Option<StackString>,
     #[serde(default = "default_system_log_filters")]
     pub systemd_log_filters: Vec<StackString>,
+    pub alert_log_delay: Option<usize>,
+    pub alert_buffer_size: Option<usize>,
 }
 
 fn default_system_log_filters() -> Vec<StackString> {

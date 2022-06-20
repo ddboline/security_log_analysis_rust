@@ -443,6 +443,9 @@ impl fmt::Display for ServiceLogEntry {
 /// # Errors
 /// Returns error on db query failure
 pub async fn process_systemd_logs(config: &Config, pool: &PgPool) -> Result<(), Error> {
+    let alert_log_delay = config.alert_log_delay.unwrap_or(60);
+    let alert_buffer_size = config.alert_buffer_size.unwrap_or(10_000);
+
     let ses_instance = SesInstance::new(None);
     let sending_email_address = match &config.sending_email_address {
         Some(e) => e,
@@ -469,8 +472,9 @@ pub async fn process_systemd_logs(config: &Config, pool: &PgPool) -> Result<(), 
                 body.push_str("\n<br>\n");
                 body.push_str(&message.log_message);
                 let log_timestamp: OffsetDateTime = message.log_timestamp.into();
-                if (OffsetDateTime::now_utc() - log_timestamp).whole_seconds() > 120
-                    && body.len() < 10_000
+                if (OffsetDateTime::now_utc() - log_timestamp).whole_seconds()
+                    > alert_log_delay as i64
+                    && body.len() < alert_buffer_size
                 {
                     body.push_str("\n\n<br><br>\n\n");
                     message.set_message_processed(pool).await?;
@@ -484,7 +488,7 @@ pub async fn process_systemd_logs(config: &Config, pool: &PgPool) -> Result<(), 
                         &body,
                     )
                     .await?;
-                sleep(std::time::Duration::from_secs(10)).await;
+                sleep(std::time::Duration::from_secs(alert_log_delay as u64)).await;
                 body.clear();
             }
             message.set_message_processed(pool).await?;
