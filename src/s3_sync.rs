@@ -162,13 +162,13 @@ impl S3Sync {
             let s3_bucket: StackString = s3_bucket.into();
             get_downloaded(&key_set, check_md5sum, &file_set, &local_dir, &s3_bucket).await?
         };
-        println!("downloaded {downloaded:?}");
+        debug!("downloaded {downloaded:?}");
         let downloaded_files: Vec<_> = downloaded
             .iter()
             .map(|(file_name, _)| file_name.clone())
             .collect();
         for (file_name, key) in downloaded {
-            println!("file_name {file_name:?} key {key}");
+            debug!("file_name {file_name:?} key {key}");
             self.download_file(&file_name, s3_bucket, &key).await?;
         }
         debug!("downloaded {:?}", downloaded_files);
@@ -332,7 +332,7 @@ async fn get_downloaded(
 
             if file_set.contains_key(&item.key) {
                 let (tmod_, size_) = file_set[&item.key];
-                if item.timestamp > tmod_ {
+                if item.timestamp != tmod_ {
                     if check_md5sum {
                         let file_name = local_dir.join(item.key.as_str());
                         let md5_ = get_md5sum(&file_name).await?;
