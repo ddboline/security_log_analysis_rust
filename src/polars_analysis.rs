@@ -112,6 +112,20 @@ pub async fn insert_db_into_parquet(pool: &PgPool, outdir: &Path) -> Result<(), 
     Ok(())
 }
 
+pub fn merge_parquet_files(input: &Path, output: &Path) -> Result<(), Error> {
+    println!("input {:?} output {:?}", input, output);
+    assert!(input.exists() && output.exists());
+    let df0 = ParquetReader::new(File::open(&input)?).finish()?;
+    println!("input {:?}", df0.shape());
+    let df1 = ParquetReader::new(File::open(&output)?).finish()?;
+    println!("output {:?}", df1.shape());
+    let mut df = df1.vstack(&df0)?.unique(None, UniqueKeepStrategy::First)?;
+    println!("final {:?}", df.shape());
+    ParquetWriter::new(File::create(&output)?).finish(&mut df)?;
+    println!("wrote {:?} {:?}", output, df.shape());
+    Ok(())
+}
+
 /// # Errors
 /// Return error if db query fails
 pub fn read_parquet_files(
