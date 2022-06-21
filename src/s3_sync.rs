@@ -23,8 +23,9 @@ use std::{
 };
 use sts_profile_auth::get_client_sts;
 use time::{format_description::well_known::Rfc3339, OffsetDateTime};
+use tokio::task::spawn_blocking;
 
-use crate::{exponential_retry, get_md5sum};
+use crate::{exponential_retry, get_md5sum, polars_analysis::merge_parquet_files};
 
 #[must_use]
 pub fn get_s3_client() -> S3Client {
@@ -155,6 +156,23 @@ impl S3Sync {
         let n_keys = key_list.len();
 
         let key_set: HashSet<&KeyItem> = key_list.iter().collect();
+
+        let downloaded = {
+            let local_dir = local_dir.to_path_buf();
+            let s3_bucket: StackString = s3_bucket.into();
+            get_downloaded(&key_set, check_md5sum, &file_set, &local_dir, &s3_bucket).await?
+        };
+        println!("downloaded {downloaded:?}");
+        let downloaded_files: Vec<_> = downloaded
+            .iter()
+            .map(|(file_name, _)| file_name.clone())
+            .collect();
+        for (file_name, key) in downloaded {
+            println!("file_name {file_name:?} key {key}");
+            self.download_file(&file_name, s3_bucket, &key).await?;
+        }
+        debug!("downloaded {:?}", downloaded_files);
+
         let key_set = Arc::new(key_set);
 
         // let uploaded: Vec<_> =
@@ -205,20 +223,6 @@ impl S3Sync {
         }
         debug!("uploaded {:?}", uploaded_files);
 
-        let downloaded = {
-            let local_dir = local_dir.to_path_buf();
-            let s3_bucket: StackString = s3_bucket.into();
-            get_downloaded(key_list, check_md5sum, &file_set, &local_dir, &s3_bucket).await?
-        };
-        let downloaded_files: Vec<_> = downloaded
-            .iter()
-            .map(|(file_name, _)| file_name.clone())
-            .collect();
-        for (file_name, key) in downloaded {
-            self.download_file(&file_name, s3_bucket, &key).await?;
-        }
-        debug!("downloaded {:?}", downloaded_files);
-
         let msg = format_sstr!(
             "{} {} s3_bucketnkeys {} uploaded {} downloaded {}",
             title,
@@ -264,7 +268,17 @@ impl S3Sync {
             }
         })
         .await;
-        tokio::fs::rename(tmp_path, local_file).await?;
+        let output = local_file.to_path_buf();
+        println!("input {tmp_path:?} output {output:?}");
+        if output.exists() {
+            let result: Result<(), Error> = spawn_blocking(move || {
+                merge_parquet_files(&tmp_path, &output)?;
+                fs::remove_file(&tmp_path).map_err(Into::into)
+            }).await?;
+            result?;
+        } else {
+            tokio::fs::rename(&tmp_path, &output).await?;
+        }
         etag
     }
 
@@ -306,7 +320,7 @@ impl S3Sync {
 }
 
 async fn get_downloaded(
-    key_list: Vec<KeyItem>,
+    key_list: &HashSet<&KeyItem>,
     check_md5sum: bool,
     file_set: &HashMap<StackString, (i64, u64)>,
     local_dir: &Path,
@@ -327,17 +341,13 @@ async fn get_downloaded(
                                 "download md5 {} {} {} {} {} ",
                                 item.key, md5_, item.etag, item.timestamp, tmod_
                             );
-                            let file_name = local_dir.join(item.key.as_str());
-                            fs::remove_file(&file_name)?;
                             do_download = true;
                         }
-                    } else if item.size > size_ {
-                        let file_name = local_dir.join(item.key.as_str());
+                    } else if item.size != size_ {
                         debug!(
                             "download size {} {} {} {} {}",
                             item.key, size_, item.size, item.timestamp, tmod_
                         );
-                        fs::remove_file(&file_name)?;
                         do_download = true;
                     }
                 }
@@ -348,7 +358,7 @@ async fn get_downloaded(
             if do_download {
                 let file_name = local_dir.join(item.key.as_str());
                 debug!("download {} {}", s3_bucket, item.key);
-                Ok(Some((file_name, item.key)))
+                Ok(Some((file_name, item.key.clone())))
             } else {
                 Ok(None)
             }
