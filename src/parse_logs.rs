@@ -357,6 +357,7 @@ async fn process_systemd_sshd_output(
                         let conn = pool.get().await?;
                         debug!("proc nginx {:?}", log_entry);
                         log_entry.insert_single(&conn).await?;
+                        continue;
                     }
                 }
                 if let Some(log_level) = LogLevel::line_contains_level(&line, None) {
