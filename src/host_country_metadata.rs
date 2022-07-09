@@ -153,7 +153,7 @@ impl HostCountryMetadata {
         }
 
         if host.parse::<Ipv4Addr>().is_err() && lookup_host(host).await.is_err() {
-            println!("host {host}");
+            debug!("host {host}");
             return Err(format_err!("Does not appear to be a valid host {host}"));
         }
 

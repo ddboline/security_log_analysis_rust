@@ -584,7 +584,7 @@ mod tests {
         let infile = File::open(fname).unwrap();
         let year = OffsetDateTime::now_utc().year();
         let results = parse_log_file(year, infile, &parse_log_line_ssh).unwrap();
-        println!("{}", results.len());
+        debug!("{}", results.len());
         assert!(results.len() == 20);
     }
 
@@ -603,7 +603,7 @@ mod tests {
             "tests/data/test_auth.log",
         )
         .await?;
-        println!("{}", results.len());
+        debug!("{}", results.len());
         assert!(results.len() == 18);
         Ok(())
     }
@@ -612,7 +612,7 @@ mod tests {
     #[ignore]
     async fn test_parse_systemd_logs_sshd() -> Result<(), Error> {
         let logs = parse_systemd_logs_sshd(Host::Home).await?;
-        println!("{:?}", logs[0]);
+        debug!("{:?}", logs[0]);
         assert!(logs.len() > 0);
         Ok(())
     }
@@ -623,7 +623,7 @@ mod tests {
         let log: ServiceLogLine = serde_json::from_str(line)?;
         let log_line = log.parse_sshd()?;
         let log_entry = log_line.into_intrusion_log("ssh", "home.ddboline.net");
-        println!("{log_entry:?}");
+        debug!("{log_entry:?}");
         assert_eq!(log_entry.id, -1);
         assert_eq!(&log_entry.service, "ssh");
         assert_eq!(&log_entry.server, "home.ddboline.net");

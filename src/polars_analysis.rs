@@ -1,5 +1,6 @@
 use anyhow::{format_err, Error};
 use chrono::{Duration, NaiveDateTime, Utc};
+use log::debug;
 use polars::{
     datatypes::TimeUnit,
     prelude::{UniqueKeepStrategy, Utf8Chunked},
@@ -53,7 +54,7 @@ pub async fn insert_db_into_parquet(pool: &PgPool, outdir: &Path) -> Result<(), 
     let conn = pool.get().await?;
     let rows: Vec<Wrap> = query.fetch(&conn).await?;
     for Wrap { year, month } in rows {
-        println!("year {} month {}", year, month);
+        debug!("year {} month {}", year, month);
         let query = query!(
             r#"
                 SELECT a.*, b.code, c.country
@@ -94,35 +95,42 @@ pub async fn insert_db_into_parquet(pool: &PgPool, outdir: &Path) -> Result<(), 
         );
 
         let new_df = DataFrame::new(columns)?;
-        println!("{:?}", new_df.shape());
+        debug!("{:?}", new_df.shape());
 
         let filename = format_sstr!("intrusion_log_{year:04}_{month:02}.parquet");
         let file = outdir.join(&filename);
         let mut df = if file.exists() {
             let df = ParquetReader::new(File::open(&file)?).finish()?;
-            println!("{:?}", df.shape());
+            debug!("{:?}", df.shape());
             df.vstack(&new_df)?
                 .unique(None, UniqueKeepStrategy::First)?
         } else {
             new_df
         };
         ParquetWriter::new(File::create(&file)?).finish(&mut df)?;
-        println!("wrote {} {:?}", filename, df.shape());
+        debug!("wrote {} {:?}", filename, df.shape());
     }
     Ok(())
 }
 
+/// # Errors
+/// Returns error if input/output doesn't exist or cannot be read
 pub fn merge_parquet_files(input: &Path, output: &Path) -> Result<(), Error> {
-    println!("input {:?} output {:?}", input, output);
-    assert!(input.exists() && output.exists());
+    debug!("input {:?} output {:?}", input, output);
+    if !input.exists() {
+        return Err(format_err!("input {input:?} does not exist"));
+    }
+    if !output.exists() {
+        return Err(format_err!("output {output:?} does not exist"));
+    }
     let df0 = ParquetReader::new(File::open(&input)?).finish()?;
-    println!("input {:?}", df0.shape());
+    debug!("input {:?}", df0.shape());
     let df1 = ParquetReader::new(File::open(&output)?).finish()?;
-    println!("output {:?}", df1.shape());
+    debug!("output {:?}", df1.shape());
     let mut df = df1.vstack(&df0)?.unique(None, UniqueKeepStrategy::First)?;
-    println!("final {:?}", df.shape());
+    debug!("final {:?}", df.shape());
     ParquetWriter::new(File::create(&output)?).finish(&mut df)?;
-    println!("wrote {:?} {:?}", output, df.shape());
+    debug!("wrote {:?} {:?}", output, df.shape());
     Ok(())
 }
 

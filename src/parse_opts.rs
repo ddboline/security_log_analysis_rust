@@ -104,10 +104,12 @@ impl ParseOpts {
                 IntrusionLog::insert(&pool, &inserts).await?;
             }
             ParseOpts::Cleanup => {
-                println!(
+                stdout.send(format_sstr!(
                     "{:?} {:?} {:?}",
-                    config.systemd_log_filters, config.alert_log_delay, config.alert_buffer_size
-                );
+                    config.systemd_log_filters,
+                    config.alert_log_delay,
+                    config.alert_buffer_size
+                ));
                 let pool = PgPool::new(&config.database_url);
                 let metadata = HostCountryMetadata::from_pool(&pool).await?;
                 for host in HostCountry::get_dangling_hosts(&pool).await? {

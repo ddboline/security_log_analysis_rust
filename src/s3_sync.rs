@@ -269,12 +269,13 @@ impl S3Sync {
         })
         .await;
         let output = local_file.to_path_buf();
-        println!("input {tmp_path:?} output {output:?}");
+        debug!("input {tmp_path:?} output {output:?}");
         if output.exists() {
             let result: Result<(), Error> = spawn_blocking(move || {
                 merge_parquet_files(&tmp_path, &output)?;
                 fs::remove_file(&tmp_path).map_err(Into::into)
-            }).await?;
+            })
+            .await?;
             result?;
         } else {
             tokio::fs::rename(&tmp_path, &output).await?;
@@ -326,7 +327,7 @@ async fn get_downloaded(
     local_dir: &Path,
     s3_bucket: &str,
 ) -> Result<Vec<(PathBuf, StackString)>, Error> {
-    let futures = key_list.into_iter().map(|item| async move {
+    let futures = key_list.iter().map(|item| async move {
         {
             let mut do_download = false;
 
