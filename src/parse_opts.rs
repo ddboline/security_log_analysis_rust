@@ -181,7 +181,7 @@ impl ParseOpts {
             ParseOpts::Db { directory } => {
                 let directory = directory.unwrap_or_else(|| config.cache_dir.clone());
                 let pool = PgPool::new(&config.database_url);
-                insert_db_into_parquet(&pool, &directory).await?;
+                stdout.send(insert_db_into_parquet(&pool, &directory).await?.join("\n"));
             }
             ParseOpts::Read {
                 directory,

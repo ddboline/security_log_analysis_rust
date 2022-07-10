@@ -1,6 +1,6 @@
 use anyhow::{format_err, Error};
 use chrono::{Duration, NaiveDateTime, Utc};
-use log::debug;
+use log::info;
 use polars::{
     datatypes::TimeUnit,
     prelude::{UniqueKeepStrategy, Utf8Chunked},
@@ -25,7 +25,10 @@ use crate::{pgpool::PgPool, CountryCount, DateTimeType, Host, Service};
 
 /// # Errors
 /// Return error if db query fails
-pub async fn insert_db_into_parquet(pool: &PgPool, outdir: &Path) -> Result<(), Error> {
+pub async fn insert_db_into_parquet(
+    pool: &PgPool,
+    outdir: &Path,
+) -> Result<Vec<StackString>, Error> {
     #[derive(FromSqlRow)]
     struct Wrap {
         year: i32,
@@ -43,6 +46,8 @@ pub async fn insert_db_into_parquet(pool: &PgPool, outdir: &Path) -> Result<(), 
         country: Option<StackString>,
     }
 
+    let mut output = Vec::new();
+
     let query = query!(
         r#"
             SELECT cast(extract(year from datetime at time zone 'utc') as int) as year,
@@ -54,7 +59,7 @@ pub async fn insert_db_into_parquet(pool: &PgPool, outdir: &Path) -> Result<(), 
     let conn = pool.get().await?;
     let rows: Vec<Wrap> = query.fetch(&conn).await?;
     for Wrap { year, month } in rows {
-        debug!("year {} month {}", year, month);
+        output.push(format_sstr!("year {} month {}", year, month));
         let query = query!(
             r#"
                 SELECT a.*, b.code, c.country
@@ -95,28 +100,28 @@ pub async fn insert_db_into_parquet(pool: &PgPool, outdir: &Path) -> Result<(), 
         );
 
         let new_df = DataFrame::new(columns)?;
-        debug!("{:?}", new_df.shape());
+        output.push(format_sstr!("{:?}", new_df.shape()));
 
         let filename = format_sstr!("intrusion_log_{year:04}_{month:02}.parquet");
         let file = outdir.join(&filename);
         let mut df = if file.exists() {
             let df = ParquetReader::new(File::open(&file)?).finish()?;
-            debug!("{:?}", df.shape());
+            output.push(format_sstr!("{:?}", df.shape()));
             df.vstack(&new_df)?
                 .unique(None, UniqueKeepStrategy::First)?
         } else {
             new_df
         };
         ParquetWriter::new(File::create(&file)?).finish(&mut df)?;
-        debug!("wrote {} {:?}", filename, df.shape());
+        output.push(format_sstr!("wrote {} {:?}", filename, df.shape()))
     }
-    Ok(())
+    Ok(output)
 }
 
 /// # Errors
 /// Returns error if input/output doesn't exist or cannot be read
 pub fn merge_parquet_files(input: &Path, output: &Path) -> Result<(), Error> {
-    debug!("input {:?} output {:?}", input, output);
+    info!("input {:?} output {:?}", input, output);
     if !input.exists() {
         return Err(format_err!("input {input:?} does not exist"));
     }
@@ -124,13 +129,13 @@ pub fn merge_parquet_files(input: &Path, output: &Path) -> Result<(), Error> {
         return Err(format_err!("output {output:?} does not exist"));
     }
     let df0 = ParquetReader::new(File::open(&input)?).finish()?;
-    debug!("input {:?}", df0.shape());
+    info!("input {:?}", df0.shape());
     let df1 = ParquetReader::new(File::open(&output)?).finish()?;
-    debug!("output {:?}", df1.shape());
+    info!("output {:?}", df1.shape());
     let mut df = df1.vstack(&df0)?.unique(None, UniqueKeepStrategy::First)?;
-    debug!("final {:?}", df.shape());
+    info!("final {:?}", df.shape());
     ParquetWriter::new(File::create(&output)?).finish(&mut df)?;
-    debug!("wrote {:?} {:?}", output, df.shape());
+    info!("wrote {:?} {:?}", output, df.shape());
     Ok(())
 }
 
