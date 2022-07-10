@@ -252,6 +252,7 @@ impl ParseOpts {
                 }
             }
         }
+        stdout.close().await?;
         Ok(())
     }
 }
