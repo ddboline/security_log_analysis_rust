@@ -113,7 +113,7 @@ pub async fn insert_db_into_parquet(
             new_df
         };
         ParquetWriter::new(File::create(&file)?).finish(&mut df)?;
-        output.push(format_sstr!("wrote {} {:?}", filename, df.shape()))
+        output.push(format_sstr!("wrote {} {:?}", filename, df.shape()));
     }
     Ok(output)
 }

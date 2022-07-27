@@ -7,7 +7,7 @@ use std::{
     sync::Arc,
 };
 
-use crate::models::LogLevel;
+use crate::{models::LogLevel, Host};
 
 #[derive(Default, Debug, Deserialize)]
 pub struct ConfigInner {
@@ -15,7 +15,7 @@ pub struct ConfigInner {
     #[serde(default = "default_username")]
     pub username: StackString,
     pub export_dir: Option<PathBuf>,
-    pub server: StackString,
+    pub server: Host,
     #[serde(default = "default_bucket")]
     pub s3_bucket: StackString,
     #[serde(default = "default_cache_dir")]

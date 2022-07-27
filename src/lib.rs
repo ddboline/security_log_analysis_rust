@@ -99,6 +99,12 @@ pub enum Host {
     Cloud,
 }
 
+impl Default for Host {
+    fn default() -> Self {
+        Self::Home
+    }
+}
+
 impl FromStr for Host {
     type Err = Error;
 

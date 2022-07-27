@@ -345,7 +345,7 @@ async fn process_systemd_sshd_output(
                 }
                 if line.contains("Invalid user") {
                     let log_line = log.parse_sshd()?;
-                    let log_entry = log_line.into_intrusion_log("ssh", &config.server);
+                    let log_entry = log_line.into_intrusion_log("ssh", config.server.to_str());
                     let conn = pool.get().await?;
                     debug!("proc sshd {:?}", log_entry);
                     log_entry.insert_single(&conn).await?;
@@ -353,7 +353,8 @@ async fn process_systemd_sshd_output(
                 }
                 if line.contains("nginx") {
                     if let Some(log_line) = log.parse_nginx()? {
-                        let log_entry = log_line.into_intrusion_log("nginx", &config.server);
+                        let log_entry =
+                            log_line.into_intrusion_log("nginx", config.server.to_str());
                         let conn = pool.get().await?;
                         debug!("proc nginx {:?}", log_entry);
                         log_entry.insert_single(&conn).await?;
