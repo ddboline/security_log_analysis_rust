@@ -64,14 +64,14 @@ pub enum ParseOpts {
     },
     Import {
         #[structopt(short, long)]
-        /// table: allowed values: ['intrusion_log', 'host_country']
+        /// table: allowed values: [`intrusion_log`, `host_country`]
         table: StackString,
         #[structopt(short, long)]
         filepath: Option<PathBuf>,
     },
     Export {
         #[structopt(short, long)]
-        /// table: allowed values: ['intrusion_log', 'host_country']
+        /// table: allowed values: [`intrusion_log`, `host_country`]
         table: StackString,
         #[structopt(short, long)]
         filepath: Option<PathBuf>,
