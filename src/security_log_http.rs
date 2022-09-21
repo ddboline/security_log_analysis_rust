@@ -424,7 +424,9 @@ async fn start_app() -> Result<(), AnyhowError> {
 
 #[tokio::main]
 async fn main() -> Result<(), AnyhowError> {
-    start_app().await
+    tokio::spawn(async move {
+        start_app().await
+    }).await.unwrap()
 }
 
 #[cfg(test)]

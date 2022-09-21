@@ -221,7 +221,7 @@ impl ParseOpts {
                 let config = Config::init_config()?;
                 let pool = PgPool::new(&config.database_url);
 
-                let mut file: Box<dyn AsyncWrite + Unpin> = if let Some(filepath) = filepath {
+                let mut file: Box<dyn AsyncWrite + Unpin + Send + Sync> = if let Some(filepath) = filepath {
                     Box::new(File::create(&filepath).await?)
                 } else {
                     Box::new(tokio::io::stdout())
