@@ -1,4 +1,5 @@
 use anyhow::Error;
+use clap::Parser;
 use itertools::Itertools;
 use log::debug;
 use refinery::embed_migrations;
@@ -6,7 +7,6 @@ use smallvec::SmallVec;
 use stack_string::{format_sstr, StackString};
 use std::{collections::HashSet, path::PathBuf};
 use stdout_channel::StdoutChannel;
-use structopt::StructOpt;
 use tokio::{
     fs::{read_to_string, File},
     io::{stdin, AsyncReadExt, AsyncWrite, AsyncWriteExt},
@@ -26,7 +26,7 @@ use crate::{
 
 embed_migrations!("migrations");
 
-#[derive(StructOpt, Debug)]
+#[derive(Parser, Debug)]
 pub enum ParseOpts {
     /// Parse logs
     Parse,
@@ -43,37 +43,37 @@ pub enum ParseOpts {
     RunMigrations,
     /// Sync files with S3
     Sync {
-        #[structopt(short = "d", long = "directory")]
+        #[clap(short = 'd', long = "directory")]
         directory: Option<PathBuf>,
     },
     /// Merge DB intrusion log entries with parquet files
     Db {
-        #[structopt(short = "d", long = "directory")]
+        #[clap(short = 'd', long = "directory")]
         directory: Option<PathBuf>,
     },
     /// Print most frequent countries
     Read {
-        #[structopt(short = "d", long = "directory")]
+        #[clap(short = 'd', long = "directory")]
         directory: Option<PathBuf>,
-        #[structopt(short = "s", long = "service")]
+        #[clap(short = 's', long = "service")]
         service: Option<Service>,
-        #[structopt(short = "t", long = "server")]
+        #[clap(short = 't', long = "server")]
         server: Option<Host>,
-        #[structopt(short = "n", long = "ndays")]
+        #[clap(short = 'n', long = "ndays")]
         ndays: Option<i32>,
     },
     Import {
-        #[structopt(short, long)]
+        #[clap(short, long)]
         /// table: allowed values: [`intrusion_log`, `host_country`]
         table: StackString,
-        #[structopt(short, long)]
+        #[clap(short, long)]
         filepath: Option<PathBuf>,
     },
     Export {
-        #[structopt(short, long)]
+        #[clap(short, long)]
         /// table: allowed values: [`intrusion_log`, `host_country`]
         table: StackString,
-        #[structopt(short, long)]
+        #[clap(short, long)]
         filepath: Option<PathBuf>,
     },
 }
@@ -221,11 +221,12 @@ impl ParseOpts {
                 let config = Config::init_config()?;
                 let pool = PgPool::new(&config.database_url);
 
-                let mut file: Box<dyn AsyncWrite + Unpin + Send + Sync> = if let Some(filepath) = filepath {
-                    Box::new(File::create(&filepath).await?)
-                } else {
-                    Box::new(tokio::io::stdout())
-                };
+                let mut file: Box<dyn AsyncWrite + Unpin + Send + Sync> =
+                    if let Some(filepath) = filepath {
+                        Box::new(File::create(&filepath).await?)
+                    } else {
+                        Box::new(tokio::io::stdout())
+                    };
                 match table.as_str() {
                     "intrusion_log" => {
                         let results = IntrusionLog::get_intrusion_log_filtered(

@@ -1,6 +1,6 @@
 [package]
 name = "security_log_analysis_rust"
-version = "0.9.28"
+version = "0.9.29"
 authors = ["Daniel Boline <ddboline@gmail.com>"]
 edition = "2018"
 
@@ -30,7 +30,7 @@ serde_json = "1.0"
 dotenv = "0.15"
 glob = "0.3"
 flate2 = "1.0"
-structopt = "0.3"
+clap = {version="3.0", features=["derive"]}
 parking_lot = "0.12"
 tokio-postgres = {version="0.7", features=["with-time-0_3", "with-uuid-1", "with-serde_json-1"]}
 postgres-types = {version="0.2", features=["with-time-0_3", "with-uuid-1", "with-serde_json-1"]}
@@ -55,8 +55,8 @@ refinery = {version="0.8", features=["tokio-postgres"]}
 postgres_query = {git = "https://github.com/ddboline/rust-postgres-query", tag = "0.3.4", features=["deadpool"]}
 stack-string = { version="0.7", features=["postgres_types", "rweb-openapi"] }
 chrono = "0.4"
-polars = {version="0.24", features=["temporal", "parquet"]}
-authorized_users = { git = "https://github.com/ddboline/auth_server_rust.git", tag="0.9.3"}
+polars = {version="0.24", features=["temporal", "parquet", "lazy"]}
+authorized_users = { git = "https://github.com/ddboline/auth_server_rust.git", tag="0.9.5"}
 rweb-helper = { git = "https://github.com/ddboline/rweb_helper.git", tag="0.4.14" }
 uuid = "1.0"
 cached = "0.39"

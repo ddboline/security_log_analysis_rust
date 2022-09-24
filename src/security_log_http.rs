@@ -26,7 +26,6 @@ use rweb_helper::DateTimeType;
 use serde::{Deserialize, Serialize};
 use stack_string::{format_sstr, StackString};
 use std::{convert::Infallible, env::var, fmt, fmt::Write, net::SocketAddr, time::Duration};
-use structopt::clap::AppSettings;
 use thiserror::Error;
 use time::OffsetDateTime;
 use tokio::{
@@ -424,9 +423,9 @@ async fn start_app() -> Result<(), AnyhowError> {
 
 #[tokio::main]
 async fn main() -> Result<(), AnyhowError> {
-    tokio::spawn(async move {
-        start_app().await
-    }).await.unwrap()
+    tokio::spawn(async move { start_app().await })
+        .await
+        .unwrap()
 }
 
 #[cfg(test)]
