@@ -2,7 +2,9 @@ use anyhow::{format_err, Error};
 use chrono::{Duration, NaiveDateTime, Utc};
 use log::info;
 use polars::{
+    chunked_array::ops::SortOptions,
     datatypes::TimeUnit,
+    lazy::{dsl::functions::col, frame::IntoLazy},
     prelude::{UniqueKeepStrategy, Utf8Chunked},
 };
 use postgres_query::{query, FromSqlRow};
@@ -171,9 +173,18 @@ pub fn read_parquet_files(
         let new_df = get_country_count(&input_file, service, server, ndays)?;
         df = df.vstack(&new_df)?;
     }
-    let mut df = df.groupby(["country"])?.sum()?;
-    df.rename("country_count_sum", "count")?;
-    df.sort_in_place(&["count"], true)?;
+    let df = df
+        .lazy()
+        .groupby(["country"])
+        .agg([col("country_count").sum().alias("count")])
+        .sort(
+            "count",
+            SortOptions {
+                descending: true,
+                nulls_last: false,
+            },
+        )
+        .collect()?;
     let country_iter = df.column("country")?.utf8()?.into_iter();
     let count_iter = df.column("count")?.u32()?.into_iter();
     let code_count: Vec<_> = country_iter
