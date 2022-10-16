@@ -1,6 +1,6 @@
 [package]
 name = "security_log_analysis_rust"
-version = "0.9.29"
+version = "0.9.30"
 authors = ["Daniel Boline <ddboline@gmail.com>"]
 edition = "2018"
 
@@ -30,7 +30,7 @@ serde_json = "1.0"
 dotenv = "0.15"
 glob = "0.3"
 flate2 = "1.0"
-clap = {version="3.0", features=["derive"]}
+clap = {version="4.0", features=["derive"]}
 parking_lot = "0.12"
 tokio-postgres = {version="0.7", features=["with-time-0_3", "with-uuid-1", "with-serde_json-1"]}
 postgres-types = {version="0.2", features=["with-time-0_3", "with-uuid-1", "with-serde_json-1"]}

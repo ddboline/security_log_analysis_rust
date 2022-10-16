@@ -82,7 +82,7 @@ impl ParseOpts {
     /// # Errors
     /// Return error if db query fails
     pub async fn process_args() -> Result<(), Error> {
-        let opts = ParseOpts::from_args();
+        let opts = ParseOpts::parse();
         let config = Config::init_config()?;
         let stdout = StdoutChannel::<StackString>::new();
 
