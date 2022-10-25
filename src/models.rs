@@ -8,6 +8,7 @@ use stack_string::{format_sstr, StackString};
 use std::{cmp::Ordering, fmt, net::ToSocketAddrs, str::FromStr};
 use time::OffsetDateTime;
 use tokio_postgres::types::{FromSql, IsNull, ToSql, Type};
+use uuid::Uuid;
 
 use crate::{
     pgpool::{PgPool, PgTransaction},
@@ -160,9 +161,9 @@ impl HostCountry {
     }
 }
 
-#[derive(FromSqlRow, Clone, Debug, Serialize, Deserialize, PartialEq, Eq, Hash, Schema)]
+#[derive(FromSqlRow, Clone, Debug, Serialize, Deserialize, PartialEq, Eq, Hash)]
 pub struct IntrusionLog {
-    pub id: i32,
+    pub id: Uuid,
     pub service: StackString,
     pub server: StackString,
     pub datetime: DateTimeType,
@@ -557,7 +558,7 @@ impl ToSql for LogLevel {
 
 #[derive(FromSqlRow, Clone, Debug, Serialize, Deserialize)]
 pub struct SystemdLogMessages {
-    pub id: i32,
+    pub id: Uuid,
     pub log_level: LogLevel,
     pub log_unit: Option<StackString>,
     pub log_message: StackString,
@@ -574,7 +575,7 @@ impl SystemdLogMessages {
         log_timestamp: DateTimeType,
     ) -> Self {
         Self {
-            id: -1,
+            id: Uuid::new_v4(),
             log_level,
             log_unit: log_unit.map(Into::into),
             log_message: log_message.into(),

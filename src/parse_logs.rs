@@ -21,6 +21,7 @@ use tokio::{
     task::{spawn, JoinHandle},
     time::sleep,
 };
+use uuid::Uuid;
 
 use crate::{
     config::Config,
@@ -42,7 +43,7 @@ impl LogLineSSH {
     #[must_use]
     pub fn into_intrusion_log(self, service: &str, server: &str) -> IntrusionLog {
         IntrusionLog {
-            id: -1,
+            id: Uuid::new_v4(),
             service: service.into(),
             server: server.into(),
             datetime: self.timestamp,
@@ -184,7 +185,7 @@ where
             };
             if cond {
                 Some(IntrusionLog {
-                    id: -1,
+                    id: Uuid::new_v4(),
                     service: service.to_str().into(),
                     server: server.to_str().into(),
                     datetime: log_line.timestamp,
@@ -276,7 +277,7 @@ pub async fn parse_systemd_logs_sshd(server: Host) -> Result<Vec<IntrusionLog>, 
                 let log: ServiceLogLine = serde_json::from_str(line)?;
                 let log_line: LogLineSSH = log.parse_sshd()?;
                 Ok(Some(IntrusionLog {
-                    id: -1,
+                    id: Uuid::new_v4(),
                     service: Service::Ssh.to_str().into(),
                     server: server.to_str().into(),
                     datetime: log_line.timestamp,
@@ -286,7 +287,7 @@ pub async fn parse_systemd_logs_sshd(server: Host) -> Result<Vec<IntrusionLog>, 
             } else if line.contains("nginx") {
                 let log: ServiceLogLine = serde_json::from_str(line)?;
                 Ok(log.parse_nginx()?.map(|log_line| IntrusionLog {
-                    id: -1,
+                    id: Uuid::new_v4(),
                     service: Service::Nginx.to_str().into(),
                     server: server.to_str().into(),
                     datetime: log_line.timestamp,
@@ -625,7 +626,6 @@ mod tests {
         let log_line = log.parse_sshd()?;
         let log_entry = log_line.into_intrusion_log("ssh", "home.ddboline.net");
         debug!("{log_entry:?}");
-        assert_eq!(log_entry.id, -1);
         assert_eq!(&log_entry.service, "ssh");
         assert_eq!(&log_entry.server, "home.ddboline.net");
         assert_eq!(&log_entry.host, "43.154.144.211");

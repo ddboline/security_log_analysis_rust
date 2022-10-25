@@ -22,7 +22,7 @@ use http::StatusCode;
 use itertools::Itertools;
 use log::error;
 use rweb::{delete, get, post, reject::Reject, Filter, Json, Query, Rejection, Reply, Schema};
-use rweb_helper::DateTimeType;
+use rweb_helper::{DateTimeType, derive_rweb_schema, UuidWrapper};
 use serde::{Deserialize, Serialize};
 use stack_string::{format_sstr, StackString};
 use std::{convert::Infallible, env::var, fmt, fmt::Write, net::SocketAddr, time::Duration};
@@ -32,6 +32,7 @@ use tokio::{
     task::{spawn, spawn_blocking, JoinError},
     time::{interval, sleep},
 };
+use derive_more::{From, Into};
 
 use security_log_analysis_rust::{
     config::Config,
@@ -219,9 +220,26 @@ async fn intursion_log_get(
     Ok(rweb::reply::json(&results))
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Into, From)]
+struct IntrusionLogWrapper(IntrusionLog);
+
+derive_rweb_schema!(IntrusionLogWrapper, _IntrusionLogWrapper);
+
+#[allow(dead_code)]
+#[derive(Schema)]
+struct _IntrusionLogWrapper {
+    id: UuidWrapper,
+    service: StackString,
+    server: StackString,
+    datetime: DateTimeType,
+    host: StackString,
+    username: Option<StackString>,
+}
+
+
 #[derive(Serialize, Deserialize, Schema)]
 struct IntrusionLogUpdate {
-    updates: Vec<IntrusionLog>,
+    updates: Vec<IntrusionLogWrapper>,
 }
 
 #[post("/security_log/intrusion_log")]
@@ -231,7 +249,8 @@ async fn intrusion_log_post(
     _: LoggedUser,
 ) -> WarpResult<impl Reply> {
     let payload = payload.into_inner();
-    let inserts = IntrusionLog::insert(&data.pool, &payload.updates)
+    let updates: Vec<_> = payload.updates.into_iter().map(Into::into).collect();
+    let inserts = IntrusionLog::insert(&data.pool, &updates)
         .await
         .map_err(Into::<ServiceError>::into)?;
     Ok(rweb::reply::html(format_sstr!("Inserts {}", inserts)))
