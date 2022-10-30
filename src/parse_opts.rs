@@ -1,5 +1,6 @@
 use anyhow::Error;
 use clap::Parser;
+use futures::TryStreamExt;
 use itertools::Itertools;
 use log::debug;
 use refinery::embed_migrations;
@@ -103,7 +104,8 @@ impl ParseOpts {
             ParseOpts::Cleanup => {
                 let pool = PgPool::new(&config.database_url);
                 let metadata = HostCountryMetadata::from_pool(&pool).await?;
-                for host in HostCountry::get_dangling_hosts(&pool).await? {
+                let mut stream = Box::pin(HostCountry::get_dangling_hosts(&pool).await?);
+                while let Some(host) = stream.try_next().await? {
                     let host_country = metadata.get_country_info(&host).await?;
                     let output = serde_json::to_string(&host_country)?;
                     stdout.send(output);
@@ -229,7 +231,7 @@ impl ParseOpts {
                     };
                 match table.as_str() {
                     "intrusion_log" => {
-                        let results = IntrusionLog::get_intrusion_log_filtered(
+                        let results: Vec<_> = IntrusionLog::get_intrusion_log_filtered(
                             &pool,
                             None,
                             None,
@@ -238,12 +240,17 @@ impl ParseOpts {
                             Some(1000),
                             None,
                         )
+                        .await?
+                        .try_collect()
                         .await?;
                         file.write_all(&serde_json::to_vec(&results)?).await?;
                     }
                     "host_country" => {
-                        let results =
-                            HostCountry::get_host_country(&pool, None, Some(1000), true).await?;
+                        let results: Vec<_> =
+                            HostCountry::get_host_country(&pool, None, Some(1000), true)
+                                .await?
+                                .try_collect()
+                                .await?;
                         file.write_all(&serde_json::to_vec(&results)?).await?;
                     }
                     _ => {}

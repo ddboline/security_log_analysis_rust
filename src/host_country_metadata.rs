@@ -1,4 +1,5 @@
 use anyhow::{format_err, Error};
+use futures::TryStreamExt;
 use log::debug;
 use postgres_query::query;
 use reqwest::{Client, Url};
@@ -51,16 +52,16 @@ impl HostCountryMetadata {
             country_code_map: Arc::new(RwLock::new(
                 CountryCode::get_country_code_list(pool)
                     .await?
-                    .into_iter()
-                    .map(|item| (item.code.clone(), item))
-                    .collect(),
+                    .map_ok(|item| (item.code.clone(), item))
+                    .try_collect()
+                    .await?,
             )),
             host_country_map: Arc::new(RwLock::new(
                 HostCountry::get_host_country(pool, None, None, false)
                     .await?
-                    .into_iter()
-                    .map(|item| (item.host.clone(), item))
-                    .collect(),
+                    .map_ok(|item| (item.host.clone(), item))
+                    .try_collect()
+                    .await?,
             )),
             ..Self::default()
         };

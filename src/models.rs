@@ -1,7 +1,10 @@
 use anyhow::{format_err, Error};
 use bytes::BytesMut;
 use derive_more::Into;
-use postgres_query::{client::GenericClient, query, query_dyn, FromSqlRow, Parameter};
+use futures::{Stream, TryStreamExt};
+use postgres_query::{
+    client::GenericClient, query, query_dyn, Error as PqError, FromSqlRow, Parameter,
+};
 use rweb::Schema;
 use serde::{Deserialize, Serialize};
 use stack_string::{format_sstr, StackString};
@@ -24,10 +27,12 @@ pub struct CountryCode {
 impl CountryCode {
     /// # Errors
     /// Return error if db query fails
-    pub async fn get_country_code_list(pool: &PgPool) -> Result<Vec<Self>, Error> {
+    pub async fn get_country_code_list(
+        pool: &PgPool,
+    ) -> Result<impl Stream<Item = Result<Self, PqError>>, Error> {
         let query = query!("SELECT * FROM country_code");
         let conn = pool.get().await?;
-        query.fetch(&conn).await.map_err(Into::into)
+        query.fetch_streaming(&conn).await.map_err(Into::into)
     }
 }
 
@@ -67,7 +72,7 @@ impl HostCountry {
         offset: Option<usize>,
         limit: Option<usize>,
         order: bool,
-    ) -> Result<Vec<Self>, Error> {
+    ) -> Result<impl Stream<Item = Result<Self, PqError>>, Error> {
         let mut query = format_sstr!("SELECT * FROM host_country");
         if order {
             query.push_str(" ORDER BY created_at DESC");
@@ -80,7 +85,7 @@ impl HostCountry {
         }
         let query = query_dyn!(&query)?;
         let conn = pool.get().await?;
-        query.fetch(&conn).await.map_err(Into::into)
+        query.fetch_streaming(&conn).await.map_err(Into::into)
     }
 
     /// # Errors
@@ -141,12 +146,9 @@ impl HostCountry {
 
     /// # Errors
     /// Return error if db query fails
-    pub async fn get_dangling_hosts(pool: &PgPool) -> Result<Vec<StackString>, Error> {
-        #[derive(FromSqlRow)]
-        struct Wrapper {
-            host: StackString,
-        }
-
+    pub async fn get_dangling_hosts(
+        pool: &PgPool,
+    ) -> Result<impl Stream<Item = Result<StackString, PqError>>, Error> {
         let query = query!(
             r#"
                 SELECT distinct a.host
@@ -156,8 +158,17 @@ impl HostCountry {
             "#
         );
         let conn = pool.get().await?;
-        let rows: Vec<Wrapper> = query.fetch(&conn).await?;
-        Ok(rows.into_iter().map(|x| x.host).collect())
+        query
+            .query_streaming(&conn)
+            .await
+            .map(|stream| {
+                stream.and_then(|row| async move {
+                    let host: StackString =
+                        row.try_get("host").map_err(PqError::BeginTransaction)?;
+                    Ok(host)
+                })
+            })
+            .map_err(Into::into)
     }
 }
 
@@ -172,29 +183,6 @@ pub struct IntrusionLog {
 }
 
 impl IntrusionLog {
-    async fn _get_by_datetime_service_server<C>(
-        conn: &C,
-        datetime: OffsetDateTime,
-        service: &str,
-        server: &str,
-    ) -> Result<Vec<Self>, Error>
-    where
-        C: GenericClient + Sync,
-    {
-        let query = query!(
-            r#"
-                SELECT * FROM intrusion_log
-                WHERE datetime=$datetime
-                  AND service=$service
-                  AND server=$server
-            "#,
-            datetime = datetime,
-            service = service,
-            server = server,
-        );
-        query.fetch(conn).await.map_err(Into::into)
-    }
-
     /// # Errors
     /// Return error if db query fails
     pub async fn get_max_datetime(
@@ -272,34 +260,7 @@ impl IntrusionLog {
         max_datetime: Option<OffsetDateTime>,
         limit: Option<usize>,
         offset: Option<usize>,
-    ) -> Result<Vec<Self>, Error> {
-        let conn = pool.get().await?;
-
-        Self::get_intrusion_log_filtered_conn(
-            &conn,
-            service,
-            server,
-            min_datetime,
-            max_datetime,
-            limit,
-            offset,
-        )
-        .await
-        .map_err(Into::into)
-    }
-
-    async fn get_intrusion_log_filtered_conn<C>(
-        conn: &C,
-        service: Option<Service>,
-        server: Option<Host>,
-        min_datetime: Option<OffsetDateTime>,
-        max_datetime: Option<OffsetDateTime>,
-        limit: Option<usize>,
-        offset: Option<usize>,
-    ) -> Result<Vec<Self>, Error>
-    where
-        C: GenericClient + Sync,
-    {
+    ) -> Result<impl Stream<Item = Result<Self, PqError>>, Error> {
         let mut bindings = Vec::new();
         let mut constraints = Vec::new();
         let service = service.map(Service::to_str);
@@ -344,7 +305,8 @@ impl IntrusionLog {
             "#,
         );
         let query = query_dyn!(&query, ..bindings)?;
-        query.fetch(conn).await.map_err(Into::into)
+        let conn = pool.get().await?;
+        query.fetch_streaming(&conn).await.map_err(Into::into)
     }
 
     /// # Errors
@@ -395,10 +357,12 @@ pub struct AuthorizedUsers {
 impl AuthorizedUsers {
     /// # Errors
     /// Return error if db query fails
-    pub async fn get_authorized_users(pool: &PgPool) -> Result<Vec<Self>, Error> {
+    pub async fn get_authorized_users(
+        pool: &PgPool,
+    ) -> Result<impl Stream<Item = Result<Self, PqError>>, Error> {
         let query = query!("SELECT * FROM authorized_users");
         let conn = pool.get().await?;
-        query.fetch(&conn).await.map_err(Into::into)
+        query.fetch_streaming(&conn).await.map_err(Into::into)
     }
 }
 
@@ -657,7 +621,7 @@ impl SystemdLogMessages {
         max_timestamp: Option<DateTimeType>,
         limit: Option<usize>,
         offset: Option<usize>,
-    ) -> Result<Vec<Self>, Error> {
+    ) -> Result<impl Stream<Item = Result<Self, PqError>>, Error> {
         let mut constraints = Vec::new();
         let mut bindings = Vec::new();
         if let Some(log_level) = &log_level {
@@ -701,7 +665,7 @@ impl SystemdLogMessages {
         );
         let query = query_dyn!(&query, ..bindings)?;
         let conn = pool.get().await?;
-        query.fetch(&conn).await.map_err(Into::into)
+        query.fetch_streaming(&conn).await.map_err(Into::into)
     }
 }
 

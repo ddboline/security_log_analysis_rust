@@ -17,12 +17,13 @@
 
 use anyhow::Error as AnyhowError;
 use cached::{proc_macro::cached, Cached, TimedSizedCache};
-use futures::future::try_join_all;
+use derive_more::{From, Into};
+use futures::TryStreamExt;
 use http::StatusCode;
 use itertools::Itertools;
 use log::error;
 use rweb::{delete, get, post, reject::Reject, Filter, Json, Query, Rejection, Reply, Schema};
-use rweb_helper::{DateTimeType, derive_rweb_schema, UuidWrapper};
+use rweb_helper::{derive_rweb_schema, DateTimeType, UuidWrapper};
 use serde::{Deserialize, Serialize};
 use stack_string::{format_sstr, StackString};
 use std::{convert::Infallible, env::var, fmt, fmt::Write, net::SocketAddr, time::Duration};
@@ -32,7 +33,6 @@ use tokio::{
     task::{spawn, spawn_blocking, JoinError},
     time::{interval, sleep},
 };
-use derive_more::{From, Into};
 
 use security_log_analysis_rust::{
     config::Config,
@@ -206,7 +206,7 @@ async fn intursion_log_get(
 ) -> WarpResult<impl Reply> {
     let query = query.into_inner();
     let limit = query.limit.unwrap_or(1000);
-    let results = IntrusionLog::get_intrusion_log_filtered(
+    let results: Vec<_> = IntrusionLog::get_intrusion_log_filtered(
         &data.pool,
         query.service,
         query.server,
@@ -215,6 +215,9 @@ async fn intursion_log_get(
         Some(limit),
         query.offset,
     )
+    .await
+    .map_err(Into::<ServiceError>::into)?
+    .try_collect()
     .await
     .map_err(Into::<ServiceError>::into)?;
     Ok(rweb::reply::json(&results))
@@ -235,7 +238,6 @@ struct _IntrusionLogWrapper {
     host: StackString,
     username: Option<StackString>,
 }
-
 
 #[derive(Serialize, Deserialize, Schema)]
 struct IntrusionLogUpdate {
@@ -270,9 +272,13 @@ async fn host_country_get(
 ) -> WarpResult<impl Reply> {
     let query = query.into_inner();
     let limit = query.limit.unwrap_or(1000);
-    let results = HostCountry::get_host_country(&data.pool, query.offset, Some(limit), true)
-        .await
-        .map_err(Into::<ServiceError>::into)?;
+    let results: Vec<_> =
+        HostCountry::get_host_country(&data.pool, query.offset, Some(limit), true)
+            .await
+            .map_err(Into::<ServiceError>::into)?
+            .try_collect()
+            .await
+            .map_err(Into::<ServiceError>::into)?;
     Ok(rweb::reply::json(&results))
 }
 
@@ -301,17 +307,23 @@ async fn host_country_post(
 
 #[get("/security_log/cleanup")]
 async fn host_country_cleanup(#[data] data: AppState, _: LoggedUser) -> WarpResult<impl Reply> {
-    let hosts = HostCountry::get_dangling_hosts(&data.pool)
-        .await
-        .map_err(Into::<ServiceError>::into)?;
     let mut lines = Vec::new();
     let metadata = HostCountryMetadata::from_pool(&data.pool)
         .await
         .map_err(Into::<ServiceError>::into)?;
-    for host in &hosts {
-        if let Ok(code) = metadata.get_whois_country_info_ipwhois(host).await {
+    let mut stream = Box::pin(
+        HostCountry::get_dangling_hosts(&data.pool)
+            .await
+            .map_err(Into::<ServiceError>::into)?,
+    );
+    while let Some(host) = stream
+        .try_next()
+        .await
+        .map_err(Into::<ServiceError>::into)?
+    {
+        if let Ok(code) = metadata.get_whois_country_info_ipwhois(&host).await {
             let host_country =
-                HostCountry::from_host_code(host, &code).map_err(Into::<ServiceError>::into)?;
+                HostCountry::from_host_code(&host, &code).map_err(Into::<ServiceError>::into)?;
             HostCountry::insert_host_country(&host_country, &data.pool)
                 .await
                 .map_err(Into::<ServiceError>::into)?;
@@ -346,7 +358,7 @@ async fn get_log_messages(
     let query = query.into_inner();
     let min_date: Option<OffsetDateTime> = query.min_date.map(Into::into);
     let max_date: Option<OffsetDateTime> = query.max_date.map(Into::into);
-    let messages = SystemdLogMessages::get_systemd_messages(
+    let messages: Vec<_> = SystemdLogMessages::get_systemd_messages(
         &data.pool,
         query.log_level,
         query.log_unit.as_ref().map(Into::into),
@@ -355,6 +367,9 @@ async fn get_log_messages(
         query.limit,
         query.offset,
     )
+    .await
+    .map_err(Into::<ServiceError>::into)?
+    .try_collect()
     .await
     .map_err(Into::<ServiceError>::into)?;
     Ok(rweb::reply::json(&messages))
