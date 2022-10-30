@@ -104,8 +104,11 @@ impl ParseOpts {
             ParseOpts::Cleanup => {
                 let pool = PgPool::new(&config.database_url);
                 let metadata = HostCountryMetadata::from_pool(&pool).await?;
-                let mut stream = Box::pin(HostCountry::get_dangling_hosts(&pool).await?);
-                while let Some(host) = stream.try_next().await? {
+                let hosts: Vec<_> = HostCountry::get_dangling_hosts(&pool)
+                    .await?
+                    .try_collect()
+                    .await?;
+                for host in hosts {
                     let host_country = metadata.get_country_info(&host).await?;
                     let output = serde_json::to_string(&host_country)?;
                     stdout.send(output);

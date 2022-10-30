@@ -311,16 +311,13 @@ async fn host_country_cleanup(#[data] data: AppState, _: LoggedUser) -> WarpResu
     let metadata = HostCountryMetadata::from_pool(&data.pool)
         .await
         .map_err(Into::<ServiceError>::into)?;
-    let mut stream = Box::pin(
-        HostCountry::get_dangling_hosts(&data.pool)
-            .await
-            .map_err(Into::<ServiceError>::into)?,
-    );
-    while let Some(host) = stream
-        .try_next()
+    let hosts: Vec<_> = HostCountry::get_dangling_hosts(&data.pool)
         .await
         .map_err(Into::<ServiceError>::into)?
-    {
+        .try_collect()
+        .await
+        .map_err(Into::<ServiceError>::into)?;
+    for host in hosts {
         if let Ok(code) = metadata.get_whois_country_info_ipwhois(&host).await {
             let host_country =
                 HostCountry::from_host_code(&host, &code).map_err(Into::<ServiceError>::into)?;
