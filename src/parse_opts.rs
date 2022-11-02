@@ -6,18 +6,22 @@ use log::debug;
 use refinery::embed_migrations;
 use smallvec::SmallVec;
 use stack_string::{format_sstr, StackString};
-use std::{collections::HashSet, path::PathBuf};
+use std::{collections::HashSet, path::PathBuf, time::Duration};
 use stdout_channel::StdoutChannel;
 use tokio::{
     fs::{read_to_string, File},
     io::{stdin, AsyncReadExt, AsyncWrite, AsyncWriteExt},
+    task::spawn,
+    time::sleep,
 };
 
 use crate::{
     config::Config,
     host_country_metadata::HostCountryMetadata,
     models::{HostCountry, IntrusionLog},
-    parse_logs::parse_systemd_logs_sshd_all,
+    parse_logs::{
+        parse_systemd_logs_sshd_all, parse_systemd_logs_sshd_daemon, process_systemd_logs,
+    },
     pgpool::PgPool,
     polars_analysis::{insert_db_into_parquet, read_parquet_files},
     reports::get_country_count_recent,
@@ -30,7 +34,10 @@ embed_migrations!("migrations");
 #[derive(Parser, Debug)]
 pub enum ParseOpts {
     /// Parse logs
-    Parse,
+    Parse {
+        #[clap(short = 'd', long = "daemon")]
+        daemon: bool,
+    },
     /// Cleanup
     Cleanup,
     /// Create plot
@@ -88,18 +95,42 @@ impl ParseOpts {
         let stdout = StdoutChannel::<StackString>::new();
 
         match opts {
-            ParseOpts::Parse => {
+            ParseOpts::Parse { daemon } => {
                 let pool = PgPool::new(&config.database_url);
-                let metadata = HostCountryMetadata::from_pool(&pool).await?;
-                debug!("got here {}", line!());
-                let inserts = parse_systemd_logs_sshd_all(&metadata, config.server).await?;
-                stdout.send(format_sstr!("new lines ssh {}", inserts.len()));
-                let new_hosts: HashSet<_> = inserts.iter().map(|item| item.host.clone()).collect();
-                stdout.send(format_sstr!("new hosts {new_hosts:#?}"));
-                for host in new_hosts {
-                    metadata.get_country_info(&host).await?;
+                if daemon {
+                    async fn run_daemon(config: Config, pool: PgPool) {
+                        loop {
+                            parse_systemd_logs_sshd_daemon(&config, &pool)
+                                .await
+                                .unwrap_or(());
+                            sleep(Duration::from_secs(1)).await;
+                        }
+                    }
+
+                    async fn run_alert_daemon(config: Config, pool: PgPool) {
+                        loop {
+                            process_systemd_logs(&config, &pool).await.unwrap_or(());
+                            sleep(Duration::from_secs(1)).await;
+                        }
+                    }
+
+                    let daemon_task = spawn(run_daemon(config.clone(), pool.clone()));
+                    let alert_task = spawn(run_alert_daemon(config.clone(), pool.clone()));
+                    daemon_task.await?;
+                    alert_task.await?;
+                } else {
+                    let metadata = HostCountryMetadata::from_pool(&pool).await?;
+                    debug!("got here {}", line!());
+                    let inserts = parse_systemd_logs_sshd_all(&metadata, config.server).await?;
+                    stdout.send(format_sstr!("new lines ssh {}", inserts.len()));
+                    let new_hosts: HashSet<_> =
+                        inserts.iter().map(|item| item.host.clone()).collect();
+                    stdout.send(format_sstr!("new hosts {new_hosts:#?}"));
+                    for host in new_hosts {
+                        metadata.get_country_info(&host).await?;
+                    }
+                    IntrusionLog::insert(&pool, &inserts).await?;
                 }
-                IntrusionLog::insert(&pool, &inserts).await?;
             }
             ParseOpts::Cleanup => {
                 let pool = PgPool::new(&config.database_url);

@@ -395,22 +395,6 @@ async fn start_app() -> Result<(), AnyhowError> {
         }
     }
 
-    async fn run_daemon(config: Config, pool: PgPool) {
-        loop {
-            parse_systemd_logs_sshd_daemon(&config, &pool)
-                .await
-                .unwrap_or(());
-            sleep(Duration::from_secs(1)).await;
-        }
-    }
-
-    async fn run_alert_daemon(config: Config, pool: PgPool) {
-        loop {
-            process_systemd_logs(&config, &pool).await.unwrap_or(());
-            sleep(Duration::from_secs(1)).await;
-        }
-    }
-
     TRIGGER_DB_UPDATE.set();
 
     let config = Config::init_config()?;
@@ -419,8 +403,6 @@ async fn start_app() -> Result<(), AnyhowError> {
     let pool = PgPool::new(&config.database_url);
 
     spawn(update_db(pool.clone()));
-    spawn(run_daemon(config.clone(), pool.clone()));
-    spawn(run_alert_daemon(config.clone(), pool.clone()));
 
     let app = AppState { pool, config };
 
