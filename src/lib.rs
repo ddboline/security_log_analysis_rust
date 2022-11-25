@@ -92,7 +92,7 @@ pub struct CountryCount {
     pub count: i64,
 }
 
-#[derive(Debug, Clone, Copy, Schema, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, Schema, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(into = "StackString", try_from = "StackString")]
 pub enum Host {
     Home,

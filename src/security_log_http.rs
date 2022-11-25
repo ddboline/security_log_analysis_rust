@@ -137,7 +137,8 @@ async fn get_cached_country_count(
         .into_iter()
         .map(|cc| format_sstr!(r#"["{}", {}]"#, cc.country, cc.count))
         .join(",");
-    Ok(results.into())
+    let body = format_sstr!("[['Country', 'Number'],{results}]");
+    Ok(body)
 }
 
 #[get("/security_log/map_script.js")]
@@ -152,8 +153,9 @@ async fn intrusion_attempts(
     #[data] data: AppState,
 ) -> WarpResult<impl Reply> {
     let query = query.into_inner();
+    let config = data.config.clone();
     let data = get_cached_country_count(&data.pool, query).await?;
-    let body = security_log_element::index_body(data);
+    let body = security_log_element::index_body(data, config);
     Ok(rweb::reply::html(body))
 }
 
@@ -181,7 +183,8 @@ async fn get_cached_country_count_all(
     .into_iter()
     .map(|cc| format_sstr!(r#"["{}", {}]"#, cc.country, cc.count))
     .join(",");
-    Ok(results.into())
+    let body = format_sstr!("[['Country', 'Number'],{results}]");
+    Ok(body)
 }
 
 #[get("/security_log/intrusion_attempts/all")]
@@ -191,8 +194,8 @@ async fn intrusion_attempts_all(
 ) -> WarpResult<impl Reply> {
     let query = query.into_inner();
     let config = data.config.clone();
-    let data = get_cached_country_count_all(config, query).await?;
-    let body = security_log_element::index_body(data);
+    let data = get_cached_country_count_all(config.clone(), query).await?;
+    let body = security_log_element::index_body(data, config);
     Ok(rweb::reply::html(body))
 }
 

@@ -1,10 +1,7 @@
-function draw_map(data) {
+function draw_map(input) {
     function drawRegionsMap() {
 
-      var data = google.visualization.arrayToDataTable([
-        ['Country', 'Number'],
-        data
-      ]);
+      var data = google.visualization.arrayToDataTable(input);
 
       var options = {};
 

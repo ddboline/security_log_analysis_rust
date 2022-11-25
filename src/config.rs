@@ -9,7 +9,7 @@ use std::{
 
 use crate::{models::LogLevel, Host};
 
-#[derive(Default, Debug, Deserialize)]
+#[derive(Default, Debug, Deserialize, PartialEq, Eq)]
 pub struct ConfigInner {
     pub database_url: StackString,
     #[serde(default = "default_username")]
@@ -32,6 +32,7 @@ pub struct ConfigInner {
     pub systemd_log_filters: Vec<StackString>,
     pub alert_log_delay: Option<usize>,
     pub alert_buffer_size: Option<usize>,
+    pub maps_api_key: Option<StackString>,
 }
 
 fn default_system_log_filters() -> Vec<StackString> {
@@ -64,7 +65,7 @@ fn default_alert_log_level() -> LogLevel {
     LogLevel::Error
 }
 
-#[derive(Default, Debug, Clone)]
+#[derive(Default, Debug, Clone, PartialEq, Eq)]
 pub struct Config(Arc<ConfigInner>);
 
 impl Config {

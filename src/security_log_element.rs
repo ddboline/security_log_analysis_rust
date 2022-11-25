@@ -5,20 +5,28 @@ use dioxus::prelude::{
 use stack_string::StackString;
 use std::fmt::Write;
 
-use security_log_analysis_rust::CountryCount;
+use security_log_analysis_rust::{config::Config, CountryCount};
 
-pub fn index_body(data: StackString) -> String {
-    let mut app = VirtualDom::new_with_props(index_element, index_elementProps { data });
+pub fn index_body(data: StackString, config: Config) -> String {
+    let mut app = VirtualDom::new_with_props(index_element, index_elementProps { data, config });
     app.rebuild();
     dioxus::ssr::render_vdom(&app)
 }
 
 #[inline_props]
-fn index_element(cx: Scope, data: StackString) -> Element {
+fn index_element(cx: Scope, data: StackString, config: Config) -> Element {
+    let maps_script = config.maps_api_key.as_ref().map(|map_api_key| {
+        rsx! {
+            script {
+                "type": "text/javascript",
+                src: "https://maps.googleapis.com/maps/api/js?key={map_api_key}",
+            }
+        }
+    });
     let mut script_body = String::new();
     script_body.push_str("\n!function(){\n");
     writeln!(&mut script_body, "\tlet data = {data};").unwrap();
-    writeln!(&mut script_body, "\tdraw_data(data);").unwrap();
+    writeln!(&mut script_body, "\tdraw_map(data);").unwrap();
     script_body.push_str("}()");
 
     cx.render(rsx! {
@@ -33,6 +41,7 @@ fn index_element(cx: Scope, data: StackString) -> Element {
             }
         },
         body {
+            maps_script,
             script {
                 "{script_body}",
             }
