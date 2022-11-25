@@ -72,7 +72,7 @@ pub async fn get_md5sum(filename: &Path) -> Result<StackString, Error> {
         ));
     }
     let output = Command::new("/usr/bin/md5sum")
-        .args(&[filename])
+        .args([filename])
         .output()
         .await?;
     if output.status.success() {
@@ -86,13 +86,13 @@ pub async fn get_md5sum(filename: &Path) -> Result<StackString, Error> {
     Err(format_err!("Command failed"))
 }
 
-#[derive(FromSqlRow)]
+#[derive(FromSqlRow, PartialEq, Eq)]
 pub struct CountryCount {
     pub country: StackString,
     pub count: i64,
 }
 
-#[derive(Debug, Clone, Copy, Schema, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, Schema, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(into = "StackString", try_from = "StackString")]
 pub enum Host {
     Home,
@@ -302,7 +302,7 @@ mod iso8601 {
             .format(format_description!(
                 "[year]-[month]-[day]T[hour]:[minute]:[second].[subsecond]Z"
             ))
-            .unwrap_or_else(|_| "".into())
+            .unwrap_or_else(|_| String::new())
             .into()
     }
 

@@ -1,6 +1,6 @@
 [package]
 name = "security_log_analysis_rust"
-version = "0.9.34"
+version = "0.9.35"
 authors = ["Daniel Boline <ddboline@gmail.com>"]
 edition = "2018"
 
@@ -36,7 +36,7 @@ tokio-postgres = {version="0.7", features=["with-time-0_3", "with-uuid-1", "with
 postgres-types = {version="0.2", features=["with-time-0_3", "with-uuid-1", "with-serde_json-1"]}
 rand = "0.8"
 log = "0.4"
-env_logger = "0.9"
+env_logger = "0.10"
 anyhow = "1.0"
 thiserror = "1.0"
 dirs = "4.0"
@@ -51,6 +51,7 @@ deadqueue = "0.2"
 itertools = "0.10"
 stdout-channel = "0.5"
 maplit = "1.0"
+dioxus = { version = "0.2", features = ["ssr"] }
 refinery = {version="0.8", features=["tokio-postgres"]}
 postgres_query = {git = "https://github.com/ddboline/rust-postgres-query", tag = "0.3.4", features=["deadpool"]}
 stack-string = { version="0.7", features=["postgres_types", "rweb-openapi"] }
