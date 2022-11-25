@@ -216,7 +216,7 @@ pub fn parse_log_line_apache(_: i32, line: &str) -> Result<Option<LogLineSSH>, E
     if !host.contains('.') {
         return Ok(None);
     }
-    let timestr = tokens[3..5].join("").replace('[', "").replace(']', "");
+    let timestr = tokens[3..5].join("").replace(['[', ']'], "");
     let timestamp = OffsetDateTime::parse(
         &timestr,
         format_description!(
@@ -261,7 +261,7 @@ pub async fn parse_systemd_logs_sshd_all(
 /// Return error if db query fails
 pub async fn parse_systemd_logs_sshd(server: Host) -> Result<Vec<IntrusionLog>, Error> {
     let command = Command::new("journalctl")
-        .args(&[
+        .args([
             "-o",
             "json",
             "--output-fields=UNIT,MESSAGE,__REALTIME_TIMESTAMP",
@@ -306,7 +306,7 @@ pub async fn parse_systemd_logs_sshd(server: Host) -> Result<Vec<IntrusionLog>, 
 /// Return error if db query fails
 pub async fn parse_systemd_logs_sshd_daemon(config: &Config, pool: &PgPool) -> Result<(), Error> {
     let mut p = Command::new("journalctl")
-        .args(&[
+        .args([
             "-o",
             "json",
             "--output-fields=UNIT,MESSAGE,__REALTIME_TIMESTAMP",

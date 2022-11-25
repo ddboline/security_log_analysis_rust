@@ -130,13 +130,13 @@ pub fn merge_parquet_files(input: &Path, output: &Path) -> Result<(), Error> {
     if !output.exists() {
         return Err(format_err!("output {output:?} does not exist"));
     }
-    let df0 = ParquetReader::new(File::open(&input)?).finish()?;
+    let df0 = ParquetReader::new(File::open(input)?).finish()?;
     info!("input {:?}", df0.shape());
-    let df1 = ParquetReader::new(File::open(&output)?).finish()?;
+    let df1 = ParquetReader::new(File::open(output)?).finish()?;
     info!("output {:?}", df1.shape());
     let mut df = df1.vstack(&df0)?.unique(None, UniqueKeepStrategy::First)?;
     info!("final {:?}", df.shape());
-    ParquetWriter::new(File::create(&output)?).finish(&mut df)?;
+    ParquetWriter::new(File::create(output)?).finish(&mut df)?;
     info!("wrote {:?} {:?}", output, df.shape());
     Ok(())
 }
@@ -206,7 +206,7 @@ fn get_country_count(
     server: Option<Host>,
     ndays: Option<i32>,
 ) -> Result<DataFrame, Error> {
-    let mut df = ParquetReader::new(File::open(&input)?).finish()?;
+    let mut df = ParquetReader::new(File::open(input)?).finish()?;
     if let Some(service) = service {
         let mask: Vec<_> = df
             .column("service")?
