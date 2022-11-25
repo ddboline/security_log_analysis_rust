@@ -86,7 +86,7 @@ pub async fn get_md5sum(filename: &Path) -> Result<StackString, Error> {
     Err(format_err!("Command failed"))
 }
 
-#[derive(FromSqlRow)]
+#[derive(FromSqlRow, PartialEq)]
 pub struct CountryCount {
     pub country: StackString,
     pub count: i64,

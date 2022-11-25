@@ -15,6 +15,8 @@
 #![allow(clippy::default_trait_access)]
 #![allow(clippy::unused_async)]
 
+pub mod security_log_element;
+
 use anyhow::Error as AnyhowError;
 use cached::{proc_macro::cached, Cached, TimedSizedCache};
 use derive_more::{From, Into};
@@ -138,15 +140,20 @@ async fn get_cached_country_count(
     Ok(results.into())
 }
 
+#[get("/security_log/map_script.js")]
+async fn map_script() -> WarpResult<impl Reply> {
+    let body = include_str!("../templates/map_script.js");
+    Ok(rweb::reply::html(body))
+}
+
 #[get("/security_log/intrusion_attempts")]
 async fn intrusion_attempts(
     query: Query<AttemptsQuery>,
     #[data] data: AppState,
 ) -> WarpResult<impl Reply> {
-    let template = include_str!("../templates/COUNTRY_TEMPLATE.html");
     let query = query.into_inner();
-    let results = get_cached_country_count(&data.pool, query).await?;
-    let body = template.replace("PUTLISTOFCOUNTRIESANDATTEMPTSHERE", &results);
+    let data = get_cached_country_count(&data.pool, query).await?;
+    let body = security_log_element::index_body(data);
     Ok(rweb::reply::html(body))
 }
 
@@ -182,11 +189,10 @@ async fn intrusion_attempts_all(
     query: Query<AttemptsQuery>,
     #[data] data: AppState,
 ) -> WarpResult<impl Reply> {
-    let template = include_str!("../templates/COUNTRY_TEMPLATE.html");
     let query = query.into_inner();
     let config = data.config.clone();
-    let results = get_cached_country_count_all(config, query).await?;
-    let body = template.replace("PUTLISTOFCOUNTRIESANDATTEMPTSHERE", &results);
+    let data = get_cached_country_count_all(config, query).await?;
+    let body = security_log_element::index_body(data);
     Ok(rweb::reply::html(body))
 }
 
@@ -412,6 +418,7 @@ async fn start_app() -> Result<(), AnyhowError> {
         .unwrap_or(4086);
 
     let intrusion_attempts_path = intrusion_attempts(app.clone())
+        .or(map_script())
         .or(intrusion_attempts_all(app.clone()))
         .or(intursion_log_get(app.clone()))
         .or(intrusion_log_post(app.clone()))
