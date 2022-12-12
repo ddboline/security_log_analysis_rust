@@ -93,7 +93,8 @@ pub async fn insert_db_into_parquet(
             .iter()
             .map(|x| {
                 let d = x.datetime.to_offset(UtcOffset::UTC);
-                NaiveDateTime::from_timestamp(d.unix_timestamp(), d.nanosecond())
+                NaiveDateTime::from_timestamp_opt(d.unix_timestamp(), d.nanosecond())
+                    .expect("Invalid timestamp")
             })
             .collect();
         columns.push(
