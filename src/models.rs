@@ -564,8 +564,10 @@ impl SystemdLogMessages {
             r#"
                 SELECT * FROM systemd_log_messages
                 WHERE id = (
-                    SELECT min(id) FROM systemd_log_messages
+                    SELECT id FROM systemd_log_messages
                     WHERE processed_time IS NULL
+                    ORDER BY log_timestamp
+                    LIMIT 1
                 )
             "#
         );
