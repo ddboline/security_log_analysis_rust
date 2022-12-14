@@ -119,7 +119,7 @@ impl ParseOpts {
                     daemon_task.await?;
                     alert_task.await?;
                 } else {
-                    let metadata = HostCountryMetadata::from_pool(&pool).await?;
+                    let metadata = HostCountryMetadata::from_pool(pool.clone()).await?;
                     debug!("got here {}", line!());
                     let inserts = parse_systemd_logs_sshd_all(&metadata, config.server).await?;
                     stdout.send(format_sstr!("new lines ssh {}", inserts.len()));
@@ -134,7 +134,7 @@ impl ParseOpts {
             }
             ParseOpts::Cleanup => {
                 let pool = PgPool::new(&config.database_url);
-                let metadata = HostCountryMetadata::from_pool(&pool).await?;
+                let metadata = HostCountryMetadata::from_pool(pool.clone()).await?;
                 let hosts: Vec<_> = HostCountry::get_dangling_hosts(&pool)
                     .await?
                     .try_collect()
@@ -156,7 +156,7 @@ impl ParseOpts {
             ParseOpts::AddHost { host_codes } => {
                 let config = Config::init_config()?;
                 let pool = PgPool::new(&config.database_url);
-                let metadata = HostCountryMetadata::from_pool(&pool).await?;
+                let metadata = HostCountryMetadata::from_pool(pool).await?;
                 for host_country in &host_codes {
                     let vals: SmallVec<[&str; 2]> = host_country.split(':').take(2).collect();
                     if vals.len() < 2 {

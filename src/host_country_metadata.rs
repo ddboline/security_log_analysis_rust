@@ -46,23 +46,24 @@ impl HostCountryMetadata {
 
     /// # Errors
     /// Return error db queries fail
-    pub async fn from_pool(pool: &PgPool) -> Result<Self, Error> {
+    pub async fn from_pool(pool: PgPool) -> Result<Self, Error> {
+        let country_code_map = CountryCode::get_country_code_list(&pool)
+            .await?
+            .map_ok(|item| (item.code.clone(), item))
+            .try_collect()
+            .await?;
+        let host_country_map = HostCountry::get_host_country(&pool, None, None, false)
+            .await?
+            .map_ok(|item| (item.host.clone(), item))
+            .try_collect()
+            .await?;
+        let country_code_map = Arc::new(RwLock::new(country_code_map));
+        let host_country_map = Arc::new(RwLock::new(host_country_map));
+        let pool = Some(pool);
         let result = Self {
-            pool: Some(pool.clone()),
-            country_code_map: Arc::new(RwLock::new(
-                CountryCode::get_country_code_list(pool)
-                    .await?
-                    .map_ok(|item| (item.code.clone(), item))
-                    .try_collect()
-                    .await?,
-            )),
-            host_country_map: Arc::new(RwLock::new(
-                HostCountry::get_host_country(pool, None, None, false)
-                    .await?
-                    .map_ok(|item| (item.host.clone(), item))
-                    .try_collect()
-                    .await?,
-            )),
+            pool,
+            country_code_map,
+            host_country_map,
             ..Self::default()
         };
         Ok(result)

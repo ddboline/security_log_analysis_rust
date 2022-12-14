@@ -317,7 +317,7 @@ async fn host_country_post(
 #[get("/security_log/cleanup")]
 async fn host_country_cleanup(#[data] data: AppState, _: LoggedUser) -> WarpResult<impl Reply> {
     let mut lines = Vec::new();
-    let metadata = HostCountryMetadata::from_pool(&data.pool)
+    let metadata = HostCountryMetadata::from_pool(data.pool.clone())
         .await
         .map_err(Into::<ServiceError>::into)?;
     let hosts: Vec<_> = HostCountry::get_dangling_hosts(&data.pool)
