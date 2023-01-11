@@ -1,6 +1,6 @@
 use dioxus::prelude::{
-    dioxus_elements, format_args_f, inline_props, rsx, Element, LazyNodes, NodeFactory, Props,
-    Scope, VNode, VirtualDom,
+    dioxus_elements, format_args_f, inline_props, rsx, Element, LazyNodes, Props,
+    Scope, VNode, VirtualDom, GlobalAttributes,
 };
 use stack_string::StackString;
 use std::fmt::Write;
@@ -9,8 +9,8 @@ use security_log_analysis_rust::{config::Config, CountryCount};
 
 pub fn index_body(data: StackString, config: Config) -> String {
     let mut app = VirtualDom::new_with_props(index_element, index_elementProps { data, config });
-    app.rebuild();
-    dioxus::ssr::render_vdom(&app)
+    drop(app.rebuild());
+    dioxus_ssr::render(&app)
 }
 
 #[inline_props]

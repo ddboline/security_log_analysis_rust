@@ -1,6 +1,6 @@
 [package]
 name = "security_log_analysis_rust"
-version = "0.10.1"
+version = "0.10.2"
 authors = ["Daniel Boline <ddboline@gmail.com>"]
 edition = "2018"
 
@@ -51,16 +51,17 @@ deadqueue = "0.2"
 itertools = "0.10"
 stdout-channel = "0.6"
 maplit = "1.0"
-dioxus = { version = "0.2", features = ["ssr"] }
+dioxus = "0.3"
+dioxus-ssr = "0.3"
 refinery = {version="0.8", features=["tokio-postgres"]}
 postgres_query = {git = "https://github.com/ddboline/rust-postgres-query", tag = "0.3.4", features=["deadpool"]}
 stack-string = { version="0.8", features=["postgres_types", "rweb-openapi"] }
 chrono = "0.4"
-polars = {version="0.25", features=["temporal", "parquet", "lazy"]}
-authorized_users = { git = "https://github.com/ddboline/auth_server_rust.git", tag="0.10.0"}
+polars = {version="0.26", features=["temporal", "parquet", "lazy"]}
+authorized_users = { git = "https://github.com/ddboline/auth_server_rust.git", tag="0.10.3"}
 rweb-helper = { git = "https://github.com/ddboline/rweb_helper.git", tag="0.4.14" }
 uuid = { version = "1.0", features = ["serde", "v4"] }
-cached = "0.40"
+cached = "0.42"
 
 [[bin]]
 name = "security-log-parse-rust"
