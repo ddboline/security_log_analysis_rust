@@ -1,5 +1,6 @@
 use anyhow::{format_err, Error};
 use chrono::{Duration, NaiveDateTime, Utc};
+use futures::TryStreamExt;
 use log::info;
 use polars::{
     chunked_array::ops::SortOptions,
@@ -35,6 +36,7 @@ pub async fn insert_db_into_parquet(
     struct Wrap {
         year: i32,
         month: i32,
+        count: i64,
     }
 
     #[derive(FromSqlRow)]
@@ -48,19 +50,31 @@ pub async fn insert_db_into_parquet(
         country: Option<StackString>,
     }
 
+    #[derive(Default)]
+    struct IntrusionLogColumns {
+        service: Vec<StackString>,
+        server: Vec<StackString>,
+        datetime: Vec<NaiveDateTime>,
+        host: Vec<StackString>,
+        username: Vec<Option<StackString>>,
+        code: Vec<Option<StackString>>,
+        country: Vec<Option<StackString>>,
+    }
+
     let mut output = Vec::new();
 
     let query = query!(
         r#"
             SELECT cast(extract(year from datetime at time zone 'utc') as int) as year,
-                   cast(extract(month from datetime at time zone 'utc') as int) as month
+                   cast(extract(month from datetime at time zone 'utc') as int) as month,
+                   count(*) as count
             FROM intrusion_log
             GROUP BY 1,2
         "#
     );
     let conn = pool.get().await?;
     let rows: Vec<Wrap> = query.fetch(&conn).await?;
-    for Wrap { year, month } in rows {
+    for Wrap { year, month, count } in rows {
         output.push(format_sstr!("year {} month {}", year, month));
         let query = query!(
             r#"
@@ -74,33 +88,53 @@ pub async fn insert_db_into_parquet(
             year = year,
             month = month,
         );
-        let rows: Vec<IntrusionLogRow> = query.fetch(&conn).await?;
 
-        let mut columns = Vec::new();
-        let v: Vec<_> = rows.iter().map(|x| &x.service).collect();
-        columns.push(Utf8Chunked::from_slice("service", &v).into_series());
-        let v: Vec<_> = rows.iter().map(|x| &x.server).collect();
-        columns.push(Utf8Chunked::from_slice("server", &v).into_series());
-        let v: Vec<_> = rows.iter().map(|x| &x.host).collect();
-        columns.push(Utf8Chunked::from_slice("host", &v).into_series());
-        let v: Vec<_> = rows.iter().map(|x| x.username.as_ref()).collect();
-        columns.push(Utf8Chunked::from_slice_options("username", &v).into_series());
-        let v: Vec<_> = rows.iter().map(|x| x.code.as_ref()).collect();
-        columns.push(Utf8Chunked::from_slice_options("code", &v).into_series());
-        let v: Vec<_> = rows.iter().map(|x| x.country.as_ref()).collect();
-        columns.push(Utf8Chunked::from_slice_options("country", &v).into_series());
-        let v: Vec<_> = rows
-            .iter()
-            .map(|x| {
-                let d = x.datetime.to_offset(UtcOffset::UTC);
-                NaiveDateTime::from_timestamp_opt(d.unix_timestamp(), d.nanosecond())
-                    .expect("Invalid timestamp")
-            })
-            .collect();
-        columns.push(
-            DatetimeChunked::from_naive_datetime("datetime", v, TimeUnit::Milliseconds)
-                .into_series(),
-        );
+        let intrusion_rows: IntrusionLogColumns = query
+            .fetch_streaming::<IntrusionLogRow, _>(&conn)
+            .await?
+            .try_fold(
+                IntrusionLogColumns {
+                    service: Vec::with_capacity(count as usize),
+                    server: Vec::with_capacity(count as usize),
+                    datetime: Vec::with_capacity(count as usize),
+                    host: Vec::with_capacity(count as usize),
+                    username: Vec::with_capacity(count as usize),
+                    code: Vec::with_capacity(count as usize),
+                    country: Vec::with_capacity(count as usize),
+                },
+                |mut acc, row| async move {
+                    acc.service.push(row.service);
+                    acc.server.push(row.server);
+
+                    let d = row.datetime.to_offset(UtcOffset::UTC);
+                    let datetime =
+                        NaiveDateTime::from_timestamp_opt(d.unix_timestamp(), d.nanosecond())
+                            .expect("Invalid timestamp");
+                    acc.datetime.push(datetime);
+                    acc.host.push(row.host);
+                    acc.username.push(row.username);
+                    acc.code.push(row.code);
+                    acc.country.push(row.country);
+
+                    Ok(acc)
+                },
+            )
+            .await?;
+
+        let columns = vec![
+            Utf8Chunked::from_slice("service", &intrusion_rows.service).into_series(),
+            Utf8Chunked::from_slice("server", &intrusion_rows.server).into_series(),
+            Utf8Chunked::from_slice("host", &intrusion_rows.host).into_series(),
+            Utf8Chunked::from_slice_options("username", &intrusion_rows.username).into_series(),
+            Utf8Chunked::from_slice_options("code", &intrusion_rows.code).into_series(),
+            Utf8Chunked::from_slice_options("country", &intrusion_rows.country).into_series(),
+            DatetimeChunked::from_naive_datetime(
+                "datetime",
+                intrusion_rows.datetime,
+                TimeUnit::Milliseconds,
+            )
+            .into_series(),
+        ];
 
         let new_df = DataFrame::new(columns)?;
         output.push(format_sstr!("{:?}", new_df.shape()));
