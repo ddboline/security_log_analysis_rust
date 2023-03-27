@@ -216,7 +216,7 @@ pub fn read_parquet_files(
             "count",
             SortOptions {
                 descending: true,
-                nulls_last: false,
+                ..SortOptions::default()
             },
         )
         .collect()?;
