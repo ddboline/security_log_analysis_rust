@@ -273,7 +273,7 @@ pub async fn parse_systemd_logs_sshd(server: Host) -> Result<Vec<IntrusionLog>, 
         .split('\n')
         .filter(|line| line.contains("__REALTIME_TIMESTAMP"))
         .map(|line| {
-            if line.contains("Invalid user") {
+            if line.contains("Invalid user ") {
                 let log: ServiceLogLine = serde_json::from_str(line)?;
                 let log_line: LogLineSSH = log.parse_sshd()?;
                 Ok(Some(IntrusionLog {
