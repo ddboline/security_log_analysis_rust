@@ -56,9 +56,8 @@ impl LogLineSSH {
 /// # Errors
 /// Return error if db query fails
 pub fn parse_log_message(line: &str) -> Result<Option<(&str, &str)>, Error> {
-    let user = match line.split("Invalid user ").nth(1) {
-        Some(x) => x,
-        None => return Ok(None),
+    let Some(user) = line.split("Invalid user ").nth(1) else {
+        return Ok(None)
     };
     let remaining: SmallVec<[&str; 2]> = user.split(" from ").take(2).collect();
     let user = remaining.first().ok_or_else(|| format_err!("No user"))?;
@@ -392,8 +391,8 @@ struct ServiceLogLine<'a> {
 impl ServiceLogLine<'_> {
     pub fn get_datetime(&self) -> Result<DateTimeType, Error> {
         let timestamp: i64 = self.timestamp.parse()?;
-        let nanoseconds = (timestamp % 1_000_000 * 1000) as i64;
-        let timestamp = (OffsetDateTime::from_unix_timestamp((timestamp / 1_000_000) as i64)?
+        let nanoseconds = timestamp % 1_000_000 * 1000;
+        let timestamp = (OffsetDateTime::from_unix_timestamp(timestamp / 1_000_000)?
             + Duration::nanoseconds(nanoseconds))
         .into();
         Ok(timestamp)
@@ -450,19 +449,13 @@ pub async fn process_systemd_logs(config: &Config, pool: &PgPool) -> Result<(), 
     let alert_buffer_size = config.alert_buffer_size.unwrap_or(10_000);
 
     let ses_instance = SesInstance::new(None);
-    let sending_email_address = match &config.sending_email_address {
-        Some(e) => e,
-        None => {
-            error!("No sending email given");
-            return Err(format_err!("No sending email given"));
-        }
+    let Some(sending_email_address) = &config.sending_email_address else {
+        error!("No sending email given");
+        return Err(format_err!("No sending email given"))
     };
-    let alert_email_address = match &config.alert_email_address {
-        Some(e) => e,
-        None => {
-            error!("No alert email given");
-            return Err(format_err!("No alert email given"));
-        }
+    let Some(alert_email_address) = &config.alert_email_address else {
+        error!("No alert email given");
+        return Err(format_err!("No alert email given"))
     };
     debug!("{sending_email_address} {alert_email_address}");
     let mut subject = StackString::new();

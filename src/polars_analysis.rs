@@ -169,7 +169,9 @@ pub fn merge_parquet_files(input: &Path, output: &Path) -> Result<(), Error> {
     info!("input {:?}", df0.shape());
     let df1 = ParquetReader::new(File::open(output)?).finish()?;
     info!("output {:?}", df1.shape());
-    let mut df = df1.vstack(&df0)?.unique(None, UniqueKeepStrategy::First, None)?;
+    let mut df = df1
+        .vstack(&df0)?
+        .unique(None, UniqueKeepStrategy::First, None)?;
     info!("final {:?}", df.shape());
     ParquetWriter::new(File::create(output)?).finish(&mut df)?;
     info!("wrote {:?} {:?}", output, df.shape());
@@ -191,7 +193,6 @@ pub fn read_parquet_files(
     let input_files = if input_path.is_dir() {
         let v: Result<Vec<_>, Error> = input
             .read_dir()?
-            .into_iter()
             .map(|p| p.map(|p| p.path()).map_err(Into::into))
             .collect();
         let mut v = v?;

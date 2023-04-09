@@ -112,7 +112,7 @@ impl fmt::Display for AttemptsQuery {
             writeln!(f, "l={}", location.abbreviation())?;
         }
         if let Some(ndays) = self.ndays {
-            writeln!(f, "n={}", ndays)?;
+            writeln!(f, "n={ndays}")?;
         }
         Ok(())
     }
