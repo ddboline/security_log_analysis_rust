@@ -1,6 +1,6 @@
 [package]
 name = "security_log_analysis_rust"
-version = "0.10.6"
+version = "0.10.7"
 authors = ["Daniel Boline <ddboline@gmail.com>"]
 edition = "2018"
 
@@ -13,7 +13,6 @@ extended-description = """\
 Analyze Auth Logs."""
 
 [dependencies]
-rweb = {version="0.15", features=["openapi"]}
 http = "0.2"
 deadpool = {version = "0.9", features=["serde", "rt_tokio_1"]}
 deadpool-postgres = {version="0.10", features=["serde"]}
@@ -48,20 +47,21 @@ bytes = "1.0"
 envy = "0.4"
 smallvec = "1.6"
 deadqueue = "0.2"
-itertools = "0.10"
+itertools = "0.11"
 stdout-channel = "0.6"
 maplit = "1.0"
 dioxus = "0.3"
 dioxus-ssr = "0.3"
 refinery = {version="0.8", features=["tokio-postgres"]}
 postgres_query = {git = "https://github.com/ddboline/rust-postgres-query", tag = "0.3.4", features=["deadpool"]}
-stack-string = { version="0.8", features=["postgres_types", "rweb-openapi"] }
+stack-string = { git = "https://github.com/ddboline/stack-string-rs.git", features=["postgres_types", "rweb-openapi"], tag="0.9.1" }
 chrono = "0.4"
-polars = {version="0.29", features=["temporal", "parquet", "lazy"]}
-authorized_users = { git = "https://github.com/ddboline/auth_server_rust.git", tag="0.10.3"}
-rweb-helper = { git = "https://github.com/ddboline/rweb_helper.git", tag="0.4.14" }
+polars = {version="0.30", features=["temporal", "parquet", "lazy"]}
+authorized_users = { git = "https://github.com/ddboline/auth_server_rust.git", tag="0.10.8"}
+rweb = {git = "https://github.com/ddboline/rweb.git", features=["openapi"], default-features=false, tag="0.15.1-1"}
+rweb-helper = { git = "https://github.com/ddboline/rweb_helper.git", tag="0.5.0-1" }
 uuid = { version = "1.0", features = ["serde", "v4"] }
-cached = "0.43"
+cached = "0.44"
 
 [[bin]]
 name = "security-log-parse-rust"
