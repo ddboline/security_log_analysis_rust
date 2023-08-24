@@ -57,7 +57,7 @@ impl LogLineSSH {
 /// Return error if db query fails
 pub fn parse_log_message(line: &str) -> Result<Option<(&str, &str)>, Error> {
     let Some(user) = line.split("Invalid user ").nth(1) else {
-        return Ok(None)
+        return Ok(None);
     };
     let remaining: SmallVec<[&str; 2]> = user.split(" from ").take(2).collect();
     let user = remaining.first().ok_or_else(|| format_err!("No user"))?;
@@ -451,11 +451,11 @@ pub async fn process_systemd_logs(config: &Config, pool: &PgPool) -> Result<(), 
     let ses_instance = SesInstance::new(None);
     let Some(sending_email_address) = &config.sending_email_address else {
         error!("No sending email given");
-        return Err(format_err!("No sending email given"))
+        return Err(format_err!("No sending email given"));
     };
     let Some(alert_email_address) = &config.alert_email_address else {
         error!("No alert email given");
-        return Err(format_err!("No alert email given"))
+        return Err(format_err!("No alert email given"));
     };
     debug!("{sending_email_address} {alert_email_address}");
     let mut subject = StackString::new();
