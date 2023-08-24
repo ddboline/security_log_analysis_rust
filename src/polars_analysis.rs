@@ -148,8 +148,14 @@ pub async fn insert_db_into_parquet(
         let mut df = if file.exists() {
             let df = ParquetReader::new(File::open(&file)?).finish()?;
             output.push(format_sstr!("{:?}", df.shape()));
-            df.vstack(&new_df)?
-                .unique(None, UniqueKeepStrategy::First, None)?
+            let existing_entries = df.shape().0;
+            let updated_df = df
+                .vstack(&new_df)?
+                .unique(None, UniqueKeepStrategy::First, None)?;
+            if existing_entries == updated_df.shape().0 {
+                return Ok(output);
+            }
+            updated_df
         } else {
             new_df
         };
