@@ -4,27 +4,31 @@ use futures::TryStreamExt;
 use log::info;
 use polars::{
     chunked_array::ops::SortOptions,
-    datatypes::TimeUnit,
+    df as dataframe,
+    frame::DataFrame,
+    io::{
+        parquet::{ParquetReader, ParquetWriter},
+        SerReader,
+    },
     lazy::{dsl::functions::col, frame::IntoLazy},
-    prelude::{UniqueKeepStrategy, Utf8Chunked},
+    prelude::{lit, LazyFrame, NamedFrom, ScanArgsParquet, UniqueKeepStrategy},
 };
 use postgres_query::{query, FromSqlRow};
 use stack_string::{format_sstr, StackString};
 use std::{fs::File, path::Path};
 use time::UtcOffset;
 
-use polars::{
-    chunked_array::builder::NewChunkedArray,
-    datatypes::{BooleanChunked, DatetimeChunked, UInt32Chunked},
-    frame::DataFrame,
-    io::{
-        parquet::{ParquetReader, ParquetWriter},
-        SerReader,
-    },
-    series::IntoSeries,
-};
-
 use crate::{pgpool::PgPool, CountryCount, DateTimeType, Host, Service};
+
+fn col_to_ser(col: &[StackString]) -> Vec<&str> {
+    col.iter().map(StackString::as_str).collect()
+}
+
+fn opt_col_to_ser(col: &[Option<StackString>]) -> Vec<Option<&str>> {
+    col.iter()
+        .map(|o| o.as_ref().map(StackString::as_str))
+        .collect()
+}
 
 /// # Errors
 /// Return error if db query fails
@@ -61,6 +65,20 @@ pub async fn insert_db_into_parquet(
         country: Vec<Option<StackString>>,
     }
 
+    impl IntrusionLogColumns {
+        fn new(cap: usize) -> Self {
+            Self {
+                service: Vec::with_capacity(cap),
+                server: Vec::with_capacity(cap),
+                datetime: Vec::with_capacity(cap),
+                host: Vec::with_capacity(cap),
+                username: Vec::with_capacity(cap),
+                code: Vec::with_capacity(cap),
+                country: Vec::with_capacity(cap),
+            }
+        }
+    }
+
     let mut output = Vec::new();
 
     let query = query!(
@@ -93,15 +111,7 @@ pub async fn insert_db_into_parquet(
             .fetch_streaming::<IntrusionLogRow, _>(&conn)
             .await?
             .try_fold(
-                IntrusionLogColumns {
-                    service: Vec::with_capacity(count as usize),
-                    server: Vec::with_capacity(count as usize),
-                    datetime: Vec::with_capacity(count as usize),
-                    host: Vec::with_capacity(count as usize),
-                    username: Vec::with_capacity(count as usize),
-                    code: Vec::with_capacity(count as usize),
-                    country: Vec::with_capacity(count as usize),
-                },
+                IntrusionLogColumns::new(count as usize),
                 |mut acc, row| async move {
                     acc.service.push(row.service);
                     acc.server.push(row.server);
@@ -121,22 +131,16 @@ pub async fn insert_db_into_parquet(
             )
             .await?;
 
-        let columns = vec![
-            Utf8Chunked::from_slice("service", &intrusion_rows.service).into_series(),
-            Utf8Chunked::from_slice("server", &intrusion_rows.server).into_series(),
-            Utf8Chunked::from_slice("host", &intrusion_rows.host).into_series(),
-            Utf8Chunked::from_slice_options("username", &intrusion_rows.username).into_series(),
-            Utf8Chunked::from_slice_options("code", &intrusion_rows.code).into_series(),
-            Utf8Chunked::from_slice_options("country", &intrusion_rows.country).into_series(),
-            DatetimeChunked::from_naive_datetime(
-                "datetime",
-                intrusion_rows.datetime,
-                TimeUnit::Milliseconds,
-            )
-            .into_series(),
-        ];
+        let new_df = dataframe!(
+            "service" => col_to_ser(&intrusion_rows.service),
+            "server" => col_to_ser(&intrusion_rows.server),
+            "host" => col_to_ser(&intrusion_rows.host),
+            "username" => opt_col_to_ser(&intrusion_rows.username),
+            "code" => opt_col_to_ser(&intrusion_rows.code),
+            "country" => opt_col_to_ser(&intrusion_rows.country),
+            "datetime" => &intrusion_rows.datetime,
+        )?;
 
-        let new_df = DataFrame::new(columns)?;
         output.push(format_sstr!("{:?}", new_df.shape()));
 
         let filename = format_sstr!("intrusion_log_{year:04}_{month:02}.parquet");
@@ -202,9 +206,11 @@ pub fn read_parquet_files(
         vec![input.to_path_buf()]
     };
     let country: Vec<&str> = Vec::new();
-    let country = Utf8Chunked::from_slice("country", &country).into_series();
-    let country_count = UInt32Chunked::from_slice("country_count", &[]).into_series();
-    let mut df = DataFrame::new(vec![country, country_count])?;
+    let country_count: Vec<u32> = Vec::new();
+    let mut df = dataframe!(
+        "country" => country,
+        "country_count" => country_count,
+    )?;
     for input_file in input_files {
         let new_df = get_country_count(&input_file, service, server, ndays)?;
         df = df.vstack(&new_df)?;
@@ -242,40 +248,28 @@ fn get_country_count(
     server: Option<Host>,
     ndays: Option<i32>,
 ) -> Result<DataFrame, Error> {
-    let mut df = ParquetReader::new(File::open(input)?).finish()?;
+    let args = ScanArgsParquet::default();
+    let mut df = LazyFrame::scan_parquet(input, args)?;
     if let Some(service) = service {
-        let mask: Vec<_> = df
-            .column("service")?
-            .utf8()?
-            .into_iter()
-            .map(|x| x == Some(service.to_str()))
-            .collect();
-        let mask = BooleanChunked::from_slice("service_mask", &mask);
-        df = df.filter(&mask)?;
+        df = df.filter(col("service").eq(lit(service.to_str())));
     }
     if let Some(server) = server {
-        let mask: Vec<_> = df
-            .column("server")?
-            .utf8()?
-            .into_iter()
-            .map(|x| x == Some(server.to_str()))
-            .collect();
-        let mask = BooleanChunked::from_slice("server_mask", &mask);
-        df = df.filter(&mask)?;
+        df = df.filter(col("server").eq(lit(server.to_str())));
     }
     if let Some(ndays) = ndays {
         let begin_timestamp = (Utc::now() - Duration::days(i64::from(ndays)))
             .naive_utc()
             .timestamp_millis();
-        let mask: Vec<_> = df
-            .column("datetime")?
-            .datetime()?
-            .into_iter()
-            .map(|x| x.map(|d| d > begin_timestamp))
-            .collect();
-        let mask = BooleanChunked::from_slice_options("datetime_mask", &mask);
-        df = df.filter(&mask)?;
+        df = df.filter(
+            col("datetime")
+                .dt()
+                .timestamp(polars::prelude::TimeUnit::Milliseconds)
+                .gt(begin_timestamp),
+        );
     }
-    let df = df.groupby(["country"])?.select(["country"]).count()?;
+    let df = df
+        .groupby(["country"])
+        .agg([col("datetime").count().alias("country_count")])
+        .collect()?;
     Ok(df)
 }

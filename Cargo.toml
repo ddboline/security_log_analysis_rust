@@ -56,7 +56,7 @@ refinery = {version="0.8", features=["tokio-postgres"]}
 postgres_query = {git = "https://github.com/ddboline/rust-postgres-query", tag = "0.3.4", features=["deadpool"]}
 stack-string = { git = "https://github.com/ddboline/stack-string-rs.git", features=["postgres_types", "rweb-openapi"], tag="0.9.1" }
 chrono = "0.4"
-polars = {version="0.30", features=["temporal", "parquet", "lazy"]}
+polars = {version="0.32", features=["temporal", "parquet", "lazy"]}
 authorized_users = { git = "https://github.com/ddboline/auth_server_rust.git", tag="0.10.8"}
 rweb = {git = "https://github.com/ddboline/rweb.git", features=["openapi"], default-features=false, tag="0.15.1-1"}
 rweb-helper = { git = "https://github.com/ddboline/rweb_helper.git", tag="0.5.0-1" }
