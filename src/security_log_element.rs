@@ -43,7 +43,7 @@ fn index_element(cx: Scope, data: StackString, config: Config) -> Element {
         body {
             maps_script,
             script {
-                "{script_body}",
+                dangerous_inner_html: "{script_body}",
             }
             div {
                 id: "regions_div",
