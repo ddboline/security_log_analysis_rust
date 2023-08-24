@@ -20,11 +20,11 @@ use time::UtcOffset;
 
 use crate::{pgpool::PgPool, CountryCount, DateTimeType, Host, Service};
 
-fn col_to_ser(col: &[StackString]) -> Vec<&str> {
+fn stackstring_to_series(col: &[StackString]) -> Vec<&str> {
     col.iter().map(StackString::as_str).collect()
 }
 
-fn opt_col_to_ser(col: &[Option<StackString>]) -> Vec<Option<&str>> {
+fn opt_stackstring_to_series(col: &[Option<StackString>]) -> Vec<Option<&str>> {
     col.iter()
         .map(|o| o.as_ref().map(StackString::as_str))
         .collect()
@@ -132,12 +132,12 @@ pub async fn insert_db_into_parquet(
             .await?;
 
         let new_df = dataframe!(
-            "service" => col_to_ser(&intrusion_rows.service),
-            "server" => col_to_ser(&intrusion_rows.server),
-            "host" => col_to_ser(&intrusion_rows.host),
-            "username" => opt_col_to_ser(&intrusion_rows.username),
-            "code" => opt_col_to_ser(&intrusion_rows.code),
-            "country" => opt_col_to_ser(&intrusion_rows.country),
+            "service" => stackstring_to_series(&intrusion_rows.service),
+            "server" => stackstring_to_series(&intrusion_rows.server),
+            "host" => stackstring_to_series(&intrusion_rows.host),
+            "username" => opt_stackstring_to_series(&intrusion_rows.username),
+            "code" => opt_stackstring_to_series(&intrusion_rows.code),
+            "country" => opt_stackstring_to_series(&intrusion_rows.country),
             "datetime" => &intrusion_rows.datetime,
         )?;
 
