@@ -153,7 +153,7 @@ pub async fn insert_db_into_parquet(
                 .vstack(&new_df)?
                 .unique(None, UniqueKeepStrategy::First, None)?;
             if existing_entries == updated_df.shape().0 {
-                return Ok(output);
+                continue;
             }
             updated_df
         } else {
