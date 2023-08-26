@@ -18,7 +18,7 @@ use stack_string::{format_sstr, StackString};
 use std::{fs::File, path::Path};
 use time::UtcOffset;
 
-use crate::{pgpool::PgPool, CountryCount, DateTimeType, Host, Service};
+use crate::{get_md5sum, pgpool::PgPool, CountryCount, DateTimeType, Host, Service};
 
 fn stackstring_to_series(col: &[StackString]) -> Vec<&str> {
     col.iter().map(StackString::as_str).collect()
@@ -176,9 +176,16 @@ pub fn merge_parquet_files(input: &Path, output: &Path) -> Result<(), Error> {
         return Err(format_err!("output {output:?} does not exist"));
     }
     let df0 = ParquetReader::new(File::open(input)?).finish()?;
-    info!("input {:?}", df0.shape());
+    let entries0 = df0.shape().0;
+    info!("input {entries0}");
     let df1 = ParquetReader::new(File::open(output)?).finish()?;
-    info!("output {:?}", df1.shape());
+    let entries1 = df1.shape().0;
+    info!("output {entries1}");
+
+    if entries0 == 0 {
+        return Ok(());
+    }
+
     let mut df = df1
         .vstack(&df0)?
         .unique(None, UniqueKeepStrategy::First, None)?;

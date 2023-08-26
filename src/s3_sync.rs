@@ -28,7 +28,7 @@ use tokio::task::spawn_blocking;
 use crate::{exponential_retry, get_md5sum, polars_analysis::merge_parquet_files};
 
 #[must_use]
-pub fn get_s3_client() -> S3Client {
+fn get_s3_client() -> S3Client {
     get_client_sts!(S3Client, Region::UsEast1).expect("Failed to obtain client")
 }
 
@@ -271,12 +271,16 @@ impl S3Sync {
         let output = local_file.to_path_buf();
         debug!("input {tmp_path:?} output {output:?}");
         if output.exists() {
-            let result: Result<(), Error> = spawn_blocking(move || {
-                merge_parquet_files(&tmp_path, &output)?;
-                fs::remove_file(&tmp_path).map_err(Into::into)
-            })
-            .await?;
-            result?;
+            let input_md5 = get_md5sum(&tmp_path).await?;
+            let output_md5 = get_md5sum(&output).await?;
+            if input_md5 != output_md5 {
+                let result: Result<(), Error> = spawn_blocking(move || {
+                    merge_parquet_files(&tmp_path, &output)?;
+                    fs::remove_file(&tmp_path).map_err(Into::into)
+                })
+                .await?;
+                result?;
+            }
         } else {
             tokio::fs::rename(&tmp_path, &output).await?;
         }
