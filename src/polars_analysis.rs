@@ -18,7 +18,7 @@ use stack_string::{format_sstr, StackString};
 use std::{fs::File, path::Path};
 use time::UtcOffset;
 
-use crate::{get_md5sum, pgpool::PgPool, CountryCount, DateTimeType, Host, Service};
+use crate::{pgpool::PgPool, CountryCount, DateTimeType, Host, Service};
 
 fn stackstring_to_series(col: &[StackString]) -> Vec<&str> {
     col.iter().map(StackString::as_str).collect()
