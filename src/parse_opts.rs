@@ -146,7 +146,8 @@ impl ParseOpts {
                 }
             }
             ParseOpts::Sync { directory } => {
-                let sync = S3Sync::new();
+                let sdk_config = aws_config::load_from_env().await;
+                let sync = S3Sync::new(&sdk_config);
                 let directory = directory.unwrap_or_else(|| config.cache_dir.clone());
                 stdout.send(
                     sync.sync_dir("security-log-analysis", &directory, &config.s3_bucket, true)

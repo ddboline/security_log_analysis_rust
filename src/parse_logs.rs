@@ -447,8 +447,8 @@ impl fmt::Display for ServiceLogEntry {
 pub async fn process_systemd_logs(config: &Config, pool: &PgPool) -> Result<(), Error> {
     let alert_log_delay = config.alert_log_delay.unwrap_or(60);
     let alert_buffer_size = config.alert_buffer_size.unwrap_or(10_000);
-
-    let ses_instance = SesInstance::new(None);
+    let sdk_config = aws_config::load_from_env().await;
+    let ses_instance = SesInstance::new(&sdk_config);
     let Some(sending_email_address) = &config.sending_email_address else {
         error!("No sending email given");
         return Err(format_err!("No sending email given"));

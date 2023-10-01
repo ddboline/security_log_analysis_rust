@@ -119,7 +119,7 @@ pub async fn insert_db_into_parquet(
                     let d = row.datetime.to_offset(UtcOffset::UTC);
                     let datetime =
                         NaiveDateTime::from_timestamp_opt(d.unix_timestamp(), d.nanosecond())
-                            .expect("Invalid timestamp");
+                            .unwrap_or_default();
                     acc.datetime.push(datetime);
                     acc.host.push(row.host);
                     acc.username.push(row.username);
@@ -230,7 +230,7 @@ pub fn read_parquet_files(
     }
     let df = df
         .lazy()
-        .groupby(["country"])
+        .group_by(["country"])
         .agg([col("country_count").sum().alias("count")])
         .sort(
             "count",
@@ -281,7 +281,7 @@ fn get_country_count(
         );
     }
     let df = df
-        .groupby(["country"])
+        .group_by(["country"])
         .agg([col("datetime").count().alias("country_count")])
         .collect()?;
     Ok(df)

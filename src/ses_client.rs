@@ -1,9 +1,11 @@
 use anyhow::Error;
-use rusoto_core::Region;
-use rusoto_ses::{Body, Content, Destination, Message, SendEmailRequest, Ses, SesClient};
+use aws_config::SdkConfig;
+use aws_sdk_ses::{
+    types::{Body, Content, Destination, Message},
+    Client as SesClient,
+};
 use std::fmt;
-use sts_profile_auth::get_client_sts;
-use time::{format_description::well_known::Rfc3339, OffsetDateTime};
+use time::OffsetDateTime;
 
 #[derive(Clone)]
 pub struct SesInstance {
@@ -18,16 +20,16 @@ impl fmt::Debug for SesInstance {
 
 impl Default for SesInstance {
     fn default() -> Self {
-        Self::new(None)
+        let sdk_config = SdkConfig::builder().build();
+        Self::new(&sdk_config)
     }
 }
 
 impl SesInstance {
     #[must_use]
-    pub fn new(region: Option<Region>) -> Self {
-        let region = region.unwrap_or(Region::UsEast1);
+    pub fn new(sdk_config: &SdkConfig) -> Self {
         Self {
-            ses_client: get_client_sts!(SesClient, region).expect("Failed to open SesClient"),
+            ses_client: SesClient::from_conf(sdk_config.into()),
         }
     }
 
@@ -40,29 +42,22 @@ impl SesInstance {
         sub: &str,
         msg: &str,
     ) -> Result<(), Error> {
-        let req = SendEmailRequest {
-            source: src.to_string(),
-            destination: Destination {
-                to_addresses: Some(vec![dest.to_string()]),
-                ..Destination::default()
-            },
-            message: Message {
-                subject: Content {
-                    data: sub.to_string(),
-                    ..Content::default()
-                },
-                body: Body {
-                    html: Some(Content {
-                        data: msg.to_string(),
-                        ..Content::default()
-                    }),
-                    ..Body::default()
-                },
-            },
-            ..SendEmailRequest::default()
-        };
         self.ses_client
-            .send_email(req)
+            .send_email()
+            .source(src)
+            .destination(Destination::builder().to_addresses(dest).build())
+            .message(
+                Message::builder()
+                    .subject(Content::builder().data(sub).build())
+                    .body(
+                        Body::builder()
+                            .text(Content::builder().data(msg).build())
+                            .html(Content::builder().data(msg).build())
+                            .build(),
+                    )
+                    .build(),
+            )
+            .send()
             .await
             .map_err(Into::into)
             .map(|_| ())
@@ -71,25 +66,24 @@ impl SesInstance {
     /// # Errors
     /// Returns error if api call fails
     pub async fn get_statistics(&self) -> Result<(SesQuotas, EmailStats), Error> {
-        let quota = self.ses_client.get_send_quota().await?;
+        let quota = self.ses_client.get_send_quota().send().await?;
         let stats = self
             .ses_client
             .get_send_statistics()
+            .send()
             .await?
             .send_data_points
             .unwrap_or_default()
             .into_iter()
-            .filter_map(|point| {
-                Some(EmailStats {
-                    bounces: point.bounces?,
-                    complaints: point.complaints?,
-                    delivery_attempts: point.delivery_attempts?,
-                    rejects: point.rejects?,
-                    min_timestamp: point
-                        .timestamp
-                        .and_then(|s| OffsetDateTime::parse(&s, &Rfc3339).ok()),
-                    ..EmailStats::default()
-                })
+            .map(|point| EmailStats {
+                bounces: point.bounces,
+                complaints: point.complaints,
+                delivery_attempts: point.delivery_attempts,
+                rejects: point.rejects,
+                min_timestamp: point
+                    .timestamp
+                    .and_then(|t| OffsetDateTime::from_unix_timestamp(t.as_secs_f64() as i64).ok()),
+                ..EmailStats::default()
             })
             .fold(EmailStats::default(), |mut stats, point| {
                 stats.bounces += point.bounces;
@@ -107,9 +101,9 @@ impl SesInstance {
                 stats
             });
         let quota = SesQuotas {
-            max_24_hour_send: quota.max_24_hour_send.unwrap_or(0.0),
-            max_send_rate: quota.max_send_rate.unwrap_or(0.0),
-            sent_last_24_hours: quota.sent_last_24_hours.unwrap_or(0.0),
+            max_24_hour_send: quota.max24_hour_send,
+            max_send_rate: quota.max_send_rate,
+            sent_last_24_hours: quota.sent_last24_hours,
         };
         Ok((quota, stats))
     }
