@@ -1,5 +1,5 @@
 use anyhow::Error as AnyhowError;
-use postgres_query::Error as PqError;
+use postgres_query::Error as PgError;
 use rweb::reject::Reject;
 use thiserror::Error;
 use tokio::task::JoinError;
@@ -12,8 +12,8 @@ pub enum ServiceError {
     AnyhowError(#[from] AnyhowError),
     #[error("JoinError {0}")]
     JoinError(#[from] JoinError),
-    #[error("PqError {0}")]
-    PqError(#[from] PqError),
+    #[error("PgError {0}")]
+    PgError(#[from] PgError),
 }
 
 impl Reject for ServiceError {}
