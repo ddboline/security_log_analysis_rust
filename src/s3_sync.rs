@@ -41,7 +41,8 @@ pub struct KeyItem {
 }
 
 impl KeyItem {
-    pub fn from_s3_object(mut item: S3Object) -> Option<Self> {
+    #[must_use]
+    fn from_s3_object(mut item: S3Object) -> Option<Self> {
         let key = item.key.take()?.into();
         let etag = item.e_tag.take()?.trim_matches('"').into();
         let timestamp = item.last_modified.as_ref()?.as_secs_f64() as i64;
