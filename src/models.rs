@@ -3,7 +3,7 @@ use bytes::BytesMut;
 use derive_more::Into;
 use futures::{Stream, TryStreamExt};
 use postgres_query::{
-    client::GenericClient, query, query_dyn, Error as PqError, FromSqlRow, Parameter,
+    client::GenericClient, query, query_dyn, Error as PgError, FromSqlRow, Parameter,
 };
 use rweb::Schema;
 use serde::{Deserialize, Serialize};
@@ -29,7 +29,7 @@ impl CountryCode {
     /// Return error if db query fails
     pub async fn get_country_code_list(
         pool: &PgPool,
-    ) -> Result<impl Stream<Item = Result<Self, PqError>>, Error> {
+    ) -> Result<impl Stream<Item = Result<Self, PgError>>, Error> {
         let query = query!("SELECT * FROM country_code");
         let conn = pool.get().await?;
         query.fetch_streaming(&conn).await.map_err(Into::into)
@@ -72,7 +72,7 @@ impl HostCountry {
         offset: Option<usize>,
         limit: Option<usize>,
         order: bool,
-    ) -> Result<impl Stream<Item = Result<Self, PqError>>, Error> {
+    ) -> Result<impl Stream<Item = Result<Self, PgError>>, Error> {
         let mut query = format_sstr!("SELECT * FROM host_country");
         if order {
             query.push_str(" ORDER BY created_at DESC");
@@ -148,7 +148,7 @@ impl HostCountry {
     /// Return error if db query fails
     pub async fn get_dangling_hosts(
         pool: &PgPool,
-    ) -> Result<impl Stream<Item = Result<StackString, PqError>>, Error> {
+    ) -> Result<impl Stream<Item = Result<StackString, PgError>>, Error> {
         let query = query!(
             r#"
                 SELECT distinct a.host
@@ -164,7 +164,7 @@ impl HostCountry {
             .map(|stream| {
                 stream.and_then(|row| async move {
                     let host: StackString =
-                        row.try_get("host").map_err(PqError::BeginTransaction)?;
+                        row.try_get("host").map_err(PgError::BeginTransaction)?;
                     Ok(host)
                 })
             })
@@ -260,7 +260,7 @@ impl IntrusionLog {
         max_datetime: Option<OffsetDateTime>,
         limit: Option<usize>,
         offset: Option<usize>,
-    ) -> Result<impl Stream<Item = Result<Self, PqError>>, Error> {
+    ) -> Result<impl Stream<Item = Result<Self, PgError>>, Error> {
         let mut bindings = Vec::new();
         let mut constraints = Vec::new();
         let service = service.map(Service::to_str);
@@ -359,7 +359,7 @@ impl AuthorizedUsers {
     /// Return error if db query fails
     pub async fn get_authorized_users(
         pool: &PgPool,
-    ) -> Result<impl Stream<Item = Result<Self, PqError>>, Error> {
+    ) -> Result<impl Stream<Item = Result<Self, PgError>>, Error> {
         let query = query!("SELECT * FROM authorized_users");
         let conn = pool.get().await?;
         query.fetch_streaming(&conn).await.map_err(Into::into)
@@ -623,7 +623,7 @@ impl SystemdLogMessages {
         max_timestamp: Option<DateTimeType>,
         limit: Option<usize>,
         offset: Option<usize>,
-    ) -> Result<impl Stream<Item = Result<Self, PqError>>, Error> {
+    ) -> Result<impl Stream<Item = Result<Self, PgError>>, Error> {
         let mut constraints = Vec::new();
         let mut bindings = Vec::new();
         if let Some(log_level) = &log_level {
@@ -670,6 +670,86 @@ impl SystemdLogMessages {
         query.fetch_streaming(&conn).await.map_err(Into::into)
     }
 }
+
+#[derive(FromSqlRow, Serialize, Deserialize, Debug, Clone)]
+pub struct KeyItemCache {
+    pub s3_key: StackString,
+    pub etag: StackString,
+    pub s3_timestamp: i64,
+    pub s3_size: i64,
+    pub has_local: bool,
+    pub has_remote: bool,
+}
+
+impl KeyItemCache {
+    /// # Errors
+    /// Return error if db query fails
+    pub async fn get_by_key(pool: &PgPool, s3_key: &str) -> Result<Option<Self>, Error> {
+        let query = query!(
+            "SELECT * FROM key_item_cache WHERE s3_key = $s3_key",
+            s3_key = s3_key
+        );
+        let conn = pool.get().await?;
+        query.fetch_opt(&conn).await.map_err(Into::into)
+    }
+
+    /// # Errors
+    /// Return error if db query fails
+    pub async fn get_files(
+        pool: &PgPool,
+        has_remote: bool,
+        has_local: bool,
+    ) -> Result<impl Stream<Item = Result<Self, PgError>>, Error> {
+        let query = query!(
+            r#"
+                SELECT * FROM key_item_cache
+                WHERE has_remote = $has_remote AND has_local = $has_local
+            "#,
+            has_remote = has_remote,
+            has_local = has_local,
+        );
+        let conn = pool.get().await?;
+        query.fetch_streaming(&conn).await.map_err(Into::into)
+    }
+
+    /// # Errors
+    /// Return error if db query fails
+    pub async fn insert(&self, pool: &PgPool) -> Result<u64, Error> {
+        let query = query!(
+            r#"
+                INSERT INTO key_item_cache (
+                    s3_key,
+                    etag,
+                    s3_timestamp,
+                    s3_size,
+                    has_local,
+                    has_remote
+                ) VALUES (
+                    $s3_key,
+                    $etag,
+                    $s3_timestamp,
+                    $s3_size,
+                    $has_local,
+                    $has_remote
+                ) ON CONFLICT (s3_key) DO UPDATE
+                    SET etag=$etag,
+                        s3_timestamp=$s3_timestamp,
+                        s3_size=$s3_size,
+                        has_local=$has_local,
+                        has_remote=$has_remote
+            "#,
+            s3_key = self.s3_key,
+            etag = self.etag,
+            s3_timestamp = self.s3_timestamp,
+            s3_size = self.s3_size,
+            has_local = self.has_local,
+            has_remote = self.has_remote,
+        );
+        let conn = pool.get().await?;
+        query.execute(&conn).await.map_err(Into::into)
+    }
+}
+
 
 #[cfg(test)]
 mod tests {
