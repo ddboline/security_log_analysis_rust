@@ -151,8 +151,13 @@ impl ParseOpts {
                 let directory = directory.unwrap_or_else(|| config.cache_dir.clone());
                 let pool = PgPool::new(&config.database_url);
                 stdout.send(
-                    sync.sync_dir("security-log-analysis", &directory, &config.s3_bucket, &pool)
-                        .await?,
+                    sync.sync_dir(
+                        "security-log-analysis",
+                        &directory,
+                        &config.s3_bucket,
+                        &pool,
+                    )
+                    .await?,
                 );
             }
             ParseOpts::AddHost { host_codes } => {

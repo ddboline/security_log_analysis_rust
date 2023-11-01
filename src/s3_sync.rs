@@ -4,6 +4,7 @@ use aws_sdk_s3::{
     operation::list_objects::ListObjectsOutput, primitives::ByteStream, types::Object as S3Object,
     Client as S3Client,
 };
+use futures::TryStreamExt;
 use log::debug;
 use rand::{
     distributions::{Alphanumeric, DistString},
@@ -12,20 +13,19 @@ use rand::{
 use stack_string::{format_sstr, StackString};
 use std::{
     borrow::Borrow,
+    cmp::Ordering,
     convert::{TryFrom, TryInto},
     fs,
     hash::{Hash, Hasher},
     path::Path,
     time::SystemTime,
-    cmp::Ordering,
 };
 use tokio::{fs::File, task::spawn_blocking};
-use futures::TryStreamExt;
 
-
-use crate::{exponential_retry, get_md5sum, polars_analysis::merge_parquet_files};
-use crate::models::KeyItemCache;
-use crate::pgpool::PgPool;
+use crate::{
+    exponential_retry, get_md5sum, models::KeyItemCache, pgpool::PgPool,
+    polars_analysis::merge_parquet_files,
+};
 
 #[derive(Clone)]
 pub struct S3Sync {
@@ -241,7 +241,8 @@ impl S3Sync {
 
         while let Some(mut key_item) = stream.try_next().await? {
             let local_file = local_dir.join(&key_item.s3_key);
-            self.download_file(&local_file, s3_bucket, &key_item.s3_key).await?;
+            self.download_file(&local_file, s3_bucket, &key_item.s3_key)
+                .await?;
             number_downloaded += 1;
             let metadata = fs::metadata(&local_file)?;
             let modified: i64 = metadata
@@ -347,15 +348,18 @@ impl S3Sync {
     ) -> Result<StackString, Error> {
         exponential_retry(|| async move {
             let body = ByteStream::read_from().path(local_file).build().await?;
-            let etag = self.s3_client
+            let etag = self
+                .s3_client
                 .put_object()
                 .bucket(s3_bucket)
                 .key(s3_key)
                 .body(body)
                 .send()
                 .await?
-                .e_tag.ok_or_else(|| format_err!("Missing etag"))?
-                .trim_matches('"').into();
+                .e_tag
+                .ok_or_else(|| format_err!("Missing etag"))?
+                .trim_matches('"')
+                .into();
             Ok(etag)
         })
         .await
