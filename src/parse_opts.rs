@@ -149,8 +149,9 @@ impl ParseOpts {
                 let sdk_config = aws_config::load_from_env().await;
                 let sync = S3Sync::new(&sdk_config);
                 let directory = directory.unwrap_or_else(|| config.cache_dir.clone());
+                let pool = PgPool::new(&config.database_url);
                 stdout.send(
-                    sync.sync_dir("security-log-analysis", &directory, &config.s3_bucket, true)
+                    sync.sync_dir("security-log-analysis", &directory, &config.s3_bucket, &pool)
                         .await?,
                 );
             }
