@@ -14,6 +14,7 @@
 #![allow(clippy::case_sensitive_file_extension_comparisons)]
 #![allow(clippy::default_trait_access)]
 #![allow(clippy::unused_async)]
+#![allow(clippy::ignored_unit_patterns)]
 
 pub mod security_log_element;
 
