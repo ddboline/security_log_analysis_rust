@@ -13,6 +13,7 @@ pub fn index_body(data: StackString, config: Config) -> String {
     dioxus_ssr::render(&app)
 }
 
+#[allow(clippy::ignored_unit_patterns)]
 #[inline_props]
 fn index_element(cx: Scope, data: StackString, config: Config) -> Element {
     let maps_script = config.maps_api_key.as_ref().map(|map_api_key| {

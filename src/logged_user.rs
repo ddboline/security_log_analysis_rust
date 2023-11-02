@@ -48,7 +48,7 @@ impl LoggedUser {
             .and(cookie("jwt"))
             .and_then(|id: Uuid, user: Self| async move {
                 user.verify_session_id(id)
-                    .map(|_| user)
+                    .map(|()| user)
                     .map_err(rweb::reject::custom)
             })
     }

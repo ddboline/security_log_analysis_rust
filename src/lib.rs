@@ -5,6 +5,7 @@
 #![allow(clippy::cast_possible_truncation)]
 #![allow(clippy::cast_possible_wrap)]
 #![allow(clippy::case_sensitive_file_extension_comparisons)]
+#![allow(clippy::ignored_unit_patterns)]
 
 pub mod config;
 pub mod errors;
