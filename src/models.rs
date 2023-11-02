@@ -716,7 +716,10 @@ impl KeyItemCache {
         let query = if constraints.is_empty() {
             query!("SELECT * FROM key_item_cache")
         } else {
-            let query = format_sstr!("SELECT * FROM key_item_cache WHERE {}", constraints.join(" AND "));
+            let query = format_sstr!(
+                "SELECT * FROM key_item_cache WHERE {}",
+                constraints.join(" AND ")
+            );
             query_dyn!(&query, ..bindings)?
         };
         let conn = pool.get().await?;
