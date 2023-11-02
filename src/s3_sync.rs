@@ -13,7 +13,6 @@ use rand::{
 use stack_string::{format_sstr, StackString};
 use std::{
     borrow::Borrow,
-    cmp::Ordering,
     convert::{TryFrom, TryInto},
     fs,
     hash::{Hash, Hasher},
@@ -56,27 +55,15 @@ impl KeyItem {
     }
 }
 
-impl From<KeyItemCache> for KeyItem {
-    fn from(value: KeyItemCache) -> Self {
-        Self {
-            key: value.s3_key,
-            etag: value.etag,
-            timestamp: value.s3_timestamp,
-            size: value.s3_size as u64,
-        }
-    }
-}
-
 impl TryFrom<KeyItem> for KeyItemCache {
     type Error = Error;
     fn try_from(value: KeyItem) -> Result<Self, Self::Error> {
         Ok(Self {
             s3_key: value.key,
-            etag: value.etag,
-            s3_timestamp: value.timestamp,
-            s3_size: value.size.try_into()?,
-            has_local: false,
-            has_remote: false,
+            s3_etag: Some(value.etag),
+            s3_timestamp: Some(value.timestamp),
+            s3_size: Some(value.size.try_into()?),
+            ..Self::default()
         })
     }
 }
@@ -151,21 +138,21 @@ impl S3Sync {
                     if let Some(key) = KeyItem::from_s3_object(object) {
                         if let Some(mut key_item) = KeyItemCache::get_by_key(pool, &key.key).await?
                         {
-                            key_item.has_remote = true;
-                            if key.timestamp != key_item.s3_timestamp && key.etag != key_item.etag {
-                                let key_size: i64 = key.size.try_into()?;
-                                match key_size.cmp(&key_item.s3_size) {
-                                    Ordering::Greater | Ordering::Less => {
-                                        key_item = key.try_into()?;
-                                        key_item.has_remote = true;
-                                    }
-                                    Ordering::Equal => {}
-                                }
+                            key_item.s3_etag = Some(key.etag);
+                            key_item.s3_size = Some(key.size.try_into()?);
+                            key_item.s3_timestamp = Some(key.timestamp);
+
+                            if key_item.s3_etag == key_item.local_etag {
+                                key_item.do_download = false;
+                                key_item.do_upload = false;
+                            } else {
+                                key_item.do_download = true;
+                                key_item.do_upload = true;
                             }
                             key_item.insert(pool).await?;
                         } else {
                             let mut key_item: KeyItemCache = key.try_into()?;
-                            key_item.has_remote = true;
+                            key_item.do_download = true;
                             key_item.insert(pool).await?;
                         };
                         nkeys += 1;
@@ -197,23 +184,23 @@ impl S3Sync {
             if let Some(file_name) = f.file_name() {
                 let key: StackString = file_name.to_string_lossy().as_ref().into();
                 if let Some(mut key_item) = KeyItemCache::get_by_key(pool, &key).await? {
-                    if modified != key_item.s3_timestamp && size != key_item.s3_size {
+                    if Some(size) != key_item.local_size {
+                        key_item.local_size = Some(size);
                         let etag = get_md5sum(&f).await?;
-                        if etag != key_item.etag {
-                            key_item.has_local = true;
-                            key_item.has_remote = false;
-                            key_item.insert(pool).await?;
-                        }
+                        key_item.local_etag = Some(etag);
+                        key_item.local_timestamp = Some(modified);
+                        key_item.do_upload = true;
+                        key_item.insert(pool).await?;
                     }
                 } else {
                     let etag = get_md5sum(&f).await?;
                     KeyItemCache {
                         s3_key: key,
-                        etag,
-                        s3_timestamp: modified,
-                        s3_size: size,
-                        has_local: true,
-                        has_remote: false,
+                        local_etag: Some(etag),
+                        local_timestamp: Some(modified),
+                        local_size: Some(size),
+                        do_upload: true,
+                        ..KeyItemCache::default()
                     }
                     .insert(pool)
                     .await?;
@@ -238,7 +225,7 @@ impl S3Sync {
         let mut number_uploaded = 0;
         let mut number_downloaded = 0;
 
-        let mut stream = Box::pin(KeyItemCache::get_files(pool, true, false).await?);
+        let mut stream = Box::pin(KeyItemCache::get_files(pool, Some(true), None).await?);
 
         while let Some(mut key_item) = stream.try_next().await? {
             let local_file = local_dir.join(&key_item.s3_key);
@@ -251,27 +238,36 @@ impl S3Sync {
                 .duration_since(SystemTime::UNIX_EPOCH)?
                 .as_secs()
                 .try_into()?;
-            key_item.etag = get_md5sum(&local_file).await?;
-            key_item.s3_size = metadata.len().try_into()?;
-            key_item.s3_timestamp = modified;
-            key_item.has_local = true;
-            key_item.has_remote = false;
+            key_item.local_etag = Some(get_md5sum(&local_file).await?);
+            key_item.local_size = Some(metadata.len().try_into()?);
+            key_item.local_timestamp = Some(modified);
+            key_item.do_download = false;
+            if key_item.s3_etag != key_item.local_etag {
+                key_item.do_upload = true;
+            }
+            key_item.insert(pool).await?;
         }
 
-        let mut stream = Box::pin(KeyItemCache::get_files(pool, false, true).await?);
+        let mut stream = Box::pin(KeyItemCache::get_files(pool, None, Some(true)).await?);
 
         while let Some(mut key_item) = stream.try_next().await? {
             let local_file = local_dir.join(&key_item.s3_key);
             if !local_file.exists() {
-                key_item.has_local = false;
+                key_item.do_upload = false;
                 key_item.insert(pool).await?;
                 continue;
             }
-            key_item.etag = self
+            let s3_etag = self
                 .upload_file(&local_file, s3_bucket, &key_item.s3_key)
                 .await?;
+            if Some(&s3_etag) != key_item.local_etag.as_ref() {
+                return Err(format_err!("Uploaded etag does not match local"));
+            }
+            key_item.s3_etag = Some(s3_etag);
+            key_item.s3_size = key_item.local_size;
+            key_item.s3_timestamp = key_item.local_timestamp;
             number_uploaded += 1;
-            key_item.has_remote = true;
+            key_item.do_upload = false;
             key_item.insert(pool).await?;
         }
 
@@ -387,7 +383,7 @@ mod tests {
             .get_and_process_keys(&config.s3_bucket, &pool)
             .await?;
 
-        KeyItemCache::get_files(&pool, true, false)
+        KeyItemCache::get_files(&pool, Some(true), None)
             .await?
             .try_for_each(|key_item| async move {
                 println!("upload {}", key_item.s3_key);
@@ -395,7 +391,7 @@ mod tests {
             })
             .await?;
 
-        KeyItemCache::get_files(&pool, false, true)
+        KeyItemCache::get_files(&pool, None, Some(true))
             .await?
             .try_for_each(|key_item| async move {
                 println!("download {}", key_item.s3_key);

@@ -671,14 +671,17 @@ impl SystemdLogMessages {
     }
 }
 
-#[derive(FromSqlRow, Serialize, Deserialize, Debug, Clone)]
+#[derive(FromSqlRow, Serialize, Deserialize, Debug, Clone, Default)]
 pub struct KeyItemCache {
     pub s3_key: StackString,
-    pub etag: StackString,
-    pub s3_timestamp: i64,
-    pub s3_size: i64,
-    pub has_local: bool,
-    pub has_remote: bool,
+    pub s3_etag: Option<StackString>,
+    pub s3_timestamp: Option<i64>,
+    pub s3_size: Option<i64>,
+    pub local_etag: Option<StackString>,
+    pub local_timestamp: Option<i64>,
+    pub local_size: Option<i64>,
+    pub do_download: bool,
+    pub do_upload: bool,
 }
 
 impl KeyItemCache {
@@ -697,17 +700,25 @@ impl KeyItemCache {
     /// Return error if db query fails
     pub async fn get_files(
         pool: &PgPool,
-        has_remote: bool,
-        has_local: bool,
+        do_download: Option<bool>,
+        do_upload: Option<bool>,
     ) -> Result<impl Stream<Item = Result<Self, PgError>>, Error> {
-        let query = query!(
-            r#"
-                SELECT * FROM key_item_cache
-                WHERE has_remote = $has_remote AND has_local = $has_local
-            "#,
-            has_remote = has_remote,
-            has_local = has_local,
-        );
+        let mut bindings = Vec::new();
+        let mut constraints = Vec::new();
+        if let Some(do_download) = &do_download {
+            constraints.push(format_sstr!("do_download=$do_download"));
+            bindings.push(("do_download", do_download as Parameter));
+        }
+        if let Some(do_upload) = &do_upload {
+            constraints.push(format_sstr!("do_upload=$do_upload"));
+            bindings.push(("do_upload", do_upload as Parameter));
+        }
+        let query = if constraints.is_empty() {
+            query!("SELECT * FROM key_item_cache")
+        } else {
+            let query = format_sstr!("SELECT * FROM key_item_cache WHERE {}", constraints.join(" AND "));
+            query_dyn!(&query, ..bindings)?
+        };
         let conn = pool.get().await?;
         query.fetch_streaming(&conn).await.map_err(Into::into)
     }
@@ -719,31 +730,43 @@ impl KeyItemCache {
             r#"
                 INSERT INTO key_item_cache (
                     s3_key,
-                    etag,
+                    s3_etag,
                     s3_timestamp,
                     s3_size,
-                    has_local,
-                    has_remote
+                    local_etag,
+                    local_timestamp,
+                    local_size,
+                    do_download,
+                    do_upload
                 ) VALUES (
                     $s3_key,
-                    $etag,
+                    $s3_etag,
                     $s3_timestamp,
                     $s3_size,
-                    $has_local,
-                    $has_remote
+                    $local_etag,
+                    $local_timestamp,
+                    $local_size,
+                    $do_download,
+                    $do_upload
                 ) ON CONFLICT (s3_key) DO UPDATE
-                    SET etag=$etag,
+                    SET s3_etag=$s3_etag,
                         s3_timestamp=$s3_timestamp,
                         s3_size=$s3_size,
-                        has_local=$has_local,
-                        has_remote=$has_remote
+                        local_etag=$local_etag,
+                        local_timestamp=$local_timestamp,
+                        local_size=$local_size,
+                        do_download=$do_download,
+                        do_upload=$do_upload
             "#,
             s3_key = self.s3_key,
-            etag = self.etag,
+            s3_etag = self.s3_etag,
             s3_timestamp = self.s3_timestamp,
             s3_size = self.s3_size,
-            has_local = self.has_local,
-            has_remote = self.has_remote,
+            local_etag = self.local_etag,
+            local_timestamp = self.local_timestamp,
+            local_size = self.local_size,
+            do_download = self.do_download,
+            do_upload = self.do_upload,
         );
         let conn = pool.get().await?;
         query.execute(&conn).await.map_err(Into::into)

@@ -1,8 +1,11 @@
 CREATE TABLE key_item_cache (
     s3_key TEXT NOT NULL UNIQUE PRIMARY KEY,
-    etag TEXT NOT NULL,
-    s3_timestamp BIGINT NOT NULL,
-    s3_size BIGINT NOT NULL,
-    has_local BOOLEAN NOT NULL DEFAULT false,
-    has_remote BOOLEAN NOT NULL DEFAULT false
+    s3_etag TEXT,
+    s3_timestamp BIGINT,
+    s3_size BIGINT,
+    local_etag TEXT,
+    local_timestamp BIGINT,
+    local_size BIGINT,
+    do_download BOOLEAN NOT NULL DEFAULT false,
+    do_upload BOOLEAN NOT NULL DEFAULT false
 )
