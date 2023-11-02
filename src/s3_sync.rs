@@ -19,7 +19,7 @@ use std::{
     path::Path,
     time::SystemTime,
 };
-use tokio::{fs::File, task::spawn_blocking};
+use tokio::{fs::File, task::{spawn_blocking, spawn, JoinHandle}};
 
 use crate::{
     exponential_retry, get_md5sum, models::KeyItemCache, pgpool::PgPool,
@@ -170,7 +170,8 @@ impl S3Sync {
         exponential_retry(|| async move { self._get_and_process_keys(bucket, pool).await }).await
     }
 
-    async fn process_files(&self, local_dir: &Path, pool: &PgPool) -> Result<(), Error> {
+    async fn process_files(&self, local_dir: &Path, pool: &PgPool) -> Result<usize, Error> {
+        let mut tasks = Vec::new();
         for dir_line in local_dir.read_dir()? {
             let entry = dir_line?;
             let f = entry.path();
@@ -185,29 +186,43 @@ impl S3Sync {
                 let key: StackString = file_name.to_string_lossy().as_ref().into();
                 if let Some(mut key_item) = KeyItemCache::get_by_key(pool, &key).await? {
                     if Some(size) != key_item.local_size {
-                        key_item.local_size = Some(size);
-                        let etag = get_md5sum(&f).await?;
-                        key_item.local_etag = Some(etag);
-                        key_item.local_timestamp = Some(modified);
-                        key_item.do_upload = true;
-                        key_item.insert(pool).await?;
+                        let pool = pool.clone();
+                        let task: JoinHandle<Result<(), Error>> = spawn(async move {
+                            key_item.local_size = Some(size);
+                            let etag = get_md5sum(&f).await?;
+                            key_item.local_etag = Some(etag);
+                            key_item.local_timestamp = Some(modified);
+                            key_item.do_upload = true;
+                            key_item.insert(&pool).await?;
+                            Ok(())
+                        });
+                        tasks.push(task);
                     }
                 } else {
-                    let etag = get_md5sum(&f).await?;
-                    KeyItemCache {
-                        s3_key: key,
-                        local_etag: Some(etag),
-                        local_timestamp: Some(modified),
-                        local_size: Some(size),
-                        do_upload: true,
-                        ..KeyItemCache::default()
-                    }
-                    .insert(pool)
-                    .await?;
+                    let pool = pool.clone();
+                    let task: JoinHandle<Result<(), Error>> = spawn(async move {
+                        let etag = get_md5sum(&f).await?;
+                        KeyItemCache {
+                            s3_key: key,
+                            local_etag: Some(etag),
+                            local_timestamp: Some(modified),
+                            local_size: Some(size),
+                            do_upload: true,
+                            ..KeyItemCache::default()
+                        }
+                        .insert(&pool)
+                        .await?;
+                        Ok(())
+                    });
+                    tasks.push(task);
                 };
             }
         }
-        Ok(())
+        let updates = tasks.len();
+        for task in tasks {
+            let _ = task.await?;
+        }
+        Ok(updates)
     }
 
     /// # Errors
@@ -219,7 +234,7 @@ impl S3Sync {
         s3_bucket: &str,
         pool: &PgPool,
     ) -> Result<StackString, Error> {
-        self.process_files(local_dir, pool).await?;
+        let local_updates = self.process_files(local_dir, pool).await?;
         let n_keys = self.get_and_process_keys(s3_bucket, pool).await?;
 
         let mut number_uploaded = 0;
@@ -272,12 +287,7 @@ impl S3Sync {
         }
 
         let msg = format_sstr!(
-            "{} {} s3_bucketnkeys {} uploaded {} downloaded {}",
-            title,
-            s3_bucket,
-            n_keys,
-            number_uploaded,
-            number_downloaded,
+            "{title} {s3_bucket} s3_bucketnkeys {n_keys} updated files {local_updates} uploaded {number_uploaded} downloaded {number_downloaded}",
         );
 
         Ok(msg)
