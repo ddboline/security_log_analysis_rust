@@ -19,7 +19,10 @@ use std::{
     path::Path,
     time::SystemTime,
 };
-use tokio::{fs::File, task::{spawn_blocking, spawn, JoinHandle}};
+use tokio::{
+    fs::File,
+    task::{spawn, spawn_blocking, JoinHandle},
+};
 
 use crate::{
     exponential_retry, get_md5sum, models::KeyItemCache, pgpool::PgPool,
@@ -45,12 +48,13 @@ impl KeyItem {
         let key = item.key.take()?.into();
         let etag = item.e_tag.take()?.trim_matches('"').into();
         let timestamp = item.last_modified.as_ref()?.as_secs_f64() as i64;
+        let size = item.size? as u64;
 
         Some(Self {
             key,
             etag,
             timestamp,
-            size: item.size as u64,
+            size,
         })
     }
 }
@@ -159,7 +163,7 @@ impl S3Sync {
                     }
                 }
             }
-            if !output.is_truncated {
+            if output.is_truncated == Some(false) || output.is_truncated.is_none() {
                 break;
             }
         }
@@ -287,7 +291,8 @@ impl S3Sync {
         }
 
         let msg = format_sstr!(
-            "{title} {s3_bucket} s3_bucketnkeys {n_keys} updated files {local_updates} uploaded {number_uploaded} downloaded {number_downloaded}",
+            "{title} {s3_bucket} s3_bucketnkeys {n_keys} updated files {local_updates} uploaded \
+             {number_uploaded} downloaded {number_downloaded}",
         );
 
         Ok(msg)

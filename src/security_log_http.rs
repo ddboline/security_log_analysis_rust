@@ -22,10 +22,12 @@ use anyhow::Error as AnyhowError;
 use cached::{proc_macro::cached, Cached, TimedSizedCache};
 use derive_more::{From, Into};
 use futures::TryStreamExt;
-use http::StatusCode;
 use itertools::Itertools;
 use log::error;
-use rweb::{delete, get, post, reject::Reject, Filter, Json, Query, Rejection, Reply, Schema};
+use rweb::{
+    delete, get, http::StatusCode, post, reject::Reject, Filter, Json, Query, Rejection, Reply,
+    Schema,
+};
 use rweb_helper::{derive_rweb_schema, DateTimeType, UuidWrapper};
 use serde::{Deserialize, Serialize};
 use stack_string::{format_sstr, StackString};

@@ -48,11 +48,11 @@ impl SesInstance {
             .destination(Destination::builder().to_addresses(dest).build())
             .message(
                 Message::builder()
-                    .subject(Content::builder().data(sub).build())
+                    .subject(Content::builder().data(sub).build()?)
                     .body(
                         Body::builder()
-                            .text(Content::builder().data(msg).build())
-                            .html(Content::builder().data(msg).build())
+                            .text(Content::builder().data(msg).build()?)
+                            .html(Content::builder().data(msg).build()?)
                             .build(),
                     )
                     .build(),
