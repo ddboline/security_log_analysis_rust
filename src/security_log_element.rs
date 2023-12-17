@@ -1,6 +1,6 @@
 use dioxus::prelude::{
-    dioxus_elements, format_args_f, inline_props, rsx, Element, GlobalAttributes, LazyNodes, Props,
-    Scope, VNode, VirtualDom,
+    dioxus_elements, format_args_f, component, rsx, Element, GlobalAttributes, LazyNodes, Props,
+    Scope, VNode, VirtualDom, IntoDynNode,
 };
 use stack_string::StackString;
 use std::fmt::Write;
@@ -8,14 +8,13 @@ use std::fmt::Write;
 use security_log_analysis_rust::{config::Config, CountryCount};
 
 pub fn index_body(data: StackString, config: Config) -> String {
-    let mut app = VirtualDom::new_with_props(index_element, index_elementProps { data, config });
+    let mut app = VirtualDom::new_with_props(IndexElement, IndexElementProps { data, config });
     drop(app.rebuild());
     dioxus_ssr::render(&app)
 }
 
-#[allow(clippy::ignored_unit_patterns)]
-#[inline_props]
-fn index_element(cx: Scope, data: StackString, config: Config) -> Element {
+#[component]
+fn IndexElement(cx: Scope, data: StackString, config: Config) -> Element {
     let maps_script = config.maps_api_key.as_ref().map(|map_api_key| {
         rsx! {
             script {
