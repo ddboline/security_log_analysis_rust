@@ -25,13 +25,25 @@ use futures::TryStreamExt;
 use itertools::Itertools;
 use log::error;
 use rweb::{
-    delete, get, http::StatusCode, post, reject::Reject, Filter, Json, Query, Rejection, Reply,
-    Schema,
+    delete,
+    filters::BoxedFilter,
+    get,
+    http::{header::CONTENT_TYPE, StatusCode},
+    openapi,
+    openapi::Info,
+    post,
+    reject::{InvalidHeader, MissingCookie, Reject},
+    Filter, Json, Query, Rejection, Reply, Schema,
 };
-use rweb_helper::{derive_rweb_schema, DateTimeType, UuidWrapper};
+use rweb_helper::{
+    derive_rweb_schema, html_response::HtmlResponse as HtmlBase,
+    json_response::JsonResponse as JsonBase, DateTimeType, RwebResponse, UuidWrapper,
+};
 use serde::{Deserialize, Serialize};
 use stack_string::{format_sstr, StackString};
-use std::{convert::Infallible, env::var, fmt, fmt::Write, net::SocketAddr, time::Duration};
+use std::{
+    convert::Infallible, env::var, fmt, fmt::Write, net::SocketAddr, sync::Arc, time::Duration,
+};
 use thiserror::Error;
 use time::OffsetDateTime;
 use tokio::{
@@ -43,7 +55,7 @@ use security_log_analysis_rust::{
     config::Config,
     errors::ServiceError,
     host_country_metadata::HostCountryMetadata,
-    logged_user::{fill_from_db, get_secrets, LoggedUser, TRIGGER_DB_UPDATE},
+    logged_user::{fill_from_db, get_secrets, LoggedUser, LOGIN_HTML, TRIGGER_DB_UPDATE},
     models::{HostCountry, IntrusionLog, LogLevel, SystemdLogMessages},
     parse_logs::{parse_systemd_logs_sshd_daemon, process_systemd_logs},
     pgpool::PgPool,
@@ -60,6 +72,10 @@ struct ErrorMessage<'a> {
     message: &'a str,
 }
 
+fn login_html() -> impl Reply {
+    rweb::reply::html(LOGIN_HTML)
+}
+
 /// # Errors
 /// Never returns error
 #[allow(clippy::unused_async)]
@@ -70,6 +86,16 @@ pub async fn error_response(err: Rejection) -> Result<Box<dyn Reply>, Infallible
     if err.is_not_found() {
         code = StatusCode::NOT_FOUND;
         message = "NOT FOUND";
+    } else if err.find::<InvalidHeader>().is_some() {
+        TRIGGER_DB_UPDATE.set();
+        return Ok(Box::new(login_html()));
+    } else if let Some(missing_cookie) = err.find::<MissingCookie>() {
+        if missing_cookie.name() == "jwt" {
+            TRIGGER_DB_UPDATE.set();
+            return Ok(Box::new(login_html()));
+        }
+        code = StatusCode::INTERNAL_SERVER_ERROR;
+        message = "Internal Server Error";
     } else if let Some(service_error) = err.find::<ServiceError>() {
         error!("{:?}", service_error);
         code = StatusCode::INTERNAL_SERVER_ERROR;
@@ -144,22 +170,30 @@ async fn get_cached_country_count(
     Ok(body)
 }
 
+#[derive(RwebResponse)]
+#[response(description = "Map Drawing Script", content = "js")]
+struct MapScriptResponse(HtmlBase<&'static str, Infallible>);
+
 #[get("/security_log/map_script.js")]
-async fn map_script() -> WarpResult<impl Reply> {
+async fn map_script() -> WarpResult<MapScriptResponse> {
     let body = include_str!("../templates/map_script.js");
-    Ok(rweb::reply::html(body))
+    Ok(HtmlBase::new(body).into())
 }
+
+#[derive(RwebResponse)]
+#[response(description = "Intrusion Attempts", content = "html")]
+struct IntrusionAttemptsResponse(HtmlBase<StackString, ServiceError>);
 
 #[get("/security_log/intrusion_attempts")]
 async fn intrusion_attempts(
     query: Query<AttemptsQuery>,
     #[data] data: AppState,
-) -> WarpResult<impl Reply> {
+) -> WarpResult<IntrusionAttemptsResponse> {
     let query = query.into_inner();
     let config = data.config.clone();
     let data = get_cached_country_count(&data.pool, query).await?;
     let body = security_log_element::index_body(data, config);
-    Ok(rweb::reply::html(body))
+    Ok(HtmlBase::new(body.into()).into())
 }
 
 #[cached(
@@ -190,16 +224,20 @@ async fn get_cached_country_count_all(
     Ok(body)
 }
 
+#[derive(RwebResponse)]
+#[response(description = "All Intrusion Attempts", content = "html")]
+struct IntrusionAttemptsAllResponse(HtmlBase<StackString, ServiceError>);
+
 #[get("/security_log/intrusion_attempts/all")]
 async fn intrusion_attempts_all(
     query: Query<AttemptsQuery>,
     #[data] data: AppState,
-) -> WarpResult<impl Reply> {
+) -> WarpResult<IntrusionAttemptsAllResponse> {
     let query = query.into_inner();
     let config = data.config.clone();
     let data = get_cached_country_count_all(config.clone(), query).await?;
     let body = security_log_element::index_body(data, config);
-    Ok(rweb::reply::html(body))
+    Ok(HtmlBase::new(body.into()).into())
 }
 
 #[derive(Serialize, Deserialize, Schema)]
@@ -210,12 +248,16 @@ struct SyncQuery {
     limit: Option<usize>,
 }
 
+#[derive(RwebResponse)]
+#[response(description = "Intrusion Logs")]
+struct IntrusionLogResponse(JsonBase<Vec<IntrusionLogWrapper>, ServiceError>);
+
 #[get("/security_log/intrusion_log")]
 async fn intursion_log_get(
     query: Query<SyncQuery>,
     #[data] data: AppState,
     _: LoggedUser,
-) -> WarpResult<impl Reply> {
+) -> WarpResult<IntrusionLogResponse> {
     let query = query.into_inner();
     let limit = query.limit.unwrap_or(1000);
     let results: Vec<_> = IntrusionLog::get_intrusion_log_filtered(
@@ -229,10 +271,11 @@ async fn intursion_log_get(
     )
     .await
     .map_err(Into::<ServiceError>::into)?
+    .map_ok(Into::into)
     .try_collect()
     .await
     .map_err(Into::<ServiceError>::into)?;
-    Ok(rweb::reply::json(&results))
+    Ok(JsonBase::new(results).into())
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Into, From)]
@@ -242,6 +285,7 @@ derive_rweb_schema!(IntrusionLogWrapper, _IntrusionLogWrapper);
 
 #[allow(dead_code)]
 #[derive(Schema)]
+#[schema(component = "IntrusionLog")]
 struct _IntrusionLogWrapper {
     id: UuidWrapper,
     service: StackString,
@@ -252,22 +296,46 @@ struct _IntrusionLogWrapper {
 }
 
 #[derive(Serialize, Deserialize, Schema)]
+#[schema(component = "IntrusionLogUpdate")]
 struct IntrusionLogUpdate {
     updates: Vec<IntrusionLogWrapper>,
 }
+
+#[derive(RwebResponse)]
+#[response(description = "Intrusion Log Post", status = "CREATED")]
+struct IntrusionLogPostResponse(HtmlBase<StackString, ServiceError>);
 
 #[post("/security_log/intrusion_log")]
 async fn intrusion_log_post(
     payload: Json<IntrusionLogUpdate>,
     #[data] data: AppState,
     _: LoggedUser,
-) -> WarpResult<impl Reply> {
+) -> WarpResult<IntrusionLogPostResponse> {
     let payload = payload.into_inner();
     let updates: Vec<_> = payload.updates.into_iter().map(Into::into).collect();
     let inserts = IntrusionLog::insert(&data.pool, &updates)
         .await
         .map_err(Into::<ServiceError>::into)?;
-    Ok(rweb::reply::html(format_sstr!("Inserts {}", inserts)))
+    Ok(HtmlBase::new(format_sstr!("Inserts {}", inserts)).into())
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Into, From)]
+struct HostCountryWrapper(HostCountry);
+
+derive_rweb_schema!(HostCountryWrapper, _HostCountryWrapper);
+
+#[allow(dead_code)]
+#[derive(Schema)]
+#[schema(component = "HostCountry")]
+struct _HostCountryWrapper {
+    #[schema(description = "Host")]
+    pub host: StackString,
+    #[schema(description = "Country Code")]
+    pub code: StackString,
+    #[schema(description = "IP Address")]
+    pub ipaddr: Option<StackString>,
+    #[schema(description = "Created At")]
+    pub created_at: DateTimeType,
 }
 
 #[derive(Serialize, Deserialize, Schema)]
@@ -276,35 +344,45 @@ struct HostCountryQuery {
     limit: Option<usize>,
 }
 
+#[derive(RwebResponse)]
+#[response(description = "Host Countries")]
+struct HostCountryResponse(JsonBase<Vec<HostCountryWrapper>, ServiceError>);
+
 #[get("/security_log/host_country")]
 async fn host_country_get(
     query: Query<HostCountryQuery>,
     #[data] data: AppState,
     _: LoggedUser,
-) -> WarpResult<impl Reply> {
+) -> WarpResult<HostCountryResponse> {
     let query = query.into_inner();
     let limit = query.limit.unwrap_or(1000);
     let results: Vec<_> =
         HostCountry::get_host_country(&data.pool, query.offset, Some(limit), true)
             .await
             .map_err(Into::<ServiceError>::into)?
+            .map_ok(Into::into)
             .try_collect()
             .await
             .map_err(Into::<ServiceError>::into)?;
-    Ok(rweb::reply::json(&results))
+    Ok(JsonBase::new(results).into())
 }
 
 #[derive(Serialize, Deserialize, Schema)]
+#[schema(component = "HostCountryUpdate")]
 struct HostCountryUpdate {
     updates: Vec<HostCountry>,
 }
+
+#[derive(RwebResponse)]
+#[response(description = "Host Country Post", status = "CREATED")]
+struct HostCountryPostResponse(HtmlBase<StackString, ServiceError>);
 
 #[post("/security_log/host_country")]
 async fn host_country_post(
     payload: Json<HostCountryUpdate>,
     #[data] data: AppState,
     _: LoggedUser,
-) -> WarpResult<impl Reply> {
+) -> WarpResult<HostCountryPostResponse> {
     let payload = payload.into_inner();
     let mut inserts = 0;
     for entry in payload.updates {
@@ -314,11 +392,18 @@ async fn host_country_post(
             .map_err(Into::<ServiceError>::into)?
             .map_or(0, |_| 1);
     }
-    Ok(rweb::reply::html(format_sstr!("Inserts {inserts}")))
+    Ok(HtmlBase::new(format_sstr!("Inserts {inserts}")).into())
 }
 
-#[get("/security_log/cleanup")]
-async fn host_country_cleanup(#[data] data: AppState, _: LoggedUser) -> WarpResult<impl Reply> {
+#[derive(RwebResponse)]
+#[response(description = "Host Country Cleanup", status = "CREATED")]
+struct HostCountryCleanupResponse(JsonBase<Vec<HostCountryWrapper>, ServiceError>);
+
+#[post("/security_log/cleanup")]
+async fn host_country_cleanup(
+    #[data] data: AppState,
+    _: LoggedUser,
+) -> WarpResult<HostCountryCleanupResponse> {
     let mut lines = Vec::new();
     let metadata = HostCountryMetadata::from_pool(data.pool.clone())
         .await
@@ -336,16 +421,20 @@ async fn host_country_cleanup(#[data] data: AppState, _: LoggedUser) -> WarpResu
             HostCountry::insert_host_country(&host_country, &data.pool)
                 .await
                 .map_err(Into::<ServiceError>::into)?;
-            lines.push(host_country);
+            lines.push(host_country.into());
         }
     }
-    Ok(rweb::reply::json(&lines))
+    Ok(JsonBase::new(lines).into())
 }
+
+#[derive(RwebResponse)]
+#[response(description = "Logged User")]
+struct LoggedUserResponse(JsonBase<LoggedUser, ServiceError>);
 
 #[get("/security_log/user")]
 #[allow(clippy::unused_async)]
-async fn user(user: LoggedUser) -> WarpResult<impl Reply> {
-    Ok(rweb::reply::json(&user))
+async fn user(user: LoggedUser) -> WarpResult<LoggedUserResponse> {
+    Ok(JsonBase::new(user).into())
 }
 
 #[derive(Serialize, Deserialize, Schema)]
@@ -358,12 +447,39 @@ struct LogMessageQuery {
     offset: Option<usize>,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Into, From)]
+struct SystemdLogMessagesWrapper(SystemdLogMessages);
+
+derive_rweb_schema!(SystemdLogMessagesWrapper, _SystemdLogMessagesWrapper);
+
+#[allow(dead_code)]
+#[derive(Schema)]
+#[schema(component = "SystemdLogMessages")]
+struct _SystemdLogMessagesWrapper {
+    #[schema(description = "ID")]
+    id: UuidWrapper,
+    #[schema(description = "Log Level")]
+    log_level: LogLevel,
+    #[schema(description = "Log Unit")]
+    log_unit: Option<StackString>,
+    #[schema(description = "Log Message")]
+    log_message: StackString,
+    #[schema(description = "Log Timestamp")]
+    log_timestamp: DateTimeType,
+    #[schema(description = "Log Processed At Time")]
+    processed_time: Option<DateTimeType>,
+}
+
+#[derive(RwebResponse)]
+#[response(description = "Log Messages")]
+struct LogMessagesResponse(JsonBase<Vec<SystemdLogMessagesWrapper>, ServiceError>);
+
 #[get("/security_log/log_messages")]
 async fn get_log_messages(
     #[data] data: AppState,
     _: LoggedUser,
     query: Query<LogMessageQuery>,
-) -> WarpResult<impl Reply> {
+) -> WarpResult<LogMessagesResponse> {
     let query = query.into_inner();
     let min_date: Option<OffsetDateTime> = query.min_date.map(Into::into);
     let max_date: Option<OffsetDateTime> = query.max_date.map(Into::into);
@@ -378,24 +494,42 @@ async fn get_log_messages(
     )
     .await
     .map_err(Into::<ServiceError>::into)?
+    .map_ok(Into::into)
     .try_collect()
     .await
     .map_err(Into::<ServiceError>::into)?;
-    Ok(rweb::reply::json(&messages))
+    Ok(JsonBase::new(messages).into())
 }
+
+#[derive(RwebResponse)]
+#[response(description = "Delete Log Messages", status = "NO_CONTENT")]
+struct DeleteLogMessageResponse(HtmlBase<StackString, ServiceError>);
 
 #[delete("/security_log/log_messages/{id}")]
 async fn delete_log_message(
     #[data] data: AppState,
     _: LoggedUser,
     id: i32,
-) -> WarpResult<impl Reply> {
+) -> WarpResult<DeleteLogMessageResponse> {
     let bytes = SystemdLogMessages::delete(&data.pool, id)
         .await
         .map_err(Into::<ServiceError>::into)?;
-    Ok(rweb::reply::html(format_sstr!(
-        "deleted {id}, {bytes} modified"
-    )))
+    Ok(HtmlBase::new(format_sstr!("deleted {id}, {bytes} modified")).into())
+}
+
+fn get_path(app: &AppState) -> BoxedFilter<(impl Reply,)> {
+    intrusion_attempts(app.clone())
+        .or(map_script())
+        .or(intrusion_attempts_all(app.clone()))
+        .or(intursion_log_get(app.clone()))
+        .or(intrusion_log_post(app.clone()))
+        .or(host_country_get(app.clone()))
+        .or(host_country_post(app.clone()))
+        .or(host_country_cleanup(app.clone()))
+        .or(user())
+        .or(get_log_messages(app.clone()))
+        .or(delete_log_message(app.clone()))
+        .boxed()
 }
 
 async fn start_app() -> Result<(), AnyhowError> {
@@ -423,17 +557,29 @@ async fn start_app() -> Result<(), AnyhowError> {
         .and_then(|s| s.parse().ok())
         .unwrap_or(4086);
 
-    let intrusion_attempts_path = intrusion_attempts(app.clone())
-        .or(map_script())
-        .or(intrusion_attempts_all(app.clone()))
-        .or(intursion_log_get(app.clone()))
-        .or(intrusion_log_post(app.clone()))
-        .or(host_country_get(app.clone()))
-        .or(host_country_post(app.clone()))
-        .or(host_country_cleanup(app.clone()))
-        .or(user())
-        .or(get_log_messages(app.clone()))
-        .or(delete_log_message(app.clone()));
+    let (spec, intrusion_attempts_path) = openapi::spec()
+        .info(Info {
+            title: "Frontend for AWS".into(),
+            description: "Web Frontend for AWS Services".into(),
+            version: env!("CARGO_PKG_VERSION").into(),
+            ..Info::default()
+        })
+        .build(|| get_path(&app));
+    let spec = Arc::new(spec);
+    let spec_json_path = rweb::path!("security_log" / "openapi" / "json")
+        .and(rweb::path::end())
+        .map({
+            let spec = spec.clone();
+            move || rweb::reply::json(spec.as_ref())
+        });
+
+    let spec_yaml = serde_yaml::to_string(spec.as_ref())?;
+    let spec_yaml_path = rweb::path!("security_log" / "openapi" / "yaml")
+        .and(rweb::path::end())
+        .map(move || {
+            let reply = rweb::reply::html(spec_yaml.clone());
+            rweb::reply::with_header(reply, CONTENT_TYPE, "text/yaml")
+        });
 
     let cors = rweb::cors()
         .allow_methods(vec!["GET", "POST", "DELETE"])
@@ -441,7 +587,11 @@ async fn start_app() -> Result<(), AnyhowError> {
         .allow_any_origin()
         .build();
 
-    let routes = intrusion_attempts_path.recover(error_response).with(cors);
+    let routes = intrusion_attempts_path
+        .or(spec_json_path)
+        .or(spec_yaml_path)
+        .recover(error_response)
+        .with(cors);
     let addr: SocketAddr = format_sstr!("127.0.0.1:{port}").parse()?;
     rweb::serve(routes).bind(addr).await;
     Ok(())

@@ -36,7 +36,7 @@ impl CountryCode {
     }
 }
 
-#[derive(FromSqlRow, Clone, Debug, Serialize, Deserialize, Schema)]
+#[derive(FromSqlRow, Clone, Debug, Serialize, Deserialize, Schema, PartialEq)]
 pub struct HostCountry {
     pub host: StackString,
     pub code: StackString,
@@ -520,7 +520,7 @@ impl ToSql for LogLevel {
     }
 }
 
-#[derive(FromSqlRow, Clone, Debug, Serialize, Deserialize)]
+#[derive(FromSqlRow, Clone, Debug, Serialize, Deserialize, PartialEq)]
 pub struct SystemdLogMessages {
     pub id: Uuid,
     pub log_level: LogLevel,

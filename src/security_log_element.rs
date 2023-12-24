@@ -1,6 +1,6 @@
 use dioxus::prelude::{
-    dioxus_elements, format_args_f, component, rsx, Element, GlobalAttributes, LazyNodes, Props,
-    Scope, VNode, VirtualDom, IntoDynNode,
+    component, dioxus_elements, format_args_f, rsx, Element, GlobalAttributes, IntoDynNode,
+    LazyNodes, Props, Scope, VNode, VirtualDom,
 };
 use stack_string::StackString;
 use std::fmt::Write;
