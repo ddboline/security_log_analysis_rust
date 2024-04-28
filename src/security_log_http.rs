@@ -148,7 +148,7 @@ impl fmt::Display for AttemptsQuery {
 }
 
 #[cached(
-    type = "TimedSizedCache<StackString, StackString>",
+    ty = "TimedSizedCache<StackString, StackString>",
     create = "{ TimedSizedCache::with_size_and_lifespan(100, 3600) }",
     convert = r#"{ format_sstr!("{}", query) }"#,
     result = true
@@ -192,12 +192,12 @@ async fn intrusion_attempts(
     let query = query.into_inner();
     let config = data.config.clone();
     let data = get_cached_country_count(&data.pool, query).await?;
-    let body = security_log_element::index_body(data, config);
+    let body = security_log_element::index_body(data, config)?;
     Ok(HtmlBase::new(body.into()).into())
 }
 
 #[cached(
-    type = "TimedSizedCache<StackString, StackString>",
+    ty = "TimedSizedCache<StackString, StackString>",
     create = "{ TimedSizedCache::with_size_and_lifespan(100, 3600) }",
     convert = r#"{ format_sstr!("{}", query) }"#,
     result = true
@@ -236,7 +236,7 @@ async fn intrusion_attempts_all(
     let query = query.into_inner();
     let config = data.config.clone();
     let data = get_cached_country_count_all(config.clone(), query).await?;
-    let body = security_log_element::index_body(data, config);
+    let body = security_log_element::index_body(data, config)?;
     Ok(HtmlBase::new(body.into()).into())
 }
 

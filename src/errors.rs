@@ -11,6 +11,7 @@ use rweb::{
 use std::borrow::Cow;
 use thiserror::Error;
 use tokio::task::JoinError;
+use std::fmt::Error as FmtError;
 
 #[derive(Error, Debug)]
 pub enum ServiceError {
@@ -22,6 +23,8 @@ pub enum ServiceError {
     JoinError(#[from] JoinError),
     #[error("PgError {0}")]
     PgError(#[from] PgError),
+    #[error("FmtError {0}")]
+    FmtError(#[from] FmtError),
 }
 
 impl Reject for ServiceError {}

@@ -1,20 +1,27 @@
 use dioxus::prelude::{
     component, dioxus_elements, format_args_f, rsx, Element, GlobalAttributes, IntoDynNode,
-    LazyNodes, Props, Scope, VNode, VirtualDom,
+    Props, VNode, VirtualDom,
 };
 use stack_string::StackString;
 use std::fmt::Write;
 
 use security_log_analysis_rust::{config::Config, CountryCount};
 
-pub fn index_body(data: StackString, config: Config) -> String {
+use security_log_analysis_rust::errors::ServiceError as Error;
+
+pub fn index_body(data: StackString, config: Config) -> Result<String, Error> {
     let mut app = VirtualDom::new_with_props(IndexElement, IndexElementProps { data, config });
-    drop(app.rebuild());
-    dioxus_ssr::render(&app)
+    app.rebuild_in_place();
+    let mut renderer = dioxus_ssr::Renderer::default();
+    let mut buffer = String::new();
+    renderer
+        .render_to(&mut buffer, &app)
+        .map_err(Into::<Error>::into)?;
+    Ok(buffer)
 }
 
 #[component]
-fn IndexElement(cx: Scope, data: StackString, config: Config) -> Element {
+fn IndexElement(data: StackString, config: Config) -> Element {
     let maps_script = config.maps_api_key.as_ref().map(|map_api_key| {
         rsx! {
             script {
@@ -29,7 +36,7 @@ fn IndexElement(cx: Scope, data: StackString, config: Config) -> Element {
     writeln!(&mut script_body, "\tdraw_map(data);").unwrap();
     script_body.push_str("}()");
 
-    cx.render(rsx! {
+    rsx! {
         head {
             script {
                 "type": "text/javascript",
@@ -41,7 +48,7 @@ fn IndexElement(cx: Scope, data: StackString, config: Config) -> Element {
             }
         },
         body {
-            maps_script,
+            {maps_script},
             script {
                 dangerous_inner_html: "{script_body}",
             }
@@ -50,5 +57,5 @@ fn IndexElement(cx: Scope, data: StackString, config: Config) -> Element {
                 style: "width: 900px; height: 500px;",
             }
         }
-    })
+    }
 }

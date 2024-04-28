@@ -1,9 +1,9 @@
 use anyhow::{format_err, Error};
-use chrono::{Duration, NaiveDateTime, Utc};
+use chrono::{Duration, NaiveDateTime, DateTime, Utc};
 use futures::TryStreamExt;
 use log::info;
 use polars::{
-    chunked_array::ops::SortOptions,
+    chunked_array::ops::SortMultipleOptions,
     df as dataframe,
     frame::DataFrame,
     io::{
@@ -11,7 +11,7 @@ use polars::{
         SerReader,
     },
     lazy::{dsl::functions::col, frame::IntoLazy},
-    prelude::{lit, LazyFrame, NamedFrom, ScanArgsParquet, UniqueKeepStrategy},
+    prelude::{lit, LazyFrame, ScanArgsParquet, UniqueKeepStrategy},
 };
 use postgres_query::{query, FromSqlRow};
 use stack_string::{format_sstr, StackString};
@@ -117,9 +117,7 @@ pub async fn insert_db_into_parquet(
                     acc.server.push(row.server);
 
                     let d = row.datetime.to_offset(UtcOffset::UTC);
-                    let datetime =
-                        NaiveDateTime::from_timestamp_opt(d.unix_timestamp(), d.nanosecond())
-                            .unwrap_or_default();
+                    let datetime = DateTime::from_timestamp(d.unix_timestamp(), d.nanosecond()).unwrap_or_default().naive_utc();
                     acc.datetime.push(datetime);
                     acc.host.push(row.host);
                     acc.username.push(row.username);
@@ -233,14 +231,14 @@ pub fn read_parquet_files(
         .group_by(["country"])
         .agg([col("country_count").sum().alias("count")])
         .sort(
-            "count",
-            SortOptions {
-                descending: true,
-                ..SortOptions::default()
+            ["count"],
+            SortMultipleOptions {
+                descending: vec![true],
+                ..SortMultipleOptions::default()
             },
         )
         .collect()?;
-    let country_iter = df.column("country")?.utf8()?.into_iter();
+    let country_iter = df.column("country")?.str()?.into_iter();
     let count_iter = df.column("count")?.u32()?.into_iter();
     let code_count: Vec<_> = country_iter
         .zip(count_iter)
@@ -270,9 +268,7 @@ fn get_country_count(
         df = df.filter(col("server").eq(lit(server.to_str())));
     }
     if let Some(ndays) = ndays {
-        let begin_timestamp = (Utc::now() - Duration::days(i64::from(ndays)))
-            .naive_utc()
-            .timestamp_millis();
+        let begin_timestamp = (Utc::now() - Duration::days(i64::from(ndays))).timestamp_millis();
         df = df.filter(
             col("datetime")
                 .dt()
