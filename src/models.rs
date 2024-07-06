@@ -793,7 +793,7 @@ mod tests {
     async fn test_country_code_query() -> Result<(), Error> {
         let config = Config::init_config()?;
 
-        let pool = PgPool::new(&config.database_url);
+        let pool = PgPool::new(&config.database_url)?;
         let conn = pool.get().await?;
 
         let query = query!("SELECT * FROM country_code");
@@ -811,7 +811,7 @@ mod tests {
     async fn test_host_country_query() -> Result<(), Error> {
         let config = Config::init_config()?;
 
-        let pool = PgPool::new(&config.database_url);
+        let pool = PgPool::new(&config.database_url)?;
         let conn = pool.get().await?;
         let query = query!("SELECT * FROM host_country LIMIT 10");
         let host_country_list: Vec<HostCountry> = query.fetch(&conn).await?;
@@ -828,7 +828,7 @@ mod tests {
     async fn test_intrusion_log_query() -> Result<(), Error> {
         let config = Config::init_config()?;
 
-        let pool = PgPool::new(&config.database_url);
+        let pool = PgPool::new(&config.database_url)?;
         let conn = pool.get().await?;
         let query = query!("SELECT * FROM intrusion_log LIMIT 10");
         let intrusion_log_list: Vec<IntrusionLog> = query.fetch(&conn).await?;

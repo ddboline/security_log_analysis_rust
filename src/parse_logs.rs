@@ -587,7 +587,7 @@ mod tests {
     #[ignore]
     async fn test_parse_all_log_files_ssh() -> Result<(), Error> {
         let config = Config::init_config()?;
-        let pool = PgPool::new(&config.database_url);
+        let pool = PgPool::new(&config.database_url)?;
         let mut hc = HostCountryMetadata::from_pool(pool).await?;
         hc.pool = None;
         let results = parse_all_log_files(

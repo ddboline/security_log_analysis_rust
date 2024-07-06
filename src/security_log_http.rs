@@ -546,7 +546,7 @@ async fn start_app() -> Result<(), AnyhowError> {
     let config = Config::init_config()?;
     get_secrets(&config.secret_path, &config.jwt_secret_path).await?;
 
-    let pool = PgPool::new(&config.database_url);
+    let pool = PgPool::new(&config.database_url)?;
 
     spawn(update_db(pool.clone()));
 

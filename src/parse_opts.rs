@@ -96,7 +96,7 @@ impl ParseOpts {
 
         match opts {
             ParseOpts::Parse { daemon } => {
-                let pool = PgPool::new(&config.database_url);
+                let pool = PgPool::new(&config.database_url)?;
                 if daemon {
                     async fn run_daemon(config: Config, pool: PgPool) {
                         loop {
@@ -133,7 +133,7 @@ impl ParseOpts {
                 }
             }
             ParseOpts::Cleanup => {
-                let pool = PgPool::new(&config.database_url);
+                let pool = PgPool::new(&config.database_url)?;
                 let metadata = HostCountryMetadata::from_pool(pool.clone()).await?;
                 let hosts: Vec<_> = HostCountry::get_dangling_hosts(&pool)
                     .await?
@@ -149,7 +149,7 @@ impl ParseOpts {
                 let sdk_config = aws_config::load_from_env().await;
                 let sync = S3Sync::new(&sdk_config);
                 let directory = directory.unwrap_or_else(|| config.cache_dir.clone());
-                let pool = PgPool::new(&config.database_url);
+                let pool = PgPool::new(&config.database_url)?;
                 stdout.send(
                     sync.sync_dir(
                         "security-log-analysis",
@@ -162,7 +162,7 @@ impl ParseOpts {
             }
             ParseOpts::AddHost { host_codes } => {
                 let config = Config::init_config()?;
-                let pool = PgPool::new(&config.database_url);
+                let pool = PgPool::new(&config.database_url)?;
                 let metadata = HostCountryMetadata::from_pool(pool).await?;
                 for host_country in &host_codes {
                     let vals: SmallVec<[&str; 2]> = host_country.split(':').take(2).collect();
@@ -179,7 +179,7 @@ impl ParseOpts {
             }
             ParseOpts::Plot => {
                 let config = Config::init_config()?;
-                let pool = PgPool::new(&config.database_url);
+                let pool = PgPool::new(&config.database_url)?;
                 let template = include_str!("../templates/COUNTRY_TEMPLATE.html");
                 let mut written = 0;
                 for service in [Service::Ssh, Service::Apache, Service::Nginx] {
@@ -208,13 +208,13 @@ impl ParseOpts {
             }
             ParseOpts::RunMigrations => {
                 let config = Config::init_config()?;
-                let pool = PgPool::new(&config.database_url);
+                let pool = PgPool::new(&config.database_url)?;
                 let mut client = pool.get().await?;
                 migrations::runner().run_async(&mut **client).await?;
             }
             ParseOpts::Db { directory } => {
                 let directory = directory.unwrap_or_else(|| config.cache_dir.clone());
-                let pool = PgPool::new(&config.database_url);
+                let pool = PgPool::new(&config.database_url)?;
                 stdout.send(insert_db_into_parquet(&pool, &directory).await?.join("\n"));
             }
             ParseOpts::Read {
@@ -233,7 +233,7 @@ impl ParseOpts {
             }
             ParseOpts::Import { table, filepath } => {
                 let config = Config::init_config()?;
-                let pool = PgPool::new(&config.database_url);
+                let pool = PgPool::new(&config.database_url)?;
 
                 let data = if let Some(filepath) = filepath {
                     read_to_string(&filepath).await?
@@ -262,7 +262,7 @@ impl ParseOpts {
             }
             ParseOpts::Export { table, filepath } => {
                 let config = Config::init_config()?;
-                let pool = PgPool::new(&config.database_url);
+                let pool = PgPool::new(&config.database_url)?;
 
                 let mut file: Box<dyn AsyncWrite + Unpin + Send + Sync> =
                     if let Some(filepath) = filepath {

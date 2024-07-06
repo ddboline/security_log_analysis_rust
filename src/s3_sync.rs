@@ -391,7 +391,7 @@ mod tests {
         let aws_config = aws_config::load_from_env().await;
         let s3_sync = S3Sync::new(&aws_config);
         let config = Config::init_config()?;
-        let pool = PgPool::new(&config.database_url);
+        let pool = PgPool::new(&config.database_url)?;
 
         s3_sync.process_files(&config.cache_dir, &pool).await?;
         s3_sync

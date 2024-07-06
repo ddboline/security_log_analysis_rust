@@ -6,12 +6,8 @@ use polars::{
     chunked_array::ops::SortMultipleOptions,
     df as dataframe,
     frame::DataFrame,
-    io::{
-        parquet::{ParquetReader, ParquetWriter},
-        SerReader,
-    },
     lazy::{dsl::functions::col, frame::IntoLazy},
-    prelude::{lit, LazyFrame, ScanArgsParquet, UniqueKeepStrategy},
+    prelude::{lit, LazyFrame, ScanArgsParquet, UniqueKeepStrategy, ParquetReader, ParquetWriter, SerReader},
 };
 use postgres_query::{query, FromSqlRow};
 use stack_string::{format_sstr, StackString};
