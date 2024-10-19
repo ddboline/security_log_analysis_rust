@@ -248,9 +248,27 @@ struct SyncQuery {
     limit: Option<usize>,
 }
 
+#[derive(Debug, Serialize, Deserialize, Schema)]
+#[schema(component = "Pagination")]
+struct Pagination {
+    #[schema(description = "Total Number of Entries")]
+    total: usize,
+    #[schema(description = "Number of Entries to Skip")]
+    offset: usize,
+    #[schema(description = "Number of Entries Returned")]
+    limit: usize,
+}
+
+#[derive(Debug, Serialize, Deserialize, Schema)]
+#[schema(component = "PaginatedIntrusionLog")]
+struct PaginatedIntrusionLog {
+    pagination: Pagination,
+    data: Vec<IntrusionLogWrapper>,
+}
+
 #[derive(RwebResponse)]
 #[response(description = "Intrusion Logs")]
-struct IntrusionLogResponse(JsonBase<Vec<IntrusionLogWrapper>, ServiceError>);
+struct IntrusionLogResponse(JsonBase<PaginatedIntrusionLog, ServiceError>);
 
 #[get("/security_log/intrusion_log")]
 async fn intursion_log_get(
@@ -259,15 +277,31 @@ async fn intursion_log_get(
     _: LoggedUser,
 ) -> WarpResult<IntrusionLogResponse> {
     let query = query.into_inner();
-    let limit = query.limit.unwrap_or(1000);
-    let results: Vec<_> = IntrusionLog::get_intrusion_log_filtered(
+    let total = IntrusionLog::get_intrusion_log_filtered_total(
         &data.pool,
         query.service,
         query.server,
         None,
         None,
+    )
+    .await
+    .map_err(Into::<ServiceError>::into)?;
+    let offset = query.offset.unwrap_or(0);
+    let limit = query.limit.unwrap_or(10);
+    let pagination = Pagination {
+        total,
+        offset,
+        limit,
+    };
+
+    let data: Vec<_> = IntrusionLog::get_intrusion_log_filtered(
+        &data.pool,
+        query.service,
+        query.server,
+        None,
+        None,
+        Some(offset),
         Some(limit),
-        query.offset,
     )
     .await
     .map_err(Into::<ServiceError>::into)?
@@ -275,7 +309,7 @@ async fn intursion_log_get(
     .try_collect()
     .await
     .map_err(Into::<ServiceError>::into)?;
-    Ok(JsonBase::new(results).into())
+    Ok(JsonBase::new(PaginatedIntrusionLog { pagination, data }).into())
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Into, From)]
@@ -344,9 +378,16 @@ struct HostCountryQuery {
     limit: Option<usize>,
 }
 
+#[derive(Debug, Serialize, Deserialize, Schema)]
+#[schema(component = "PaginatedHostCountry")]
+struct PaginatedHostCountry {
+    pagination: Pagination,
+    data: Vec<HostCountryWrapper>,
+}
+
 #[derive(RwebResponse)]
 #[response(description = "Host Countries")]
-struct HostCountryResponse(JsonBase<Vec<HostCountryWrapper>, ServiceError>);
+struct HostCountryResponse(JsonBase<PaginatedHostCountry, ServiceError>);
 
 #[get("/security_log/host_country")]
 async fn host_country_get(
@@ -355,16 +396,25 @@ async fn host_country_get(
     _: LoggedUser,
 ) -> WarpResult<HostCountryResponse> {
     let query = query.into_inner();
-    let limit = query.limit.unwrap_or(1000);
-    let results: Vec<_> =
-        HostCountry::get_host_country(&data.pool, query.offset, Some(limit), true)
-            .await
-            .map_err(Into::<ServiceError>::into)?
-            .map_ok(Into::into)
-            .try_collect()
-            .await
-            .map_err(Into::<ServiceError>::into)?;
-    Ok(JsonBase::new(results).into())
+    let total = HostCountry::get_host_country_total(&data.pool)
+        .await
+        .map_err(Into::<ServiceError>::into)?;
+    let offset = query.offset.unwrap_or(0);
+    let limit = query.limit.unwrap_or(10);
+    let pagination = Pagination {
+        total,
+        offset,
+        limit,
+    };
+
+    let data: Vec<_> = HostCountry::get_host_country(&data.pool, query.offset, Some(limit), true)
+        .await
+        .map_err(Into::<ServiceError>::into)?
+        .map_ok(Into::into)
+        .try_collect()
+        .await
+        .map_err(Into::<ServiceError>::into)?;
+    Ok(JsonBase::new(PaginatedHostCountry { pagination, data }).into())
 }
 
 #[derive(Serialize, Deserialize, Schema)]
@@ -470,9 +520,16 @@ struct _SystemdLogMessagesWrapper {
     processed_time: Option<DateTimeType>,
 }
 
+#[derive(Debug, Serialize, Deserialize, Schema)]
+#[schema(component = "PaginatedSystemdLogMessages")]
+struct PaginatedSystemdLogMessages {
+    pagination: Pagination,
+    data: Vec<SystemdLogMessagesWrapper>,
+}
+
 #[derive(RwebResponse)]
 #[response(description = "Log Messages")]
-struct LogMessagesResponse(JsonBase<Vec<SystemdLogMessagesWrapper>, ServiceError>);
+struct LogMessagesResponse(JsonBase<PaginatedSystemdLogMessages, ServiceError>);
 
 #[get("/security_log/log_messages")]
 async fn get_log_messages(
@@ -483,14 +540,33 @@ async fn get_log_messages(
     let query = query.into_inner();
     let min_date: Option<OffsetDateTime> = query.min_date.map(Into::into);
     let max_date: Option<OffsetDateTime> = query.max_date.map(Into::into);
-    let messages: Vec<_> = SystemdLogMessages::get_systemd_messages(
+    let log_level = query.log_level;
+    let log_unit: Option<&str> = query.log_unit.as_ref().map(Into::into);
+    let total = SystemdLogMessages::get_total(
         &data.pool,
-        query.log_level,
-        query.log_unit.as_ref().map(Into::into),
+        log_level,
+        log_unit,
         min_date.map(Into::into),
         max_date.map(Into::into),
-        query.limit,
-        query.offset,
+    )
+    .await
+    .map_err(Into::<ServiceError>::into)?;
+    let offset = query.offset.unwrap_or(0);
+    let limit = query.limit.unwrap_or(10);
+    let pagination = Pagination {
+        total,
+        offset,
+        limit,
+    };
+
+    let data: Vec<_> = SystemdLogMessages::get_systemd_messages(
+        &data.pool,
+        log_level,
+        log_unit,
+        min_date.map(Into::into),
+        max_date.map(Into::into),
+        Some(offset),
+        Some(limit),
     )
     .await
     .map_err(Into::<ServiceError>::into)?
@@ -498,7 +574,7 @@ async fn get_log_messages(
     .try_collect()
     .await
     .map_err(Into::<ServiceError>::into)?;
-    Ok(JsonBase::new(messages).into())
+    Ok(JsonBase::new(PaginatedSystemdLogMessages { pagination, data }).into())
 }
 
 #[derive(RwebResponse)]

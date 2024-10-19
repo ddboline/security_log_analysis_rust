@@ -8,10 +8,9 @@ use rweb::{
     },
     reject::Reject,
 };
-use std::borrow::Cow;
+use std::{borrow::Cow, fmt::Error as FmtError};
 use thiserror::Error;
 use tokio::task::JoinError;
-use std::fmt::Error as FmtError;
 
 #[derive(Error, Debug)]
 pub enum ServiceError {

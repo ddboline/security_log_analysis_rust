@@ -11,6 +11,8 @@ sudo -u postgres createuser -E -e $USER
 sudo -u postgres psql -c "CREATE ROLE $USER PASSWORD '$PASSWORD' NOSUPERUSER NOCREATEDB NOCREATEROLE INHERIT LOGIN;"
 sudo -u postgres psql -c "ALTER ROLE $USER PASSWORD '$PASSWORD' NOSUPERUSER NOCREATEDB NOCREATEROLE INHERIT LOGIN;"
 sudo -u postgres createdb $DB
+sudo -u postgres psql -c "GRANT ALL PRIVILEGES ON DATABASE $DB TO $USER;"
+sudo -u postgres psql $DB -c "GRANT ALL ON SCHEMA public TO $USER;"
 
 cat > ${HOME}/.config/security_log_analysis_rust/config.env <<EOL
 DATABASE_URL=postgresql://$USER:$PASSWORD@localhost:5432/$DB

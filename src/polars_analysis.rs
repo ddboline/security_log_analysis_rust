@@ -1,5 +1,5 @@
 use anyhow::{format_err, Error};
-use chrono::{Duration, NaiveDateTime, DateTime, Utc};
+use chrono::{DateTime, Duration, NaiveDateTime, Utc};
 use futures::TryStreamExt;
 use log::info;
 use polars::{
@@ -7,7 +7,10 @@ use polars::{
     df as dataframe,
     frame::DataFrame,
     lazy::{dsl::functions::col, frame::IntoLazy},
-    prelude::{lit, LazyFrame, ScanArgsParquet, UniqueKeepStrategy, ParquetReader, ParquetWriter, SerReader},
+    prelude::{
+        lit, LazyFrame, ParquetReader, ParquetWriter, ScanArgsParquet, SerReader,
+        UniqueKeepStrategy,
+    },
 };
 use postgres_query::{query, FromSqlRow};
 use stack_string::{format_sstr, StackString};
@@ -113,7 +116,9 @@ pub async fn insert_db_into_parquet(
                     acc.server.push(row.server);
 
                     let d = row.datetime.to_offset(UtcOffset::UTC);
-                    let datetime = DateTime::from_timestamp(d.unix_timestamp(), d.nanosecond()).unwrap_or_default().naive_utc();
+                    let datetime = DateTime::from_timestamp(d.unix_timestamp(), d.nanosecond())
+                        .unwrap_or_default()
+                        .naive_utc();
                     acc.datetime.push(datetime);
                     acc.host.push(row.host);
                     acc.username.push(row.username);
@@ -143,9 +148,9 @@ pub async fn insert_db_into_parquet(
             let df = ParquetReader::new(File::open(&file)?).finish()?;
             output.push(format_sstr!("{:?}", df.shape()));
             let existing_entries = df.shape().0;
-            let updated_df = df
-                .vstack(&new_df)?
-                .unique(None, UniqueKeepStrategy::First, None)?;
+            let updated_df =
+                df.vstack(&new_df)?
+                    .unique_stable(None, UniqueKeepStrategy::First, None)?;
             if existing_entries == updated_df.shape().0 {
                 continue;
             }
@@ -182,7 +187,7 @@ pub fn merge_parquet_files(input: &Path, output: &Path) -> Result<(), Error> {
 
     let mut df = df1
         .vstack(&df0)?
-        .unique(None, UniqueKeepStrategy::First, None)?;
+        .unique_stable(None, UniqueKeepStrategy::First, None)?;
     info!("final {:?}", df.shape());
     ParquetWriter::new(File::create(output)?).finish(&mut df)?;
     info!("wrote {:?} {:?}", output, df.shape());
