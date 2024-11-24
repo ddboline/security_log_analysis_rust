@@ -199,6 +199,60 @@ pub struct IntrusionLog {
     pub username: Option<StackString>,
 }
 
+#[derive(Clone, Copy)]
+struct IntrusionLogFilteredQueryOptions<'a> {
+    select_str: &'a str,
+    order_str: &'a str,
+    service: &'a Option<StackString>,
+    server: &'a Option<StackString>,
+    min_datetime: &'a Option<OffsetDateTime>,
+    max_datetime: &'a Option<OffsetDateTime>,
+    offset: Option<usize>,
+    limit: Option<usize>,
+}
+
+impl Default for IntrusionLogFilteredQueryOptions<'_> {
+    fn default() -> Self {
+        Self {
+            select_str: "",
+            order_str: "",
+            service: &None,
+            server: &None,
+            min_datetime: &None,
+            max_datetime: &None,
+            offset: None,
+            limit: None,
+        }
+    }
+}
+
+#[derive(Clone, Copy)]
+struct SystemdMessagesQueryOptions<'a> {
+    select_str: &'a str,
+    order_str: &'a str,
+    log_level: &'a Option<LogLevel>,
+    log_unit: &'a Option<StackString>,
+    min_timestamp: &'a Option<DateTimeType>,
+    max_timestamp: &'a Option<DateTimeType>,
+    offset: Option<usize>,
+    limit: Option<usize>,
+}
+
+impl Default for SystemdMessagesQueryOptions<'_> {
+    fn default() -> Self {
+        Self {
+            select_str: "",
+            order_str: "",
+            log_level: &None,
+            log_unit: &None,
+            min_timestamp: &None,
+            max_timestamp: &None,
+            offset: None,
+            limit: None,
+        }
+    }
+}
+
 impl IntrusionLog {
     /// # Errors
     /// Return error if db query fails
@@ -267,31 +321,24 @@ impl IntrusionLog {
         Ok(result.map(Into::into))
     }
 
-    fn get_intrusion_log_filtered_query<'a>(
-        select_str: &'a str,
-        order_str: &'a str,
-        service: &'a Option<StackString>,
-        server: &'a Option<StackString>,
-        min_datetime: &'a Option<OffsetDateTime>,
-        max_datetime: &'a Option<OffsetDateTime>,
-        offset: Option<usize>,
-        limit: Option<usize>,
-    ) -> Result<Query<'a>, PgError> {
+    fn get_intrusion_log_filtered_query(
+        options: IntrusionLogFilteredQueryOptions,
+    ) -> Result<Query, PgError> {
         let mut bindings = Vec::new();
         let mut constraints = Vec::new();
-        if let Some(service) = &service {
+        if let Some(service) = &options.service {
             constraints.push(format_sstr!("service=$service"));
             bindings.push(("service", service as Parameter));
         }
-        if let Some(server) = &server {
+        if let Some(server) = &options.server {
             constraints.push(format_sstr!("server=$server"));
             bindings.push(("server", server as Parameter));
         }
-        if let Some(min_datetime) = &min_datetime {
+        if let Some(min_datetime) = &options.min_datetime {
             constraints.push(format_sstr!("datetime >= $min_datetime"));
             bindings.push(("min_datetime", min_datetime as Parameter));
         }
-        if let Some(max_datetime) = &max_datetime {
+        if let Some(max_datetime) = &options.max_datetime {
             constraints.push(format_sstr!("datetine <= $max_datetime"));
             bindings.push(("max_datetime", max_datetime as Parameter));
         }
@@ -300,6 +347,8 @@ impl IntrusionLog {
         } else {
             format_sstr!("WHERE {}", constraints.join(" AND "))
         };
+        let select_str = options.select_str;
+        let order_str = options.order_str;
         let mut query = format_sstr!(
             r#"
                 SELECT {select_str} FROM intrusion_log
@@ -307,10 +356,10 @@ impl IntrusionLog {
                 {order_str}
             "#,
         );
-        if let Some(offset) = &offset {
+        if let Some(offset) = &options.offset {
             query.push_str(&format_sstr!(" OFFSET {offset}"));
         }
-        if let Some(limit) = &limit {
+        if let Some(limit) = &options.limit {
             query.push_str(&format_sstr!(" LIMIT {limit}"));
         }
         bindings.shrink_to_fit();
@@ -332,16 +381,16 @@ impl IntrusionLog {
         let service = service.map(Service::to_str).map(Into::into);
         let server = server.map(Host::to_str).map(Into::into);
 
-        let query = Self::get_intrusion_log_filtered_query(
-            "*",
-            "ORDER BY datetime DESC",
-            &service,
-            &server,
-            &min_datetime,
-            &max_datetime,
+        let query = Self::get_intrusion_log_filtered_query(IntrusionLogFilteredQueryOptions {
+            select_str: "*",
+            order_str: "ORDER BY datetime DESC",
+            service: &service,
+            server: &server,
+            min_datetime: &min_datetime,
+            max_datetime: &max_datetime,
             offset,
             limit,
-        )?;
+        })?;
         let conn = pool.get().await?;
         query.fetch_streaming(&conn).await.map_err(Into::into)
     }
@@ -363,16 +412,14 @@ impl IntrusionLog {
         let service = service.map(Service::to_str).map(Into::into);
         let server = server.map(Host::to_str).map(Into::into);
 
-        let query = Self::get_intrusion_log_filtered_query(
-            "count(*)",
-            "",
-            &service,
-            &server,
-            &min_datetime,
-            &max_datetime,
-            None,
-            None,
-        )?;
+        let query = Self::get_intrusion_log_filtered_query(IntrusionLogFilteredQueryOptions {
+            select_str: "count(*)",
+            service: &service,
+            server: &server,
+            min_datetime: &min_datetime,
+            max_datetime: &max_datetime,
+            ..IntrusionLogFilteredQueryOptions::default()
+        })?;
         let conn = pool.get().await?;
         let count: Count = query.fetch_one(&conn).await?;
 
@@ -422,6 +469,7 @@ impl IntrusionLog {
 #[derive(FromSqlRow, Clone, Debug)]
 pub struct AuthorizedUsers {
     pub email: StackString,
+    pub created_at: OffsetDateTime,
 }
 
 impl AuthorizedUsers {
@@ -430,9 +478,31 @@ impl AuthorizedUsers {
     pub async fn get_authorized_users(
         pool: &PgPool,
     ) -> Result<impl Stream<Item = Result<Self, PgError>>, Error> {
-        let query = query!("SELECT * FROM authorized_users");
+        let query = query!("SELECT * FROM authorized_users WHERE deleted_at IS NULL");
         let conn = pool.get().await?;
         query.fetch_streaming(&conn).await.map_err(Into::into)
+    }
+
+    /// # Errors
+    /// Returns error if db query fails
+    pub async fn get_most_recent(
+        pool: &PgPool,
+    ) -> Result<(Option<OffsetDateTime>, Option<OffsetDateTime>), Error> {
+        #[derive(FromSqlRow)]
+        struct CreatedDeleted {
+            created_at: Option<OffsetDateTime>,
+            deleted_at: Option<OffsetDateTime>,
+        }
+
+        let query = query!(
+            "SELECT max(created_at) as created_at, max(deleted_at) as deleted_at FROM users"
+        );
+        let conn = pool.get().await?;
+        let result: Option<CreatedDeleted> = query.fetch_opt(&conn).await?;
+        match result {
+            Some(result) => Ok((result.created_at, result.deleted_at)),
+            None => Ok((None, None)),
+        }
     }
 }
 
@@ -683,31 +753,22 @@ impl SystemdLogMessages {
         query.execute(&conn).await.map_err(Into::into)
     }
 
-    fn get_systemd_messages_query<'a>(
-        select_str: &'a str,
-        order_str: &'a str,
-        log_level: &'a Option<LogLevel>,
-        log_unit: &'a Option<&str>,
-        min_timestamp: &'a Option<DateTimeType>,
-        max_timestamp: &'a Option<DateTimeType>,
-        offset: Option<usize>,
-        limit: Option<usize>,
-    ) -> Result<Query<'a>, PgError> {
+    fn get_systemd_messages_query(options: SystemdMessagesQueryOptions) -> Result<Query, PgError> {
         let mut constraints = Vec::new();
         let mut bindings = Vec::new();
-        if let Some(log_level) = log_level {
+        if let Some(log_level) = options.log_level {
             constraints.push(format_sstr!("log_level=$log_level"));
             bindings.push(("log_level", log_level as Parameter));
         }
-        if let Some(log_unit) = log_unit {
+        if let Some(log_unit) = options.log_unit {
             constraints.push(format_sstr!("log_unit=$log_unit"));
             bindings.push(("log_unit", log_unit as Parameter));
         }
-        if let Some(min_timestamp) = min_timestamp {
+        if let Some(min_timestamp) = options.min_timestamp {
             constraints.push(format_sstr!("log_timestamp > $min_timestamp"));
             bindings.push(("min_timestamp", min_timestamp as Parameter));
         }
-        if let Some(max_timestamp) = max_timestamp {
+        if let Some(max_timestamp) = options.max_timestamp {
             constraints.push(format_sstr!("log_timestamp > $max_timestamp"));
             bindings.push(("max_timestamp", max_timestamp as Parameter));
         }
@@ -716,6 +777,8 @@ impl SystemdLogMessages {
         } else {
             format_sstr!("WHERE {}", constraints.join(" AND "))
         };
+        let select_str = options.select_str;
+        let order_str = options.order_str;
         let mut query = format_sstr!(
             r#"
                 SELECT {select_str} FROM systemd_log_messages
@@ -723,10 +786,10 @@ impl SystemdLogMessages {
                 {order_str}
             "#,
         );
-        if let Some(offset) = offset {
+        if let Some(offset) = options.offset {
             query.push_str(&format_sstr!(" OFFSET {offset}"));
         }
-        if let Some(limit) = limit {
+        if let Some(limit) = options.limit {
             query.push_str(&format_sstr!(" LIMIT {limit}"));
         }
         bindings.shrink_to_fit();
@@ -739,7 +802,7 @@ impl SystemdLogMessages {
     pub async fn get_total(
         pool: &PgPool,
         log_level: Option<LogLevel>,
-        log_unit: Option<&str>,
+        log_unit: &Option<StackString>,
         min_timestamp: Option<DateTimeType>,
         max_timestamp: Option<DateTimeType>,
     ) -> Result<usize, Error> {
@@ -748,16 +811,14 @@ impl SystemdLogMessages {
             count: i64,
         }
 
-        let query = Self::get_systemd_messages_query(
-            "count(*)",
-            "",
-            &log_level,
-            &log_unit,
-            &min_timestamp,
-            &max_timestamp,
-            None,
-            None,
-        )?;
+        let query = Self::get_systemd_messages_query(SystemdMessagesQueryOptions {
+            select_str: "count(*)",
+            log_level: &log_level,
+            log_unit,
+            min_timestamp: &min_timestamp,
+            max_timestamp: &max_timestamp,
+            ..SystemdMessagesQueryOptions::default()
+        })?;
         let conn = pool.get().await?;
         let count: Count = query.fetch_one(&conn).await?;
 
@@ -769,22 +830,22 @@ impl SystemdLogMessages {
     pub async fn get_systemd_messages(
         pool: &PgPool,
         log_level: Option<LogLevel>,
-        log_unit: Option<&str>,
+        log_unit: &Option<StackString>,
         min_timestamp: Option<DateTimeType>,
         max_timestamp: Option<DateTimeType>,
         offset: Option<usize>,
         limit: Option<usize>,
     ) -> Result<impl Stream<Item = Result<Self, PgError>>, Error> {
-        let query = Self::get_systemd_messages_query(
-            "*",
-            "ORDER BY log_timestamp",
-            &log_level,
-            &log_unit,
-            &min_timestamp,
-            &max_timestamp,
+        let query = Self::get_systemd_messages_query(SystemdMessagesQueryOptions {
+            select_str: "*",
+            order_str: "ORDER BY log_timestamp",
+            log_level: &log_level,
+            log_unit,
+            min_timestamp: &min_timestamp,
+            max_timestamp: &max_timestamp,
             offset,
             limit,
-        )?;
+        })?;
         let conn = pool.get().await?;
         query.fetch_streaming(&conn).await.map_err(Into::into)
     }

@@ -541,11 +541,10 @@ async fn get_log_messages(
     let min_date: Option<OffsetDateTime> = query.min_date.map(Into::into);
     let max_date: Option<OffsetDateTime> = query.max_date.map(Into::into);
     let log_level = query.log_level;
-    let log_unit: Option<&str> = query.log_unit.as_ref().map(Into::into);
     let total = SystemdLogMessages::get_total(
         &data.pool,
         log_level,
-        log_unit,
+        &query.log_unit,
         min_date.map(Into::into),
         max_date.map(Into::into),
     )
@@ -562,7 +561,7 @@ async fn get_log_messages(
     let data: Vec<_> = SystemdLogMessages::get_systemd_messages(
         &data.pool,
         log_level,
-        log_unit,
+        &query.log_unit,
         min_date.map(Into::into),
         max_date.map(Into::into),
         Some(offset),
