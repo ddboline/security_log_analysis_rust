@@ -9,7 +9,7 @@ use rweb::{
     filters::{cookie::cookie, BoxedFilter},
     Filter, FromRequest, Rejection, Schema,
 };
-use rweb_helper::UuidWrapper;
+use rweb_helper::{UuidWrapper, DateTimeType};
 use serde::{Deserialize, Serialize};
 use stack_string::StackString;
 use std::{
@@ -32,6 +32,8 @@ pub struct LoggedUser {
     pub session: UuidWrapper,
     #[schema(description = "Secret Key")]
     pub secret_key: StackString,
+    #[schema(description = "User Created At")]
+    pub created_at: DateTimeType,
 }
 
 impl LoggedUser {
@@ -71,6 +73,7 @@ impl From<ExternalUser> for LoggedUser {
             email: user.email,
             session: user.session.into(),
             secret_key: user.secret_key,
+            created_at: user.created_at.into(),
         }
     }
 }
@@ -107,7 +110,7 @@ pub async fn fill_from_db(pool: &PgPool) -> Result<(), Error> {
                 email: "user@test".into(),
                 session: Uuid::new_v4(),
                 secret_key: StackString::default(),
-                created_at: Some(OffsetDateTime::now_utc())
+                created_at: OffsetDateTime::now_utc()
             }
         });
         return Ok(());
@@ -133,7 +136,7 @@ pub async fn fill_from_db(pool: &PgPool) -> Result<(), Error> {
                     email: u.email,
                     session: Uuid::new_v4(),
                     secret_key: StackString::default(),
-                    created_at: Some(u.created_at),
+                    created_at: u.created_at,
                 },
             )
         })
