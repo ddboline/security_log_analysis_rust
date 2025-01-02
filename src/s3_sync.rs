@@ -127,7 +127,7 @@ impl S3Sync {
         builder.send().await.map_err(Into::into)
     }
 
-    async fn _get_and_process_keys(&self, bucket: &str, pool: &PgPool) -> Result<usize, Error> {
+    async fn get_and_process_keys_impl(&self, bucket: &str, pool: &PgPool) -> Result<usize, Error> {
         let mut marker: Option<String> = None;
         let mut nkeys = 0;
         loop {
@@ -171,7 +171,7 @@ impl S3Sync {
     }
 
     async fn get_and_process_keys(&self, bucket: &str, pool: &PgPool) -> Result<usize, Error> {
-        exponential_retry(|| async move { self._get_and_process_keys(bucket, pool).await }).await
+        exponential_retry(|| async move { self.get_and_process_keys_impl(bucket, pool).await }).await
     }
 
     async fn process_files(&self, local_dir: &Path, pool: &PgPool) -> Result<usize, Error> {

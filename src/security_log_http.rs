@@ -55,7 +55,7 @@ use security_log_analysis_rust::{
     config::Config,
     errors::ServiceError,
     host_country_metadata::HostCountryMetadata,
-    logged_user::{fill_from_db, get_secrets, LoggedUser, LOGIN_HTML, TRIGGER_DB_UPDATE},
+    logged_user::{fill_from_db, get_secrets, LoggedUser, LOGIN_HTML},
     models::{HostCountry, IntrusionLog, LogLevel, SystemdLogMessages},
     parse_logs::{parse_systemd_logs_sshd_daemon, process_systemd_logs},
     pgpool::PgPool,
@@ -87,11 +87,9 @@ pub async fn error_response(err: Rejection) -> Result<Box<dyn Reply>, Infallible
         code = StatusCode::NOT_FOUND;
         message = "NOT FOUND";
     } else if err.find::<InvalidHeader>().is_some() {
-        TRIGGER_DB_UPDATE.set();
         return Ok(Box::new(login_html()));
     } else if let Some(missing_cookie) = err.find::<MissingCookie>() {
         if missing_cookie.name() == "jwt" {
-            TRIGGER_DB_UPDATE.set();
             return Ok(Box::new(login_html()));
         }
         code = StatusCode::INTERNAL_SERVER_ERROR;
@@ -615,9 +613,6 @@ async fn start_app() -> Result<(), AnyhowError> {
             i.tick().await;
         }
     }
-
-    TRIGGER_DB_UPDATE.set();
-
     let config = Config::init_config()?;
     get_secrets(&config.secret_path, &config.jwt_secret_path).await?;
 

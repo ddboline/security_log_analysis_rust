@@ -339,7 +339,7 @@ mod iso8601 {
     }
 }
 
-impl<'a> FromSql<'a> for DateTimeType {
+impl FromSql<'_> for DateTimeType {
     fn from_sql(
         type_: &postgres_types::Type,
         raw: &[u8],

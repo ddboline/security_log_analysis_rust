@@ -140,7 +140,7 @@ impl HostCountryMetadata {
     /// # Errors
     /// Return error db queries fail
     pub async fn get_whois_country_info_cmd(host: &str) -> Result<StackString, Error> {
-        async fn _get_whois_country_info(args: &[&str]) -> Result<StackString, Error> {
+        async fn get_whois_country_info_impl(args: &[&str]) -> Result<StackString, Error> {
             let output = Command::new("whois").args(args).output().await?;
             if output.status.success() {
                 let buf = String::from_utf8_lossy(&output.stdout);
@@ -160,15 +160,15 @@ impl HostCountryMetadata {
         }
 
         if let Ok(code) =
-            exponential_retry(|| async move { _get_whois_country_info(&[host]).await }).await
+            exponential_retry(|| async move { get_whois_country_info_impl(&[host]).await }).await
         {
             Ok(code)
         } else if let Ok(code) =
-            exponential_retry(|| async move { _get_whois_country_info(&["-B", host]).await }).await
+            exponential_retry(|| async move { get_whois_country_info_impl(&["-B", host]).await }).await
         {
             Ok(code)
         } else {
-            exponential_retry(|| async move { _get_whois_country_info(&["-r", host]).await }).await
+            exponential_retry(|| async move { get_whois_country_info_impl(&["-r", host]).await }).await
         }
     }
 
