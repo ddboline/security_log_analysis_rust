@@ -25,12 +25,8 @@ use derive_more::{Deref, From, Into};
 use postgres_query::FromSqlRow;
 use postgres_types::{FromSql, IsNull, ToSql};
 use rand::{
-    distributions::{Distribution, Uniform},
-    thread_rng,
-};
-use rweb::{
-    openapi::{ComponentDescriptor, ComponentOrInlineSchema, Entity, Schema, Type},
-    Schema,
+    distr::{Distribution, Uniform},
+    rng as thread_rng,
 };
 use serde::{Deserialize, Serialize};
 use stack_string::StackString;
@@ -39,6 +35,10 @@ use std::{
 };
 use time::{format_description::well_known::Rfc3339, OffsetDateTime, UtcOffset};
 use tokio::{process::Command, time::sleep};
+use utoipa::{
+    openapi::schema::{KnownFormat, ObjectBuilder, Type},
+    PartialSchema, ToSchema,
+};
 
 /// # Errors
 /// Return error after timeout
@@ -48,7 +48,7 @@ where
     F: Future<Output = Result<U, Error>>,
 {
     let mut timeout: f64 = 1.0;
-    let range = Uniform::from(0..1000);
+    let range = Uniform::try_from(0..1000)?;
     loop {
         match closure().await {
             Ok(resp) => return Ok(resp),
@@ -92,7 +92,7 @@ pub struct CountryCount {
     pub count: i64,
 }
 
-#[derive(Debug, Clone, Copy, Schema, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, ToSchema, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(into = "StackString", try_from = "StackString")]
 pub enum Host {
     Home,
@@ -169,7 +169,7 @@ impl fmt::Display for Host {
     }
 }
 
-#[derive(Debug, Clone, Copy, Schema, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, ToSchema, Serialize, Deserialize)]
 #[serde(into = "StackString", try_from = "StackString")]
 pub enum Service {
     Apache,
@@ -262,26 +262,30 @@ impl FromStr for DateTimeType {
     }
 }
 
-impl Entity for DateTimeType {
-    fn type_name() -> Cow<'static, str> {
-        Cow::Borrowed("date-time")
-    }
-
-    fn describe(_: &mut ComponentDescriptor) -> ComponentOrInlineSchema {
-        ComponentOrInlineSchema::Inline(Schema {
-            schema_type: Some(Type::String),
-            format: Self::type_name(),
-            ..Schema::default()
-        })
-    }
-}
-
 impl fmt::Display for DateTimeType {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         if let Ok(s) = self.0.format(&Rfc3339) {
             write!(f, "{s}")?;
         }
         Ok(())
+    }
+}
+
+impl PartialSchema for DateTimeType {
+    fn schema() -> utoipa::openapi::RefOr<utoipa::openapi::schema::Schema> {
+        ObjectBuilder::new()
+            .format(Some(utoipa::openapi::SchemaFormat::KnownFormat(
+                KnownFormat::DateTime,
+            )))
+            .schema_type(Type::String)
+            .build()
+            .into()
+    }
+}
+
+impl ToSchema for DateTimeType {
+    fn name() -> Cow<'static, str> {
+        "datetime".into()
     }
 }
 

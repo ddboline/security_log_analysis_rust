@@ -1,16 +1,21 @@
 use anyhow::Error as AnyhowError;
+use axum::{extract::Json, http::StatusCode};
 use log::error;
 use postgres_query::Error as PgError;
-use rweb::{
-    http::StatusCode,
-    openapi::{
-        ComponentDescriptor, ComponentOrInlineSchema, Entity, Response, ResponseEntity, Responses,
-    },
-    reject::Reject,
-};
-use std::{borrow::Cow, fmt::Error as FmtError};
+use serde::Serialize;
+use stack_string::{format_sstr, StackString};
+use std::fmt::Error as FmtError;
 use thiserror::Error;
 use tokio::task::JoinError;
+use utoipa::{
+    openapi::{
+        content::ContentBuilder,
+        response::{ResponseBuilder, ResponsesBuilder},
+    },
+    IntoResponses, PartialSchema, ToSchema,
+};
+
+use crate::logged_user::LOGIN_HTML;
 
 #[derive(Error, Debug)]
 pub enum ServiceError {
@@ -26,37 +31,63 @@ pub enum ServiceError {
     FmtError(#[from] FmtError),
 }
 
-impl Reject for ServiceError {}
-
-impl Entity for ServiceError {
-    fn type_name() -> Cow<'static, str> {
-        rweb::http::Error::type_name()
-    }
-    fn describe(comp_d: &mut ComponentDescriptor) -> ComponentOrInlineSchema {
-        rweb::http::Error::describe(comp_d)
+impl axum::response::IntoResponse for ServiceError {
+    fn into_response(self) -> axum::response::Response {
+        match self {
+            Self::Unauthorized => (StatusCode::OK, LOGIN_HTML).into_response(),
+            e => (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                ErrorMessage {
+                    message: format_sstr!("Internal Server Error: {e}"),
+                },
+            )
+                .into_response(),
+        }
     }
 }
 
-impl ResponseEntity for ServiceError {
-    fn describe_responses(_: &mut ComponentDescriptor) -> Responses {
-        let mut map = Responses::new();
+#[derive(Serialize, ToSchema)]
+struct ErrorMessage {
+    message: StackString,
+}
 
-        let error_responses = [
-            (StatusCode::INTERNAL_SERVER_ERROR, "Internal Server Error"),
-            (StatusCode::BAD_REQUEST, "Bad Request"),
-            (StatusCode::NOT_FOUND, "Not Found"),
-        ];
+impl axum::response::IntoResponse for ErrorMessage {
+    fn into_response(self) -> axum::response::Response {
+        Json(self).into_response()
+    }
+}
 
-        for (code, msg) in &error_responses {
-            map.insert(
-                Cow::Owned(code.as_str().into()),
-                Response {
-                    description: Cow::Borrowed(*msg),
-                    ..Response::default()
-                },
-            );
-        }
-
-        map
+impl IntoResponses for ServiceError {
+    fn responses() -> std::collections::BTreeMap<
+        String,
+        utoipa::openapi::RefOr<utoipa::openapi::response::Response>,
+    > {
+        let error_message_content = ContentBuilder::new()
+            .schema(Some(ErrorMessage::schema()))
+            .build();
+        ResponsesBuilder::new()
+            .response(
+                StatusCode::UNAUTHORIZED.as_str(),
+                ResponseBuilder::new()
+                    .description("Not Authorized")
+                    .content(
+                        "text/html",
+                        ContentBuilder::new().schema(Some(String::schema())).build(),
+                    ),
+            )
+            .response(
+                StatusCode::BAD_REQUEST.as_str(),
+                ResponseBuilder::new()
+                    .description("Bad Request")
+                    .content("application/json", error_message_content.clone()),
+            )
+            .response(
+                StatusCode::INTERNAL_SERVER_ERROR.as_str(),
+                ResponseBuilder::new()
+                    .description("Internal Server Error")
+                    .content("application/json", error_message_content.clone()),
+            )
+            .build()
+            .into()
     }
 }

@@ -6,12 +6,12 @@ use log::debug;
 use postgres_query::{
     client::GenericClient, query, query_dyn, Error as PgError, FromSqlRow, Parameter, Query,
 };
-use rweb::Schema;
 use serde::{Deserialize, Serialize};
 use stack_string::{format_sstr, StackString};
 use std::{cmp::Ordering, convert::TryInto, fmt, net::ToSocketAddrs, str::FromStr};
 use time::OffsetDateTime;
 use tokio_postgres::types::{FromSql, IsNull, ToSql, Type};
+use utoipa::ToSchema;
 use uuid::Uuid;
 
 use crate::{
@@ -37,7 +37,7 @@ impl CountryCode {
     }
 }
 
-#[derive(FromSqlRow, Clone, Debug, Serialize, Deserialize, Schema, PartialEq)]
+#[derive(FromSqlRow, Clone, Debug, Serialize, Deserialize, ToSchema, PartialEq)]
 pub struct HostCountry {
     pub host: StackString,
     pub code: StackString,
@@ -262,9 +262,7 @@ impl IntrusionLog {
         server: Host,
     ) -> Result<Option<OffsetDateTime>, Error> {
         let conn = pool.get().await?;
-        Self::_get_max_datetime(&conn, service, server)
-            .await
-            .map_err(Into::into)
+        Self::_get_max_datetime(&conn, service, server).await
     }
 
     async fn _get_max_datetime<C>(
@@ -350,11 +348,11 @@ impl IntrusionLog {
         let select_str = options.select_str;
         let order_str = options.order_str;
         let mut query = format_sstr!(
-            r#"
+            r"
                 SELECT {select_str} FROM intrusion_log
                 {where_str}
                 {order_str}
-            "#,
+            ",
         );
         if let Some(offset) = &options.offset {
             query.push_str(&format_sstr!(" OFFSET {offset}"));
@@ -363,7 +361,7 @@ impl IntrusionLog {
             query.push_str(&format_sstr!(" LIMIT {limit}"));
         }
         bindings.shrink_to_fit();
-        debug!("query:\n{}", query);
+        debug!("query:\n{query}",);
         query_dyn!(&query, ..bindings)
     }
 
@@ -495,7 +493,8 @@ impl AuthorizedUsers {
         }
 
         let query = query!(
-            "SELECT max(created_at) as created_at, max(deleted_at) as deleted_at FROM authorized_users"
+            "SELECT max(created_at) as created_at, max(deleted_at) as deleted_at FROM \
+             authorized_users"
         );
         let conn = pool.get().await?;
         let result: Option<CreatedDeleted> = query.fetch_opt(&conn).await?;
@@ -528,7 +527,7 @@ pub async fn get_max_datetime(pool: &PgPool, server: Host) -> Result<OffsetDateT
     Ok(result)
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone, Eq, Copy, PartialEq, Schema)]
+#[derive(Debug, Serialize, Deserialize, Clone, Eq, Copy, PartialEq, ToSchema)]
 pub enum LogLevel {
     Debug,
     Info,
@@ -780,11 +779,11 @@ impl SystemdLogMessages {
         let select_str = options.select_str;
         let order_str = options.order_str;
         let mut query = format_sstr!(
-            r#"
+            r"
                 SELECT {select_str} FROM systemd_log_messages
                 {where_str}
                 {order_str}
-            "#,
+            ",
         );
         if let Some(offset) = options.offset {
             query.push_str(&format_sstr!(" OFFSET {offset}"));
@@ -793,7 +792,7 @@ impl SystemdLogMessages {
             query.push_str(&format_sstr!(" LIMIT {limit}"));
         }
         bindings.shrink_to_fit();
-        debug!("query:\n{}", query);
+        debug!("query:\n{query}",);
         query_dyn!(&query, ..bindings)
     }
 

@@ -160,7 +160,7 @@ where
             Some(x) => x.to_string_lossy(),
             None => "".into(),
         };
-        debug!("{:?} {}", fname, ext);
+        debug!("{fname:?} {ext}",);
         if ext == "gz" {
             let gz = GzDecoder::new(File::open(fname)?);
             results.extend(parse_log_file(year, gz, parse_func)?);
@@ -347,7 +347,7 @@ async fn process_systemd_sshd_output(
                     let log_line = log.parse_sshd()?;
                     let log_entry = log_line.into_intrusion_log("ssh", config.server.to_str());
                     let conn = pool.get().await?;
-                    debug!("proc sshd {:?}", log_entry);
+                    debug!("proc sshd {log_entry:?}",);
                     log_entry.insert_single(&conn).await?;
                     continue;
                 }
@@ -356,7 +356,7 @@ async fn process_systemd_sshd_output(
                         let log_entry =
                             log_line.into_intrusion_log("nginx", config.server.to_str());
                         let conn = pool.get().await?;
-                        debug!("proc nginx {:?}", log_entry);
+                        debug!("proc nginx {log_entry:?}",);
                         log_entry.insert_single(&conn).await?;
                         continue;
                     }
@@ -366,7 +366,7 @@ async fn process_systemd_sshd_output(
                     let log_time = log.get_datetime()?;
                     let log_message =
                         SystemdLogMessages::new(log_level, log.unit, &log.message, log_time);
-                    debug!("proc level {log_level} {:?}", log_message);
+                    debug!("proc level {log_level} {log_message:?}",);
                     log_message.insert(pool).await?;
                 }
             }

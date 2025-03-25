@@ -1,204 +1,104 @@
-openapi: 3.0.1
+openapi: '3.1.0'
 info:
-  title: Frontend for AWS
-  description: Web Frontend for AWS Services
-  version: 0.11.5
+  title: Visualizations of Security Log Data
+  description: Some maps showing the origins of breakin attempts to my servers
+  contact:
+    name: Daniel Boline
+    email: ddboline@gmail.com
+  license:
+    name: ''
+  version: '0.13.0'
 paths:
-  /security_log/intrusion_attempts:
-    get:
-      parameters:
-      - name: service
-        in: query
-        required: false
-        schema:
-          nullable: true
-          type: string
-          enum:
-          - Apache
-          - Nginx
-          - Ssh
-      - name: location
-        in: query
-        required: false
-        schema:
-          nullable: true
-          type: string
-          enum:
-          - Home
-          - Cloud
-      - name: ndays
-        in: query
-        required: false
-        schema:
-          nullable: true
-          type: integer
+  /security_log/cleanup:
+    post:
+      operationId: host_country_cleanup
       responses:
-        '200':
-          description: Intrusion Attempts
+        '201':
+          description: Host Country Cleanup
           content:
             text/html:
               schema:
-                type: string
+                type: array
+                items:
+                  $ref: '#/components/schemas/HostCountry'
         '400':
           description: Bad Request
-        '404':
-          description: Not Found
-        '500':
-          description: Internal Server Error
-  /security_log/map_script.js:
-    get:
-      responses:
-        '200':
-          description: Map Drawing Script
-          content:
-            text/javascript:
-              schema:
-                type: string
-  /security_log/intrusion_attempts/all:
-    get:
-      parameters:
-      - name: service
-        in: query
-        required: false
-        schema:
-          nullable: true
-          type: string
-          enum:
-          - Apache
-          - Nginx
-          - Ssh
-      - name: location
-        in: query
-        required: false
-        schema:
-          nullable: true
-          type: string
-          enum:
-          - Home
-          - Cloud
-      - name: ndays
-        in: query
-        required: false
-        schema:
-          nullable: true
-          type: integer
-      responses:
-        '200':
-          description: All Intrusion Attempts
-          content:
-            text/html:
-              schema:
-                type: string
-        '400':
-          description: Bad Request
-        '404':
-          description: Not Found
-        '500':
-          description: Internal Server Error
-  /security_log/intrusion_log:
-    get:
-      parameters:
-      - name: service
-        in: query
-        required: false
-        schema:
-          nullable: true
-          type: string
-          enum:
-          - Apache
-          - Nginx
-          - Ssh
-      - name: server
-        in: query
-        required: false
-        schema:
-          nullable: true
-          type: string
-          enum:
-          - Home
-          - Cloud
-      - name: offset
-        in: query
-        required: false
-        schema:
-          nullable: true
-          type: integer
-          minimum: 0
-      - name: limit
-        in: query
-        required: false
-        schema:
-          nullable: true
-          type: integer
-          minimum: 0
-      responses:
-        '200':
-          description: Intrusion Logs
           content:
             application/json:
               schema:
-                items:
-                  $ref: '#/components/schemas/IntrusionLog'
-                type: array
-        '400':
-          description: Bad Request
-        '404':
-          description: Not Found
-        '500':
-          description: Internal Server Error
-    post:
-      requestBody:
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/IntrusionLogUpdate'
-        required: true
-      responses:
-        '201':
-          description: Intrusion Log Post
+                type: object
+                required:
+                - message
+                properties:
+                  message:
+                    $ref: '#/components/schemas/str'
+        '401':
+          description: Not Authorized
           content:
-            text/plain:
+            text/html:
               schema:
                 type: string
-        '400':
-          description: Bad Request
-        '404':
-          description: Not Found
         '500':
           description: Internal Server Error
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - message
+                properties:
+                  message:
+                    $ref: '#/components/schemas/str'
   /security_log/host_country:
     get:
-      parameters:
-      - name: offset
-        in: query
-        required: false
-        schema:
-          nullable: true
-          type: integer
-          minimum: 0
-      - name: limit
-        in: query
-        required: false
-        schema:
-          nullable: true
-          type: integer
-          minimum: 0
+      operationId: host_country_get
       responses:
         '200':
           description: Host Countries
           content:
-            application/json:
+            text/html:
               schema:
-                items:
-                  $ref: '#/components/schemas/HostCountry'
-                type: array
+                type: object
+                required:
+                - pagination
+                - data
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/HostCountry'
+                  pagination:
+                    $ref: '#/components/schemas/Pagination'
         '400':
           description: Bad Request
-        '404':
-          description: Not Found
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - message
+                properties:
+                  message:
+                    $ref: '#/components/schemas/str'
+        '401':
+          description: Not Authorized
+          content:
+            text/html:
+              schema:
+                type: string
         '500':
           description: Internal Server Error
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - message
+                properties:
+                  message:
+                    $ref: '#/components/schemas/str'
     post:
+      operationId: host_country_post
       requestBody:
         content:
           application/json:
@@ -209,151 +109,419 @@ paths:
         '201':
           description: Host Country Post
           content:
-            text/plain:
+            text/html:
               schema:
                 type: string
         '400':
           description: Bad Request
-        '404':
-          description: Not Found
-        '500':
-          description: Internal Server Error
-  /security_log/cleanup:
-    post:
-      responses:
-        '201':
-          description: Host Country Cleanup
           content:
             application/json:
               schema:
-                items:
-                  $ref: '#/components/schemas/HostCountry'
-                type: array
-        '400':
-          description: Bad Request
-        '404':
-          description: Not Found
+                type: object
+                required:
+                - message
+                properties:
+                  message:
+                    $ref: '#/components/schemas/str'
+        '401':
+          description: Not Authorized
+          content:
+            text/html:
+              schema:
+                type: string
         '500':
           description: Internal Server Error
-  /security_log/user:
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - message
+                properties:
+                  message:
+                    $ref: '#/components/schemas/str'
+  /security_log/intrusion_attempts:
     get:
+      operationId: intrusion_attempts
       responses:
         '200':
-          description: Logged User
+          description: Intrusion Attempts
+          content:
+            text/html:
+              schema:
+                type: string
+        '400':
+          description: Bad Request
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/LoggedUser'
-        '400':
-          description: Bad Request
-        '404':
-          description: Not Found
+                type: object
+                required:
+                - message
+                properties:
+                  message:
+                    $ref: '#/components/schemas/str'
+        '401':
+          description: Not Authorized
+          content:
+            text/html:
+              schema:
+                type: string
         '500':
           description: Internal Server Error
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - message
+                properties:
+                  message:
+                    $ref: '#/components/schemas/str'
+  /security_log/intrusion_attempts/all:
+    get:
+      operationId: intrusion_attempts_all
+      responses:
+        '200':
+          description: All Intrusion Attempts
+          content:
+            text/html:
+              schema:
+                type: string
+        '400':
+          description: Bad Request
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - message
+                properties:
+                  message:
+                    $ref: '#/components/schemas/str'
+        '401':
+          description: Not Authorized
+          content:
+            text/html:
+              schema:
+                type: string
+        '500':
+          description: Internal Server Error
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - message
+                properties:
+                  message:
+                    $ref: '#/components/schemas/str'
+  /security_log/intrusion_log:
+    get:
+      operationId: intursion_log_get
+      responses:
+        '200':
+          description: Intrusion Logs
+          content:
+            text/html:
+              schema:
+                type: object
+                required:
+                - pagination
+                - data
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/IntrusionLog'
+                  pagination:
+                    $ref: '#/components/schemas/Pagination'
+        '400':
+          description: Bad Request
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - message
+                properties:
+                  message:
+                    $ref: '#/components/schemas/str'
+        '401':
+          description: Not Authorized
+          content:
+            text/html:
+              schema:
+                type: string
+        '500':
+          description: Internal Server Error
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - message
+                properties:
+                  message:
+                    $ref: '#/components/schemas/str'
+    post:
+      operationId: intrusion_log_post
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/IntrusionLogUpdate'
+        required: true
+      responses:
+        '201':
+          description: Intrusion Log Post
+          content:
+            text/html:
+              schema:
+                type: string
+        '400':
+          description: Bad Request
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - message
+                properties:
+                  message:
+                    $ref: '#/components/schemas/str'
+        '401':
+          description: Not Authorized
+          content:
+            text/html:
+              schema:
+                type: string
+        '500':
+          description: Internal Server Error
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - message
+                properties:
+                  message:
+                    $ref: '#/components/schemas/str'
   /security_log/log_messages:
     get:
-      parameters:
-      - name: log_level
-        in: query
-        required: false
-        schema:
-          nullable: true
-          type: string
-          enum:
-          - Debug
-          - Info
-          - Warning
-          - Error
-      - name: log_unit
-        in: query
-        required: false
-        schema:
-          nullable: true
-          type: string
-      - name: min_date
-        in: query
-        required: false
-        schema:
-          format: date-time
-          nullable: true
-          type: string
-      - name: max_date
-        in: query
-        required: false
-        schema:
-          format: date-time
-          nullable: true
-          type: string
-      - name: limit
-        in: query
-        required: false
-        schema:
-          nullable: true
-          type: integer
-          minimum: 0
-      - name: offset
-        in: query
-        required: false
-        schema:
-          nullable: true
-          type: integer
-          minimum: 0
+      operationId: get_log_messages
       responses:
         '200':
           description: Log Messages
           content:
-            application/json:
+            text/html:
               schema:
-                items:
-                  $ref: '#/components/schemas/SystemdLogMessages'
-                type: array
+                type: object
+                required:
+                - pagination
+                - data
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/SystemdLogMessages'
+                  pagination:
+                    $ref: '#/components/schemas/Pagination'
         '400':
           description: Bad Request
-        '404':
-          description: Not Found
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - message
+                properties:
+                  message:
+                    $ref: '#/components/schemas/str'
+        '401':
+          description: Not Authorized
+          content:
+            text/html:
+              schema:
+                type: string
         '500':
           description: Internal Server Error
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - message
+                properties:
+                  message:
+                    $ref: '#/components/schemas/str'
   /security_log/log_messages/{id}:
     delete:
+      operationId: delete_log_message
       parameters:
       - name: id
         in: path
         required: true
         schema:
           type: integer
+          format: int32
       responses:
         '204':
           description: Delete Log Messages
           content:
-            text/plain:
+            text/html:
               schema:
                 type: string
         '400':
           description: Bad Request
-        '404':
-          description: Not Found
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - message
+                properties:
+                  message:
+                    $ref: '#/components/schemas/str'
+        '401':
+          description: Not Authorized
+          content:
+            text/html:
+              schema:
+                type: string
         '500':
           description: Internal Server Error
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - message
+                properties:
+                  message:
+                    $ref: '#/components/schemas/str'
+  /security_log/map_script.js:
+    get:
+      operationId: map_script
+      responses:
+        '200':
+          description: Map Drawing Script
+          content:
+            text/javascript:
+              schema:
+                type: string
+        '400':
+          description: Bad Request
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - message
+                properties:
+                  message:
+                    $ref: '#/components/schemas/str'
+        '401':
+          description: Not Authorized
+          content:
+            text/html:
+              schema:
+                type: string
+        '500':
+          description: Internal Server Error
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - message
+                properties:
+                  message:
+                    $ref: '#/components/schemas/str'
+  /security_log/user:
+    get:
+      operationId: user
+      responses:
+        '200':
+          description: Logged User
+          content:
+            text/html:
+              schema:
+                type: object
+                required:
+                - email
+                - session
+                - secret_key
+                - created_at
+                properties:
+                  created_at:
+                    type: string
+                    format: date-time
+                  email:
+                    $ref: '#/components/schemas/str'
+                  secret_key:
+                    $ref: '#/components/schemas/str'
+                  session:
+                    type: string
+                    format: uuid
+        '400':
+          description: Bad Request
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - message
+                properties:
+                  message:
+                    $ref: '#/components/schemas/str'
+        '401':
+          description: Not Authorized
+          content:
+            text/html:
+              schema:
+                type: string
+        '500':
+          description: Internal Server Error
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - message
+                properties:
+                  message:
+                    $ref: '#/components/schemas/str'
 components:
   schemas:
-    IntrusionLog:
+    HostCountry:
+      type: object
+      required:
+      - host
+      - code
+      - created_at
       properties:
-        id:
-          format: uuid
-          example: 334518f4-1bfd-4f20-9978-bfad0dc033e1
+        code:
+          $ref: '#/components/schemas/str'
+        created_at:
           type: string
-        service:
-          type: string
-        server:
-          type: string
-        datetime:
           format: date-time
-          type: string
         host:
-          type: string
-        username:
-          nullable: true
-          type: string
+          $ref: '#/components/schemas/str'
+        ipaddr:
+          oneOf:
+          - type: 'null'
+          - $ref: '#/components/schemas/str'
+    HostCountryUpdate:
+      type: object
+      required:
+      - updates
+      properties:
+        updates:
+          type: array
+          items:
+            $ref: '#/components/schemas/HostCountry'
+    IntrusionLog:
       type: object
       required:
       - id
@@ -361,112 +529,102 @@ components:
       - server
       - datetime
       - host
+      properties:
+        datetime:
+          type: string
+          format: date-time
+        host:
+          $ref: '#/components/schemas/str'
+        id:
+          type: string
+          format: uuid
+        server:
+          $ref: '#/components/schemas/str'
+        service:
+          $ref: '#/components/schemas/str'
+        username:
+          oneOf:
+          - type: 'null'
+          - $ref: '#/components/schemas/str'
     IntrusionLogUpdate:
+      type: object
+      required:
+      - updates
       properties:
         updates:
+          type: array
           items:
             $ref: '#/components/schemas/IntrusionLog'
-          type: array
-      type: object
-      required:
-      - updates
-    HostCountry:
-      properties:
-        host:
-          description: Host
-          type: string
-        code:
-          description: Country Code
-          type: string
-        ipaddr:
-          description: IP Address
-          nullable: true
-          type: string
-        created_at:
-          description: Created At
-          format: date-time
-          type: string
-      type: object
-      required:
-      - host
-      - code
-      - created_at
-    HostCountryUpdate:
-      properties:
-        updates:
-          items:
-            properties:
-              host:
-                type: string
-              code:
-                type: string
-              ipaddr:
-                nullable: true
-                type: string
-              created_at:
-                format: date-time
-                type: string
-            type: object
-            required:
-            - host
-            - code
-            - created_at
-          type: array
-      type: object
-      required:
-      - updates
+    LogLevel:
+      type: string
+      enum:
+      - Debug
+      - Info
+      - Warning
+      - Error
     LoggedUser:
-      properties:
-        email:
-          description: Email Address
-          type: string
-        session:
-          description: Session Id
-          format: uuid
-          example: 334518f4-1bfd-4f20-9978-bfad0dc033e1
-          type: string
-        secret_key:
-          description: Secret Key
-          type: string
       type: object
       required:
       - email
       - session
       - secret_key
-    SystemdLogMessages:
+      - created_at
       properties:
-        id:
-          description: ID
+        created_at:
+          type: string
+          format: date-time
+        email:
+          $ref: '#/components/schemas/str'
+        secret_key:
+          $ref: '#/components/schemas/str'
+        session:
+          type: string
           format: uuid
-          example: 334518f4-1bfd-4f20-9978-bfad0dc033e1
-          type: string
-        log_level:
-          description: Log Level
-          type: string
-          enum:
-          - Debug
-          - Info
-          - Warning
-          - Error
-        log_unit:
-          description: Log Unit
-          nullable: true
-          type: string
-        log_message:
-          description: Log Message
-          type: string
-        log_timestamp:
-          description: Log Timestamp
-          format: date-time
-          type: string
-        processed_time:
-          description: Log Processed At Time
-          format: date-time
-          nullable: true
-          type: string
+    Pagination:
+      type: object
+      required:
+      - total
+      - offset
+      - limit
+      properties:
+        limit:
+          type: integer
+          minimum: 0
+        offset:
+          type: integer
+          minimum: 0
+        total:
+          type: integer
+          minimum: 0
+    SystemdLogMessages:
       type: object
       required:
       - id
       - log_level
       - log_message
       - log_timestamp
+      properties:
+        id:
+          type: string
+          format: uuid
+        log_level:
+          $ref: '#/components/schemas/LogLevel'
+        log_message:
+          $ref: '#/components/schemas/str'
+        log_timestamp:
+          type: string
+          format: date-time
+        log_unit:
+          oneOf:
+          - type: 'null'
+          - $ref: '#/components/schemas/str'
+        processed_time:
+          type:
+          - string
+          - 'null'
+          format: date-time
+    datetime:
+      type: string
+      format: date-time
+    str:
+      type: string

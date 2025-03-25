@@ -7,8 +7,8 @@ use aws_sdk_s3::{
 use futures::TryStreamExt;
 use log::debug;
 use rand::{
-    distributions::{Alphanumeric, DistString},
-    thread_rng,
+    distr::{Alphanumeric, SampleString},
+    rng as thread_rng,
 };
 use stack_string::{format_sstr, StackString};
 use std::{
@@ -171,7 +171,8 @@ impl S3Sync {
     }
 
     async fn get_and_process_keys(&self, bucket: &str, pool: &PgPool) -> Result<usize, Error> {
-        exponential_retry(|| async move { self.get_and_process_keys_impl(bucket, pool).await }).await
+        exponential_retry(|| async move { self.get_and_process_keys_impl(bucket, pool).await })
+            .await
     }
 
     async fn process_files(&self, local_dir: &Path, pool: &PgPool) -> Result<usize, Error> {
