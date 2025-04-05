@@ -16,8 +16,8 @@ Analyze Auth Logs."""
 anyhow = "1.0"
 authorized_users = { git = "https://github.com/ddboline/auth_server_rust.git", tag="0.13.0"}
 aws-config = {version="1.6", features=["behavior-version-latest"]}
-aws-sdk-s3 = "1.79"
-aws-sdk-ses = "1.65"
+aws-sdk-s3 = "1.82"
+aws-sdk-ses = "1.67"
 axum = { version = "0.8", features = ["multipart"] }
 axum-extra = {version="0.10", features=["cookie"]}
 bytes = "1.10"
