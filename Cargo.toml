@@ -1,6 +1,6 @@
 [package]
 name = "security_log_analysis_rust"
-version = "0.13.0"
+version = "0.13.1"
 authors = ["Daniel Boline <ddboline@gmail.com>"]
 edition = "2018"
 
@@ -41,6 +41,7 @@ glob = "0.3"
 itertools = "0.14"
 log = "0.4"
 maplit = "1.0"
+mime = "0.3"
 parking_lot = "0.12"
 polars = {version="0.46", features=["temporal", "parquet", "lazy"]}
 postgres_query = {git = "https://github.com/ddboline/rust-postgres-query", tag = "0.3.8", features=["deadpool"]}

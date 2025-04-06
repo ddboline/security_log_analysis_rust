@@ -1,9 +1,11 @@
 use dioxus::prelude::{
-    component, dioxus_elements, rsx, Element, GlobalSignal, IntoDynNode, Props, Readable, VNode,
-    VirtualDom,
+    component, dioxus_elements, rsx, Element, IntoDynNode, Props, VNode, VirtualDom,
 };
 use stack_string::StackString;
 use std::fmt::Write;
+
+#[cfg(debug_assertions)]
+use dioxus::prelude::{GlobalSignal, Readable};
 
 use security_log_analysis_rust::{config::Config, CountryCount};
 
@@ -25,7 +27,7 @@ fn IndexElement(data: StackString, config: Config) -> Element {
     let maps_script = config.maps_api_key.as_ref().map(|map_api_key| {
         rsx! {
             script {
-                "type": "text/javascript",
+                "type": mime::APPLICATION_JSON.essence_str(),
                 src: "https://maps.googleapis.com/maps/api/js?key={map_api_key}",
             }
         }
@@ -39,11 +41,11 @@ fn IndexElement(data: StackString, config: Config) -> Element {
     rsx! {
         head {
             script {
-                "type": "text/javascript",
+                "type": mime::APPLICATION_JSON.essence_str(),
                 src: "https://www.google.com/jsapi"
             },
             script {
-                "type": "text/javascript",
+                "type": mime::APPLICATION_JSON.essence_str(),
                 src: "/security_log/map_script.js",
             }
         },

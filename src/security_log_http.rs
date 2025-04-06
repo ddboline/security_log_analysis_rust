@@ -21,7 +21,7 @@ pub mod security_log_element;
 use anyhow::Error as AnyhowError;
 use axum::{
     extract::{Json, Path, Query, State},
-    http::{Method, StatusCode},
+    http::{header::CONTENT_TYPE, Method, StatusCode},
 };
 use cached::{proc_macro::cached, Cached, TimedSizedCache};
 use derive_more::{From, Into};
@@ -638,7 +638,7 @@ async fn run_app(config: Config, port: u32) -> Result<(), AnyhowError> {
 
     let cors = CorsLayer::new()
         .allow_methods([Method::GET, Method::POST])
-        .allow_headers(["content-type".try_into()?, "jwt".try_into()?])
+        .allow_headers([CONTENT_TYPE])
         .allow_origin(Any);
 
     let (router, api) = OpenApiRouter::with_openapi(ApiDoc::openapi())
@@ -654,7 +654,7 @@ async fn run_app(config: Config, port: u32) -> Result<(), AnyhowError> {
             axum::routing::get(|| async move {
                 (
                     StatusCode::OK,
-                    [("content-type", "application/json")],
+                    [(CONTENT_TYPE, mime::APPLICATION_JSON.essence_str())],
                     spec_json,
                 )
             }),
@@ -662,7 +662,7 @@ async fn run_app(config: Config, port: u32) -> Result<(), AnyhowError> {
         .route(
             "/security_log/openapi/yaml",
             axum::routing::get(|| async move {
-                (StatusCode::OK, [("content-type", "text/yaml")], spec_yaml)
+                (StatusCode::OK, [(CONTENT_TYPE, "text/yaml")], spec_yaml)
             }),
         )
         .layer(cors);
