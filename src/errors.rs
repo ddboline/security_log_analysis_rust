@@ -48,6 +48,7 @@ impl axum::response::IntoResponse for ServiceError {
 
 #[derive(Serialize, ToSchema)]
 struct ErrorMessage {
+    #[schema(inline)]
     message: StackString,
 }
 

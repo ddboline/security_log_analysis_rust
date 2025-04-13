@@ -25,10 +25,12 @@ use crate::{errors::ServiceError as Error, models::AuthorizedUsers, pgpool::PgPo
 // LoggedUser
 pub struct LoggedUser {
     // Email Address
+    #[schema(inline)]
     pub email: StackString,
     // Session Id
     pub session: Uuid,
     // Secret Key
+    #[schema(inline)]
     pub secret_key: StackString,
     // User Created At
     pub created_at: OffsetDateTime,

@@ -7,7 +7,7 @@ info:
     email: ddboline@gmail.com
   license:
     name: ''
-  version: '0.13.1'
+  version: '0.13.2'
 paths:
   /security_log/cleanup:
     post:
@@ -31,7 +31,7 @@ paths:
                 - message
                 properties:
                   message:
-                    $ref: '#/components/schemas/str'
+                    type: string
         '401':
           description: Not Authorized
           content:
@@ -48,10 +48,27 @@ paths:
                 - message
                 properties:
                   message:
-                    $ref: '#/components/schemas/str'
+                    type: string
   /security_log/host_country:
     get:
       operationId: host_country_get
+      parameters:
+      - name: offset
+        in: query
+        required: false
+        schema:
+          type:
+          - integer
+          - 'null'
+          minimum: 0
+      - name: limit
+        in: query
+        required: false
+        schema:
+          type:
+          - integer
+          - 'null'
+          minimum: 0
       responses:
         '200':
           description: Host Countries
@@ -79,7 +96,7 @@ paths:
                 - message
                 properties:
                   message:
-                    $ref: '#/components/schemas/str'
+                    type: string
         '401':
           description: Not Authorized
           content:
@@ -96,7 +113,7 @@ paths:
                 - message
                 properties:
                   message:
-                    $ref: '#/components/schemas/str'
+                    type: string
     post:
       operationId: host_country_post
       requestBody:
@@ -122,7 +139,7 @@ paths:
                 - message
                 properties:
                   message:
-                    $ref: '#/components/schemas/str'
+                    type: string
         '401':
           description: Not Authorized
           content:
@@ -139,10 +156,33 @@ paths:
                 - message
                 properties:
                   message:
-                    $ref: '#/components/schemas/str'
+                    type: string
   /security_log/intrusion_attempts:
     get:
       operationId: intrusion_attempts
+      parameters:
+      - name: service
+        in: query
+        required: false
+        schema:
+          oneOf:
+          - type: 'null'
+          - $ref: '#/components/schemas/Service'
+      - name: location
+        in: query
+        required: false
+        schema:
+          oneOf:
+          - type: 'null'
+          - $ref: '#/components/schemas/Host'
+      - name: ndays
+        in: query
+        required: false
+        schema:
+          type:
+          - integer
+          - 'null'
+          format: int32
       responses:
         '200':
           description: Intrusion Attempts
@@ -160,7 +200,7 @@ paths:
                 - message
                 properties:
                   message:
-                    $ref: '#/components/schemas/str'
+                    type: string
         '401':
           description: Not Authorized
           content:
@@ -177,10 +217,33 @@ paths:
                 - message
                 properties:
                   message:
-                    $ref: '#/components/schemas/str'
+                    type: string
   /security_log/intrusion_attempts/all:
     get:
       operationId: intrusion_attempts_all
+      parameters:
+      - name: service
+        in: query
+        required: false
+        schema:
+          oneOf:
+          - type: 'null'
+          - $ref: '#/components/schemas/Service'
+      - name: location
+        in: query
+        required: false
+        schema:
+          oneOf:
+          - type: 'null'
+          - $ref: '#/components/schemas/Host'
+      - name: ndays
+        in: query
+        required: false
+        schema:
+          type:
+          - integer
+          - 'null'
+          format: int32
       responses:
         '200':
           description: All Intrusion Attempts
@@ -198,7 +261,7 @@ paths:
                 - message
                 properties:
                   message:
-                    $ref: '#/components/schemas/str'
+                    type: string
         '401':
           description: Not Authorized
           content:
@@ -215,10 +278,41 @@ paths:
                 - message
                 properties:
                   message:
-                    $ref: '#/components/schemas/str'
+                    type: string
   /security_log/intrusion_log:
     get:
       operationId: intursion_log_get
+      parameters:
+      - name: service
+        in: query
+        required: false
+        schema:
+          oneOf:
+          - type: 'null'
+          - $ref: '#/components/schemas/Service'
+      - name: server
+        in: query
+        required: false
+        schema:
+          oneOf:
+          - type: 'null'
+          - $ref: '#/components/schemas/Host'
+      - name: offset
+        in: query
+        required: false
+        schema:
+          type:
+          - integer
+          - 'null'
+          minimum: 0
+      - name: limit
+        in: query
+        required: false
+        schema:
+          type:
+          - integer
+          - 'null'
+          minimum: 0
       responses:
         '200':
           description: Intrusion Logs
@@ -246,7 +340,7 @@ paths:
                 - message
                 properties:
                   message:
-                    $ref: '#/components/schemas/str'
+                    type: string
         '401':
           description: Not Authorized
           content:
@@ -263,7 +357,7 @@ paths:
                 - message
                 properties:
                   message:
-                    $ref: '#/components/schemas/str'
+                    type: string
     post:
       operationId: intrusion_log_post
       requestBody:
@@ -289,7 +383,7 @@ paths:
                 - message
                 properties:
                   message:
-                    $ref: '#/components/schemas/str'
+                    type: string
         '401':
           description: Not Authorized
           content:
@@ -306,10 +400,57 @@ paths:
                 - message
                 properties:
                   message:
-                    $ref: '#/components/schemas/str'
+                    type: string
   /security_log/log_messages:
     get:
       operationId: get_log_messages
+      parameters:
+      - name: log_level
+        in: query
+        required: false
+        schema:
+          oneOf:
+          - type: 'null'
+          - $ref: '#/components/schemas/LogLevel'
+      - name: log_unit
+        in: query
+        required: false
+        schema:
+          oneOf:
+          - type: 'null'
+          - $ref: '#/components/schemas/str'
+      - name: min_date
+        in: query
+        required: false
+        schema:
+          type:
+          - string
+          - 'null'
+          format: date-time
+      - name: max_date
+        in: query
+        required: false
+        schema:
+          type:
+          - string
+          - 'null'
+          format: date-time
+      - name: limit
+        in: query
+        required: false
+        schema:
+          type:
+          - integer
+          - 'null'
+          minimum: 0
+      - name: offset
+        in: query
+        required: false
+        schema:
+          type:
+          - integer
+          - 'null'
+          minimum: 0
       responses:
         '200':
           description: Log Messages
@@ -337,7 +478,7 @@ paths:
                 - message
                 properties:
                   message:
-                    $ref: '#/components/schemas/str'
+                    type: string
         '401':
           description: Not Authorized
           content:
@@ -354,13 +495,14 @@ paths:
                 - message
                 properties:
                   message:
-                    $ref: '#/components/schemas/str'
+                    type: string
   /security_log/log_messages/{id}:
     delete:
       operationId: delete_log_message
       parameters:
       - name: id
         in: path
+        description: Log Message ID
         required: true
         schema:
           type: integer
@@ -382,7 +524,7 @@ paths:
                 - message
                 properties:
                   message:
-                    $ref: '#/components/schemas/str'
+                    type: string
         '401':
           description: Not Authorized
           content:
@@ -399,7 +541,7 @@ paths:
                 - message
                 properties:
                   message:
-                    $ref: '#/components/schemas/str'
+                    type: string
   /security_log/map_script.js:
     get:
       operationId: map_script
@@ -420,7 +562,7 @@ paths:
                 - message
                 properties:
                   message:
-                    $ref: '#/components/schemas/str'
+                    type: string
         '401':
           description: Not Authorized
           content:
@@ -437,7 +579,7 @@ paths:
                 - message
                 properties:
                   message:
-                    $ref: '#/components/schemas/str'
+                    type: string
   /security_log/user:
     get:
       operationId: user
@@ -458,9 +600,9 @@ paths:
                     type: string
                     format: date-time
                   email:
-                    $ref: '#/components/schemas/str'
+                    type: string
                   secret_key:
-                    $ref: '#/components/schemas/str'
+                    type: string
                   session:
                     type: string
                     format: uuid
@@ -474,7 +616,7 @@ paths:
                 - message
                 properties:
                   message:
-                    $ref: '#/components/schemas/str'
+                    type: string
         '401':
           description: Not Authorized
           content:
@@ -491,9 +633,14 @@ paths:
                 - message
                 properties:
                   message:
-                    $ref: '#/components/schemas/str'
+                    type: string
 components:
   schemas:
+    Host:
+      type: string
+      enum:
+      - Home
+      - Cloud
     HostCountry:
       type: object
       required:
@@ -574,9 +721,9 @@ components:
           type: string
           format: date-time
         email:
-          $ref: '#/components/schemas/str'
+          type: string
         secret_key:
-          $ref: '#/components/schemas/str'
+          type: string
         session:
           type: string
           format: uuid
@@ -596,6 +743,12 @@ components:
         total:
           type: integer
           minimum: 0
+    Service:
+      type: string
+      enum:
+      - Apache
+      - Nginx
+      - Ssh
     SystemdLogMessages:
       type: object
       required:

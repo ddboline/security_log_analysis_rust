@@ -46,7 +46,7 @@ use tokio::{
     time::{interval, sleep},
 };
 use tower_http::cors::{Any, CorsLayer};
-use utoipa::{OpenApi, PartialSchema, ToSchema};
+use utoipa::{IntoParams, OpenApi, PartialSchema, ToSchema};
 use utoipa_axum::{router::OpenApiRouter, routes};
 use utoipa_helper::{
     derive_utoipa_schema, html_response::HtmlResponse as HtmlBase,
@@ -75,7 +75,7 @@ pub struct AppState {
     pub config: Config,
 }
 
-#[derive(Serialize, Deserialize, ToSchema, Debug)]
+#[derive(Serialize, Deserialize, ToSchema, Debug, IntoParams)]
 struct AttemptsQuery {
     service: Option<Service>,
     location: Option<Host>,
@@ -143,6 +143,7 @@ struct IntrusionAttemptsResponse(HtmlBase::<StackString>);
 #[utoipa::path(
     get,
     path = "/security_log/intrusion_attempts",
+    params(AttemptsQuery),
     responses(IntrusionAttemptsResponse, Error)
 )]
 async fn intrusion_attempts(
@@ -190,6 +191,7 @@ struct IntrusionAttemptsAllResponse(HtmlBase::<StackString>);
 #[utoipa::path(
     get,
     path = "/security_log/intrusion_attempts/all",
+    params(AttemptsQuery),
     responses(IntrusionAttemptsAllResponse, Error)
 )]
 async fn intrusion_attempts_all(
@@ -203,7 +205,7 @@ async fn intrusion_attempts_all(
     Ok(HtmlBase::new(body.into()).into())
 }
 
-#[derive(Serialize, Deserialize, ToSchema)]
+#[derive(Serialize, Deserialize, ToSchema, IntoParams)]
 struct SyncQuery {
     service: Option<Service>,
     server: Option<Host>,
@@ -237,6 +239,7 @@ struct IntrusionLogResponse(JsonBase::<PaginatedIntrusionLog>);
 #[utoipa::path(
     get,
     path = "/security_log/intrusion_log",
+    params(SyncQuery),
     responses(IntrusionLogResponse, Error)
 )]
 async fn intursion_log_get(
@@ -284,7 +287,7 @@ derive_utoipa_schema!(IntrusionLogWrapper, _IntrusionLogWrapper);
 
 #[allow(dead_code)]
 #[derive(ToSchema)]
-// IntrusionLog")]
+// IntrusionLog
 #[schema(as = IntrusionLog)]
 struct _IntrusionLogWrapper {
     id: Uuid,
@@ -296,7 +299,7 @@ struct _IntrusionLogWrapper {
 }
 
 #[derive(Serialize, Deserialize, ToSchema)]
-// IntrusionLogUpdate")]
+// IntrusionLogUpdate
 struct IntrusionLogUpdate {
     updates: Vec<IntrusionLogWrapper>,
 }
@@ -309,6 +312,7 @@ struct IntrusionLogPostResponse(HtmlBase::<StackString>);
 #[utoipa::path(
     post,
     path = "/security_log/intrusion_log",
+    request_body = IntrusionLogUpdate,
     responses(IntrusionLogPostResponse, Error)
 )]
 async fn intrusion_log_post(
@@ -329,27 +333,27 @@ derive_utoipa_schema!(HostCountryWrapper, _HostCountryWrapper);
 
 #[allow(dead_code)]
 #[derive(ToSchema)]
-// HostCountry")]
+// HostCountry
 #[schema(as = HostCountry)]
 struct _HostCountryWrapper {
-    // Host")]
+    // Host
     pub host: StackString,
-    // Country Code")]
+    // Country Code
     pub code: StackString,
-    // IP Address")]
+    // IP Address
     pub ipaddr: Option<StackString>,
-    // Created At")]
+    // Created At
     pub created_at: OffsetDateTime,
 }
 
-#[derive(Serialize, Deserialize, ToSchema)]
+#[derive(Serialize, Deserialize, ToSchema, IntoParams)]
 struct HostCountryQuery {
     offset: Option<usize>,
     limit: Option<usize>,
 }
 
 #[derive(Debug, Serialize, Deserialize, ToSchema)]
-// PaginatedHostCountry")]
+// PaginatedHostCountry
 struct PaginatedHostCountry {
     pagination: Pagination,
     data: Vec<HostCountryWrapper>,
@@ -363,6 +367,7 @@ struct HostCountryResponse(JsonBase::<PaginatedHostCountry>);
 #[utoipa::path(
     get,
     path = "/security_log/host_country",
+    params(HostCountryQuery),
     responses(HostCountryResponse, Error)
 )]
 async fn host_country_get(
@@ -389,7 +394,7 @@ async fn host_country_get(
 }
 
 #[derive(Serialize, Deserialize, ToSchema)]
-// HostCountryUpdate")]
+// HostCountryUpdate
 struct HostCountryUpdate {
     updates: Vec<HostCountry>,
 }
@@ -402,6 +407,7 @@ struct HostCountryPostResponse(HtmlBase::<StackString>);
 #[utoipa::path(
     post,
     path = "/security_log/host_country",
+    request_body = HostCountryUpdate,
     responses(HostCountryPostResponse, Error)
 )]
 async fn host_country_post(
@@ -464,9 +470,10 @@ async fn user(user: LoggedUser) -> WarpResult<LoggedUserResponse> {
     Ok(JsonBase::new(user).into())
 }
 
-#[derive(Serialize, Deserialize, ToSchema)]
+#[derive(Serialize, Deserialize, ToSchema, IntoParams)]
 struct LogMessageQuery {
     log_level: Option<LogLevel>,
+    #[schema(inline)]
     log_unit: Option<StackString>,
     min_date: Option<OffsetDateTime>,
     max_date: Option<OffsetDateTime>,
@@ -481,25 +488,25 @@ derive_utoipa_schema!(SystemdLogMessagesWrapper, _SystemdLogMessagesWrapper);
 
 #[allow(dead_code)]
 #[derive(ToSchema)]
-// SystemdLogMessages")]
+// SystemdLogMessages
 #[schema(as = SystemdLogMessages)]
 struct _SystemdLogMessagesWrapper {
-    // ID")]
+    // ID
     id: Uuid,
-    // Log Level")]
+    // Log Level
     log_level: LogLevel,
-    // Log Unit")]
+    // Log Unit
     log_unit: Option<StackString>,
-    // Log Message")]
+    // Log Message
     log_message: StackString,
-    // Log Timestamp")]
+    // Log Timestamp
     log_timestamp: OffsetDateTime,
-    // Log Processed At Time")]
+    // Log Processed At Time
     processed_time: Option<OffsetDateTime>,
 }
 
 #[derive(Debug, Serialize, Deserialize, ToSchema)]
-// PaginatedSystemdLogMessages")]
+// PaginatedSystemdLogMessages
 struct PaginatedSystemdLogMessages {
     pagination: Pagination,
     data: Vec<SystemdLogMessagesWrapper>,
@@ -513,6 +520,7 @@ struct LogMessagesResponse(JsonBase::<PaginatedSystemdLogMessages>);
 #[utoipa::path(
     get,
     path = "/security_log/log_messages",
+    params(LogMessageQuery),
     responses(LogMessagesResponse, Error)
 )]
 async fn get_log_messages(
@@ -564,6 +572,7 @@ struct DeleteLogMessageResponse(HtmlBase::<StackString>);
 #[utoipa::path(
     delete,
     path = "/security_log/log_messages/{id}",
+    params(("id" = i32, description = "Log Message ID")),
     responses(DeleteLogMessageResponse, Error)
 )]
 async fn delete_log_message(
@@ -615,7 +624,9 @@ async fn start_app() -> Result<(), AnyhowError> {
         HostCountryWrapper,
         Pagination,
         IntrusionLogWrapper,
-        SystemdLogMessagesWrapper
+        SystemdLogMessagesWrapper,
+        Service,
+        Host,
     ))
 )]
 struct ApiDoc;
