@@ -27,7 +27,7 @@ fn IndexElement(data: StackString, config: Config) -> Element {
     let maps_script = config.maps_api_key.as_ref().map(|map_api_key| {
         rsx! {
             script {
-                "type": mime::APPLICATION_JSON.essence_str(),
+                "type": mime::TEXT_JAVASCRIPT.essence_str(),
                 src: "https://maps.googleapis.com/maps/api/js?key={map_api_key}",
             }
         }
@@ -41,11 +41,11 @@ fn IndexElement(data: StackString, config: Config) -> Element {
     rsx! {
         head {
             script {
-                "type": mime::APPLICATION_JSON.essence_str(),
+                "type": mime::TEXT_JAVASCRIPT.essence_str(),
                 src: "https://www.google.com/jsapi"
             },
             script {
-                "type": mime::APPLICATION_JSON.essence_str(),
+                "type": mime::TEXT_JAVASCRIPT.essence_str(),
                 src: "/security_log/map_script.js",
             }
         },
