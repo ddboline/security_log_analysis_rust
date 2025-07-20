@@ -167,7 +167,7 @@ pub async fn insert_db_into_parquet(
 /// # Errors
 /// Returns error if input/output doesn't exist or cannot be read
 pub fn merge_parquet_files(input: &Path, output: &Path) -> Result<(), Error> {
-    info!("input {input:?} output {output:?}",);
+    info!("input {} output {}", input.display(), output.display());
     if !input.exists() {
         return Err(format_err!("input {input:?} does not exist"));
     }
@@ -190,7 +190,7 @@ pub fn merge_parquet_files(input: &Path, output: &Path) -> Result<(), Error> {
         .unique_stable(None, UniqueKeepStrategy::First, None)?;
     info!("final {:?}", df.shape());
     ParquetWriter::new(File::create(output)?).finish(&mut df)?;
-    info!("wrote {:?} {:?}", output, df.shape());
+    info!("wrote {} {:?}", output.display(), df.shape());
     Ok(())
 }
 

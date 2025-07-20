@@ -7,7 +7,7 @@ info:
     email: ddboline@gmail.com
   license:
     name: ''
-  version: '0.13.2'
+  version: '0.13.4'
 paths:
   /security_log/cleanup:
     post:

@@ -160,7 +160,7 @@ where
             Some(x) => x.to_string_lossy(),
             None => "".into(),
         };
-        debug!("{fname:?} {ext}",);
+        debug!("{} {ext}", fname.display());
         if ext == "gz" {
             let gz = GzDecoder::new(File::open(fname)?);
             results.extend(parse_log_file(year, gz, parse_func)?);

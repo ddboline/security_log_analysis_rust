@@ -166,14 +166,10 @@ impl ParseOpts {
                 let metadata = HostCountryMetadata::from_pool(pool).await?;
                 for host_country in &host_codes {
                     let vals: SmallVec<[&str; 2]> = host_country.split(':').take(2).collect();
-                    if vals.len() < 2 {
-                        continue;
-                    }
-                    match vals.get(..2) {
-                        Some([host, code]) => {
+                    if vals.len() >= 2 {
+                        if let Some([host, code]) = vals.get(..2) {
                             metadata.insert_host_code(host, code).await?;
                         }
-                        _ => continue,
                     }
                 }
             }
