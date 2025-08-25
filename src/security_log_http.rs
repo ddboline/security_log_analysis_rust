@@ -100,7 +100,7 @@ impl fmt::Display for AttemptsQuery {
 
 #[cached(
     ty = "TimedSizedCache<StackString, StackString>",
-    create = "{ TimedSizedCache::with_size_and_lifespan(100, 3600) }",
+    create = "{ TimedSizedCache::with_size_and_lifespan(100, Duration::from_secs(3600)) }",
     convert = r#"{ format_sstr!("{}", query) }"#,
     result = true
 )]
@@ -159,7 +159,7 @@ async fn intrusion_attempts(
 
 #[cached(
     ty = "TimedSizedCache<StackString, StackString>",
-    create = "{ TimedSizedCache::with_size_and_lifespan(100, 3600) }",
+    create = "{ TimedSizedCache::with_size_and_lifespan(100, Duration::from_secs(3600)) }",
     convert = r#"{ format_sstr!("{}", query) }"#,
     result = true
 )]

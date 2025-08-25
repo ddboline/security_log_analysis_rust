@@ -9,7 +9,7 @@ use polars::{
     lazy::{dsl::functions::col, frame::IntoLazy},
     prelude::{
         lit, LazyFrame, ParquetReader, ParquetWriter, ScanArgsParquet, SerReader,
-        UniqueKeepStrategy,
+        UniqueKeepStrategy, PlPathRef,
     },
 };
 use postgres_query::{query, FromSqlRow};
@@ -261,7 +261,7 @@ fn get_country_count(
     ndays: Option<i32>,
 ) -> Result<DataFrame, Error> {
     let args = ScanArgsParquet::default();
-    let mut df = LazyFrame::scan_parquet(input, args)?;
+    let mut df = LazyFrame::scan_parquet(PlPathRef::from_local_path(input).into_owned(), args)?;
     if let Some(service) = service {
         df = df.filter(col("service").eq(lit(service.to_str())));
     }
