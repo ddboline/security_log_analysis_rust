@@ -15,6 +15,7 @@
 #![allow(clippy::default_trait_access)]
 #![allow(clippy::unused_async)]
 #![allow(clippy::ignored_unit_patterns)]
+#![allow(clippy::needless_for_each)]
 
 pub mod security_log_element;
 

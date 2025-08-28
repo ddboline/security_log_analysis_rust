@@ -1,6 +1,6 @@
 [package]
 name = "security_log_analysis_rust"
-version = "0.13.5"
+version = "0.13.6"
 authors = ["Daniel Boline <ddboline@gmail.com>"]
 edition = "2018"
 
@@ -43,6 +43,7 @@ log = "0.4"
 maplit = "1.0"
 mime = "0.3"
 parking_lot = "0.12"
+planus = "=1.1.1"
 polars = {version="0.50", features=["temporal", "parquet", "lazy"]}
 postgres_query = {git = "https://github.com/ddboline/rust-postgres-query", tag = "0.3.8", features=["deadpool"]}
 postgres-types = {version="0.2", features=["with-time-0_3", "with-uuid-1", "with-serde_json-1"]}
@@ -62,7 +63,7 @@ time-tz = {version="2.0", features=["system"]}
 tokio-postgres = {version="0.7", features=["with-time-0_3", "with-uuid-1", "with-serde_json-1"]}
 tokio = {version="1.47", features=["rt", "macros", "rt-multi-thread"]}
 tower-http = {version="0.6", features=["cors"]}
-utoipa = { version = "5.3", features = ["axum_extras", "yaml", "time", "uuid", "smallvec", "url", "openapi_extensions", "decimal"] }
+utoipa = { version = "5.4", features = ["axum_extras", "yaml", "time", "uuid", "smallvec", "url", "openapi_extensions", "decimal"] }
 utoipa-helper = "0.1"
 utoipa-axum = { version = "0.2" }
 uuid = { version = "1.18", features = ["serde", "v4"] }
