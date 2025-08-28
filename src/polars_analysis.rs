@@ -8,8 +8,8 @@ use polars::{
     frame::DataFrame,
     lazy::{dsl::functions::col, frame::IntoLazy},
     prelude::{
-        lit, LazyFrame, ParquetReader, ParquetWriter, ScanArgsParquet, SerReader,
-        UniqueKeepStrategy, PlPathRef,
+        lit, LazyFrame, ParquetReader, ParquetWriter, PlPathRef, ScanArgsParquet, SerReader,
+        UniqueKeepStrategy,
     },
 };
 use postgres_query::{query, FromSqlRow};
