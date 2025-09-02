@@ -11,7 +11,7 @@ use stdout_channel::StdoutChannel;
 use tokio::{
     fs::{read_to_string, File},
     io::{stdin, AsyncReadExt, AsyncWrite, AsyncWriteExt},
-    task::spawn,
+    task::{spawn, spawn_blocking},
     time::sleep,
 };
 
@@ -220,7 +220,7 @@ impl ParseOpts {
                 ndays,
             } => {
                 let directory = directory.unwrap_or_else(|| config.cache_dir.clone());
-                let body = read_parquet_files(&directory, service, server, ndays)?
+                let body = spawn_blocking(move || read_parquet_files(&directory, service, server, ndays)).await??
                     .into_iter()
                     .map(|c| format_sstr!("country {} count {}", c.country, c.count))
                     .take(10)
