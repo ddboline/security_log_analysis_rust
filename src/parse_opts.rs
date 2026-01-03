@@ -220,11 +220,13 @@ impl ParseOpts {
                 ndays,
             } => {
                 let directory = directory.unwrap_or_else(|| config.cache_dir.clone());
-                let body = spawn_blocking(move || read_parquet_files(&directory, service, server, ndays)).await??
-                    .into_iter()
-                    .map(|c| format_sstr!("country {} count {}", c.country, c.count))
-                    .take(10)
-                    .join("\n");
+                let body =
+                    spawn_blocking(move || read_parquet_files(&directory, service, server, ndays))
+                        .await??
+                        .into_iter()
+                        .map(|c| format_sstr!("country {} count {}", c.country, c.count))
+                        .take(10)
+                        .join("\n");
                 stdout.send(body);
             }
             ParseOpts::Import { table, filepath } => {

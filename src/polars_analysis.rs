@@ -169,10 +169,10 @@ pub async fn insert_db_into_parquet(
 pub fn merge_parquet_files(input: &Path, output: &Path) -> Result<(), Error> {
     info!("input {} output {}", input.display(), output.display());
     if !input.exists() {
-        return Err(format_err!("input {input:?} does not exist"));
+        return Err(format_err!("input {} does not exist", input.display()));
     }
     if !output.exists() {
-        return Err(format_err!("output {output:?} does not exist"));
+        return Err(format_err!("output {} does not exist", output.display()));
     }
     let df0 = ParquetReader::new(File::open(input)?).finish()?;
     let entries0 = df0.shape().0;

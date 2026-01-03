@@ -93,17 +93,12 @@ pub struct CountryCount {
     pub count: i64,
 }
 
-#[derive(Debug, Clone, Copy, ToSchema, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, ToSchema, Serialize, Deserialize, PartialEq, Eq, Default)]
 #[serde(into = "StackString", try_from = "StackString")]
 pub enum Host {
+    #[default]
     Home,
     Cloud,
-}
-
-impl Default for Host {
-    fn default() -> Self {
-        Self::Home
-    }
 }
 
 impl FromStr for Host {

@@ -1,4 +1,4 @@
-openapi: '3.1.0'
+openapi: 3.1.0
 info:
   title: Visualizations of Security Log Data
   description: Some maps showing the origins of breakin attempts to my servers
@@ -7,7 +7,7 @@ info:
     email: ddboline@gmail.com
   license:
     name: ''
-  version: '0.13.6'
+  version: 0.13.8
 paths:
   /security_log/cleanup:
     post:

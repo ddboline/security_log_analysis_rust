@@ -1,6 +1,5 @@
 use anyhow::Error as AnyhowError;
 use axum::{extract::Json, http::StatusCode};
-use log::error;
 use postgres_query::Error as PgError;
 use serde::Serialize;
 use stack_string::{format_sstr, StackString};
