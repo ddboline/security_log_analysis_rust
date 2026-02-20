@@ -8,7 +8,7 @@ use polars::{
     frame::DataFrame,
     lazy::{dsl::functions::col, frame::IntoLazy},
     prelude::{
-        lit, LazyFrame, ParquetReader, ParquetWriter, PlPathRef, ScanArgsParquet, SerReader,
+        lit, LazyFrame, ParquetReader, ParquetWriter, PlRefPath, ScanArgsParquet, SerReader,
         UniqueKeepStrategy,
     },
 };
@@ -261,7 +261,7 @@ fn get_country_count(
     ndays: Option<i32>,
 ) -> Result<DataFrame, Error> {
     let args = ScanArgsParquet::default();
-    let mut df = LazyFrame::scan_parquet(PlPathRef::from_local_path(input).into_owned(), args)?;
+    let mut df = LazyFrame::scan_parquet(PlRefPath::try_from_path(input)?, args)?;
     if let Some(service) = service {
         df = df.filter(col("service").eq(lit(service.to_str())));
     }

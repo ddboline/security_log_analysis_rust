@@ -140,6 +140,7 @@ impl ParseOpts {
                     .try_collect()
                     .await?;
                 for host in hosts {
+                    stdout.send(format_sstr!("Cleaning up host {host}"));
                     let host_country = metadata.get_country_info(&host).await?;
                     let output = serde_json::to_string(&host_country)?;
                     stdout.send(output);
