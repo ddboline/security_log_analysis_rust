@@ -24,7 +24,7 @@ use axum::{
     extract::{Json, Path, Query, State},
     http::{header::CONTENT_TYPE, Method, StatusCode},
 };
-use cached::{proc_macro::cached, Cached, TimedSizedCache};
+use cached::{macros::cached, Cached, LruTtlCache};
 use derive_more::{From, Into};
 use futures::TryStreamExt;
 use itertools::Itertools;
@@ -100,8 +100,8 @@ impl fmt::Display for AttemptsQuery {
 }
 
 #[cached(
-    ty = "TimedSizedCache<StackString, StackString>",
-    create = "{ TimedSizedCache::with_size_and_lifespan(100, Duration::from_secs(3600)) }",
+    ty = "LruTtlCache<StackString, StackString>",
+    create = "{ LruTtlCache::with_size_and_ttl(100, Duration::from_secs(3600)) }",
     convert = r#"{ format_sstr!("{}", query) }"#,
     result = true
 )]
@@ -159,8 +159,8 @@ async fn intrusion_attempts(
 }
 
 #[cached(
-    ty = "TimedSizedCache<StackString, StackString>",
-    create = "{ TimedSizedCache::with_size_and_lifespan(100, Duration::from_secs(3600)) }",
+    ty = "LruTtlCache<StackString, StackString>",
+    create = "{ LruTtlCache::with_size_and_ttl(100, Duration::from_secs(3600)) }",
     convert = r#"{ format_sstr!("{}", query) }"#,
     result = true
 )]

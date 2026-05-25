@@ -1,6 +1,6 @@
 [package]
 name = "security_log_analysis_rust"
-version = "0.13.9"
+version = "0.13.10"
 authors = ["Daniel Boline <ddboline@gmail.com>"]
 edition = "2018"
 
@@ -14,16 +14,16 @@ Analyze Auth Logs."""
 
 [dependencies]
 anyhow = "1.0"
-authorized_users = { git = "https://github.com/ddboline/auth_server_rust.git", tag="0.13.5"}
+authorized_users = { git = "https://github.com/ddboline/auth_server_rust.git", tag="0.13.9"}
 aws-config = {version="1.8", features=["behavior-version-latest"]}
-aws-sdk-s3 = "1.119"
-aws-sdk-ses = "1.94"
+aws-sdk-s3 = "1.133"
+aws-sdk-ses = "1.102"
 axum = { version = "0.8", features = ["multipart"] }
 axum-extra = {version="0.12", features=["cookie"]}
 bytes = "1.11"
-cached = {version="0.56", features=["async", "async_tokio_rt_multi_thread"]}
+cached = {version="1.1", features=["async", "async_tokio_rt_multi_thread"]}
 chrono = "0.4"
-clap = {version="4.5", features=["derive"]}
+clap = {version="4.6", features=["derive"]}
 deadpool = {version = "0.13", features=["serde", "rt_tokio_1"]}
 deadpool-postgres = {version="0.14", features=["serde"]}
 deadqueue = "0.2"
@@ -48,7 +48,7 @@ polars = {version="0.53", features=["timezones", "parquet", "lazy"]}
 postgres_query = {git = "https://github.com/ddboline/rust-postgres-query", tag = "0.3.8", features=["deadpool"]}
 postgres-types = {version="0.2", features=["with-time-0_3", "with-uuid-1", "with-serde_json-1"]}
 rand = "0.10"
-rayon = "1.11"
+rayon = "1.12"
 refinery = {version="0.9", features=["tokio-postgres"]}
 reqwest = {version="0.13", features=["json", "gzip"]}
 serde = { version="1.0", features=["derive"]}
@@ -61,12 +61,12 @@ thiserror = "2.0"
 time = {version="0.3", features=["serde-human-readable", "macros", "formatting"]}
 time-tz = {version="2.0", features=["system"]}
 tokio-postgres = {version="0.7", features=["with-time-0_3", "with-uuid-1", "with-serde_json-1"]}
-tokio = {version="1.49", features=["rt", "macros", "rt-multi-thread"]}
+tokio = {version="1.52", features=["rt", "macros", "rt-multi-thread"]}
 tower-http = {version="0.6", features=["cors"]}
-utoipa = { version = "5.4", features = ["axum_extras", "yaml", "time", "uuid", "smallvec", "url", "openapi_extensions", "decimal"] }
+utoipa = { version = "5.5", features = ["axum_extras", "yaml", "time", "uuid", "smallvec", "url", "openapi_extensions", "decimal"] }
 utoipa-helper = "0.1"
 utoipa-axum = { version = "0.2" }
-uuid = { version = "1.19", features = ["serde", "v4"] }
+uuid = { version = "1.23", features = ["serde", "v4"] }
 
 [[bin]]
 name = "security-log-parse-rust"
