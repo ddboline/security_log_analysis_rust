@@ -361,7 +361,7 @@ impl IntrusionLog {
             query.push_str(&format_sstr!(" LIMIT {limit}"));
         }
         bindings.shrink_to_fit();
-        debug!("query:\n{query}",);
+        debug!("query:\n{query}");
         query_dyn!(&query, ..bindings)
     }
 
@@ -582,7 +582,7 @@ impl LogLevel {
 
 impl fmt::Display for LogLevel {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{}", self.to_str(),)
+        write!(f, "{}", self.to_str())
     }
 }
 
@@ -787,7 +787,7 @@ impl SystemdLogMessages {
             query.push_str(&format_sstr!(" LIMIT {limit}"));
         }
         bindings.shrink_to_fit();
-        debug!("query:\n{query}",);
+        debug!("query:\n{query}");
         query_dyn!(&query, ..bindings)
     }
 
